@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { LlmAttemptId, MessageId, createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { ConversationNodeAssembler } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ConversationViewNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { EntryView } from '../src/entry-types.ts'
 import { taskEntryDefinition } from '../src/client/task-entry-node.ts'
 import { assistantDefinition } from '../../../client/ui-chat/src/client/conversation-nodes/assistant.ts'
@@ -10,7 +10,7 @@ import { assistantDefinition } from '../../../client/ui-chat/src/client/conversa
 describe('task entry live conversation publication', () => {
   it.each(['conversation', 'Associated with request-original'])(
     'keeps publishing after routing settles as %s without reopening the conversation', (progress) => {
-      const nodes = new Map<string, ConversationViewNode>()
+      const nodes = new Map<string, ChatConversationViewNode>()
       const assembler = new ConversationNodeAssembler({
         entries: () => [taskEntryDefinition, assistantDefinition], fallbackEntry: () => undefined,
       }, {
@@ -18,11 +18,11 @@ describe('task entry live conversation publication', () => {
           empty: null,
           replace: ({ nodes: replacement }) => {
             nodes.clear()
-            for (const node of replacement) nodes.set(node.key, node)
+            for (const node of replacement) nodes.set(node.key, node as ChatConversationViewNode)
             return null
           },
           apply: ({ upserts }) => {
-            for (const node of upserts) nodes.set(node.key, node)
+            for (const node of upserts) nodes.set(node.key, node as ChatConversationViewNode)
             return null
           },
         }) }],
