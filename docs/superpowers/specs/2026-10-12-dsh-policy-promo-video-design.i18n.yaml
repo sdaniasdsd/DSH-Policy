@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-12-dsh-policy-promo-video-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-12-dsh-policy-promo-video-design.md
+/dsh-policy-edition-promotional-video:
+  en: 7c3f5f920203a53e
+  zh: eb7902a6fdeb1f67
+/dsh-policy-edition-promotional-video/audience-and-purpose:
+  en: 486e6d1f7c849df1
+  zh: 324d644301d8a79e
+/dsh-policy-edition-promotional-video/recommended-concept:
+  en: 9cfbaaa66633b56a
+  zh: 92288e1326a6bab5
+/dsh-policy-edition-promotional-video/narrative-and-timing:
+  en: a1cae2f44fecdad0
+  zh: b30ac194cc0c12d6
+/dsh-policy-edition-promotional-video/visual-and-audio-direction:
+  en: 1909b95b148d8829
+  zh: bfa1eaf8883ee201
+/dsh-policy-edition-promotional-video/factual-and-editorial-constraints:
+  en: ced7143a20b76ba0
+  zh: 4e8b5fdc55fcd7f3
+/dsh-policy-edition-promotional-video/deliverables-and-review-points:
+  en: 3c3fe4b398edcb51
+  zh: db966902be79d244
+/dsh-policy-edition-promotional-video/completion-criteria:
+  en: 585bc9669d5811de
+  zh: b07655e7c4754812
