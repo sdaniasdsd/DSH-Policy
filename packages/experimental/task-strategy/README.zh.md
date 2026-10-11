@@ -122,6 +122,8 @@ node --import tsx/esm apps/cli/lib/bin.js --profile web --patch packages/experim
 
 注册表只做决策，不加载插件。执行器实施阶段屏障、并发限制、任务数及结果字节上限，将标注的前阶段输出作为数据传递。任务服务在创建 Job 前检查提供方能力、预设和外部执行器。原版 DSH 进程内驱动在子任务发布前挂载选定预设；权限委托、模型循环、结算及回收仍走原版。一项子任务失败会停止准入并取消兄弟任务，当前阶段排空之后才终止。载体卸载会移除策略注册和工具，但不会取消或等待已经被 Jobs 接收的任务。每个已接收任务保留启动时捕获的计划和限制，并且仍可通过 `job_kill`、所属 Agent 销毁或 Jobs 后端关闭来取消。原有子系统不变量负责 Agent、子任务、预设、工具、Job 所有权，本代码库没有独立注册的不变量。
 
+`TaskRun` 持有任务状态，并将阶段执行委托给 `executor`。两个共性数据模块服务于全部策略：`execution-data` 拼装历史结果提示词，并按完整 UTF-8 JSON 核算有序结果；`run-projection` 汇总用量、当前绑定的证据，并生成独立策略快照。这些同步辅助模块不持有 Agent、权限或取消控制器。它们是本包的内部模块，无需单独注册插件。上下文序列化、结果核算和状态投影可在此维护，无需按编排风格增加分支；提示词保留完整历史结果，字节上限包含结果元数据。
+
 生命周期决策及边界说明见[已接收 Job 的生命周期决策记录](../../../.agents/notes/implemented/architecture/2026-10-05-task-strategy-job-lifetime.zh.md)。
 
 | 文件 | 职责 |
@@ -129,11 +131,13 @@ node --import tsx/esm apps/cli/lib/bin.js --profile web --patch packages/experim
 | [src/index.ts](src/index.ts) | 独立作者策略注册表 |
 | [src/types.ts](src/types.ts) | 计划与执行器契约 |
 | [src/executor.ts](src/executor.ts) | 顺序阶段与有界并发 |
+| [src/execution-data.ts](src/execution-data.ts) | 共用阶段提示词与有序结果字节核算 |
 | [src/errors.ts](src/errors.ts) | 保证预留结算与清理继续进行的异常转换 |
 | [src/task-input.ts](src/task-input.ts) | 统一校验非空任务并保留已接收文本 |
 | [src/runtime-types.ts](src/runtime-types.ts) | 任务视图、捕获的绑定和宿主请求 |
 | [src/static-plan.ts](src/static-plan.ts) | 独立计划版本和显式阶段选择 |
 | [src/task-run.ts](src/task-run.ts) | 任务状态、阶段屏障、替换和取消 |
+| [src/run-projection.ts](src/run-projection.ts) | 共用用量汇总、当前绑定证据与独立策略快照 |
 | [src/admission.ts](src/admission.ts) | 捕获的提供方、预设和工具准入规则 |
 | [src/task-submissions.ts](src/task-submissions.ts) | 按所属 Agent 预留重复请求和引用活跃任务 |
 | [src/cordis.ts](src/cordis.ts) | 可选的原版 DSH 接入载体 |

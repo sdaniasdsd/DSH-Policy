@@ -122,6 +122,8 @@ The separate carrier provides `ctx.taskStrategies`: `register`, `list`, `catalog
 
 The registry decides without loading plugins. The executor imposes stage barriers, concurrency, task-count and result-byte bounds, and passes labelled prior-stage outputs as data. The task service preflights provider capabilities, presets and external executors before starting a Job. Original in-process DSH drivers mount the chosen preset during unpublished child setup; child permission delegation, model loop, settlement, and cleanup remain original. A failed child stops admissions and cancels siblings; the stage drains before terminal settlement. Carrier unload removes strategy registrations and tools but does not cancel or wait for Jobs already accepted. Each accepted job keeps its captured plan and limits and remains cancellable through `job_kill`, owner disposal, or Jobs-backend shutdown. Existing subsystem invariants cover original Agent, subagent, preset, tool, and Job ownership; this library has no independently registered invariant.
 
+`TaskRun` owns the task state and delegates stage execution to `executor`. Two shared data modules support all strategies: `execution-data` prepares prior-result prompts and accounts for ordered results in complete UTF-8 JSON; `run-projection` derives usage, current-binding evidence and detached policy snapshots. These synchronous helpers own no agents, permissions or cancellation controllers. They are internal modules in this package, with no separate plugin registration. Context serialization, result accounting and state projection can be maintained here without adding branches for orchestration styles; prompts retain complete prior results and byte limits include result metadata.
+
 See the [accepted Job lifetime decision](../../../.agents/notes/implemented/architecture/2026-10-05-task-strategy-job-lifetime.md) for the lifecycle rationale and boundaries.
 
 | File | Role |
@@ -129,11 +131,13 @@ See the [accepted Job lifetime decision](../../../.agents/notes/implemented/arch
 | [src/index.ts](src/index.ts) | Independent author registry |
 | [src/types.ts](src/types.ts) | Plans and executor contracts |
 | [src/executor.ts](src/executor.ts) | Ordered stages and bounded concurrency |
+| [src/execution-data.ts](src/execution-data.ts) | Shared stage prompts and ordered result byte accounting |
 | [src/errors.ts](src/errors.ts) | Failure rendering that preserves reservation settlement and cleanup |
 | [src/task-input.ts](src/task-input.ts) | Shared nonblank task validation, preserving accepted text |
 | [src/runtime-types.ts](src/runtime-types.ts) | Task views, captured bindings and host requests |
 | [src/static-plan.ts](src/static-plan.ts) | Detached plan revisions and explicit stage selection |
 | [src/task-run.ts](src/task-run.ts) | Task state, stage barriers, replacement and cancellation |
+| [src/run-projection.ts](src/run-projection.ts) | Shared usage, current-binding evidence and detached policy snapshots |
 | [src/admission.ts](src/admission.ts) | Captured provider, preset and tool admission rules |
 | [src/task-submissions.ts](src/task-submissions.ts) | Owner-scoped duplicate reservation and live run references |
 | [src/cordis.ts](src/cordis.ts) | Optional original-DSH integration carrier |

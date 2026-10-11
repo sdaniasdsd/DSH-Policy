@@ -2,7 +2,7 @@
 import type { ExecutionEvent, ExecutionOptions, ExecutionPlan, ExecutionResult, TaskExecutor, TaskResult } from './types.ts'
 import { errorText } from './errors.ts'
 import { validateTask } from './task-input.ts'
-import { taskPrompt } from './task-prompt.ts'
+import { createStageExecutionData, exceedsResultByteLimit } from './execution-data.ts'
 
 /**
  * Reject empty plans or limits before children start.
@@ -72,7 +72,7 @@ async function executeStages(
   options.signal.addEventListener('abort', abort, { once: true })
   if (options.signal.aborted) abort()
   const results: TaskResult[] = structuredClone([...prior])
-  if (Buffer.byteLength(JSON.stringify(results), 'utf8') > maxResultBytes) {
+  if (exceedsResultByteLimit(results, maxResultBytes)) {
     options.signal.removeEventListener('abort', abort)
     throw new Error(`Execution exceeds result byte limit ${maxResultBytes}`)
   }
@@ -93,8 +93,7 @@ async function executeStages(
     for (const stage of captured.stages) {
       if (controller.signal.aborted) break
       emit({ type: 'stage', stage: stage.name })
-      const prior = JSON.stringify(results)
-      const stageResults: (TaskResult | undefined)[] = []
+      const data = createStageExecutionData(task, results, maxResultBytes)
       let next = 0
       const worker = async (): Promise<void> => {
         while (!cancelled()) {
@@ -105,16 +104,15 @@ async function executeStages(
             ...step.preset === undefined ? {} : { preset: step.preset },
             ...step.executor === undefined ? {} : { executor: step.executor } })
           if (cancelled()) return
-          const prompt = taskPrompt(task, step.instruction, prior)
+          const prompt = data.prompt(step.instruction)
           try {
             const child = await execute(step, prompt, controller.signal)
             emit({ type: 'task-end', stage: stage.name, label: step.label, stopReason: child.stopReason,
               ...child.sessionId === undefined ? {} : { sessionId: child.sessionId } })
             const row: TaskResult = { ...child, stage: stage.name, label: step.label }
-            const retained = [...results, ...stageResults.filter((entry): entry is TaskResult => entry !== undefined), row]
-            if (Buffer.byteLength(JSON.stringify(retained), 'utf8') > maxResultBytes) {
+            if (!data.retain(index, row)) {
               fail(`Execution exceeds result byte limit ${maxResultBytes}`)
-            } else stageResults[index] = row
+            }
             if (child.stopReason !== 'completed') fail(`Task ${step.label} ended with ${child.stopReason}${child.diagnostic === undefined ? '' : ': ' + child.diagnostic}`)
           } catch (error) {
             fail(`Task ${step.label} failed: ${errorText(error)}`)
@@ -122,7 +120,7 @@ async function executeStages(
         }
       }
       await Promise.all(Array.from({ length: Math.min(stage.serial === true ? 1 : maxConcurrent, stage.tasks.length) }, () => worker()))
-      results.push(...stageResults.filter((entry): entry is TaskResult => entry !== undefined))
+      results.push(...data.results())
     }
     if (failure !== undefined) return { status: 'failed', results, error: failure }
     if (options.signal.aborted) return { status: 'cancelled', results }

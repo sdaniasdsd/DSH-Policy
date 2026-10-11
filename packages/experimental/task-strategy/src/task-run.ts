@@ -3,6 +3,7 @@ import { executeStage, validatePlan } from './executor.ts'
 import { errorText } from './errors.ts'
 import { validateTask } from './task-input.ts'
 import { copyBinding, selectStage } from './static-plan.ts'
+import { createPolicySnapshot, projectRunResults } from './run-projection.ts'
 import type { CapturedStrategy, TaskRunEvent, TaskRunOptions, TaskRunView, TaskSwitch } from './runtime-types.ts'
 import type { ExecutionResult, TaskExecutor, TaskResult } from './types.ts'
 
@@ -108,21 +109,12 @@ export class TaskRun {
    * @returns task state including cumulative usage and the currently committed binding.
    */
   inspect(): TaskRunView {
-    const verification = this.results.slice(this.bindingStartResult).findLast(row => row.verification !== undefined)?.verification
-    const review = this.results.slice(this.bindingStartResult).findLast(row => row.review !== undefined)?.review
-    const usage = this.results.reduce((total, row) => ({
-      modelCalls: total.modelCalls + (row.usage?.modelCalls ?? 0), reportedCalls: total.reportedCalls + (row.usage?.reportedCalls ?? 0),
-      observedTokens: total.observedTokens + (row.usage?.observedTokens ?? 0),
-      unknownChildren: total.unknownChildren + (row.usage === undefined || row.usage.modelCalls === 0 ? 1 : 0),
-    }), { modelCalls: 0, reportedCalls: 0, observedTokens: 0, unknownChildren: 0 })
     return structuredClone({
       phase: this.phase,
       binding: { id: this.strategy.id, revision: this.strategy.revision, epoch: this.epoch },
       nextStage: this.stage, completedStages: this.completedStages, startedTasks: this.startedTasks,
       results: this.results,
-      ...verification === undefined ? {} : { verification },
-      ...review === undefined ? {} : { review },
-      ...this.results.length === 0 ? {} : { usage },
+      ...projectRunResults(this.results, this.bindingStartResult),
       ...this.pending === undefined ? {} : { pendingSwitch: this.pending.command },
       ...this.error === undefined ? {} : { error: this.error },
     })
@@ -145,9 +137,8 @@ export class TaskRun {
   private decideStage(strategy: CapturedStrategy, index: number, commitWaiting = true,
     currentResults = this.results.slice(this.bindingStartResult)): StagePlan | undefined {
     if (strategy.next === undefined) return selectStage(strategy, index)
-    const decision = strategy.next(structuredClone({ nextStage: index, completedStages: this.completedStages,
-      remainingTasks: this.options.maxTasks - this.startedTasks, bindingEpoch: this.epoch, results: this.results,
-      currentResults }))
+    const decision = strategy.next(createPolicySnapshot({ nextStage: index, completedStages: this.completedStages,
+      remainingTasks: this.options.maxTasks - this.startedTasks, bindingEpoch: this.epoch }, this.results, currentResults))
     switch (decision.kind) {
       case 'stage': return { name: strategy.plan.name, stages: [structuredClone(decision.stage)] }
       case 'finish': return undefined
