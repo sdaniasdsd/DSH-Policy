@@ -42,7 +42,7 @@ The historical Lead-log mailbox remains a readable format: queued and delivered 
 
 Unknown mailbox content stays as decoded JSON during event projection and checkpoint admission. Validation inspects its type without rebuilding its fields, because generic object parsing can omit a valid own `__proto__` key. Locally declared content variants undergo structural validation; opaque plugin fields do not gain Team semantics. Cache invalidation is necessary because parser correction alone cannot recover keys omitted from cached state. The [Team documentation](../../../../packages/experimental/agent-team/README.md) owns the restore behavior.
 
-`send_message` uses Steer for running, idle, and cold targets. New sends return inbox acceptance. The [Team Steer messaging decision](../../archived/simplification/2026-08-30-team-send-message-steer.md) records the single-tool scheduling rationale.
+`send_message` uses Steer for running, idle, and cold targets. New sends return inbox acceptance. The Team Steer messaging decision records the single-tool scheduling rationale.
 
 Shared tasks are complete snapshots with Team-local ids and monotonic revisions. Every mutation carries `expectedRevision`. Any member creates, reads, or claims a ready unowned task; the owner or Lead edits and transitions it, while only the Lead assigns another member. Numeric task ids remain within the safe-integer allocation range, and exhaustion fails without reusing an id. Dependencies must name non-deleted tasks and form a complete DAG. Deleted tasks are retained tombstones. `writeScopes` are normalized path prefixes that produce overlap diagnostics but never block claim or authorize a write.
 

@@ -3,7 +3,6 @@
  * plugin. Runtime registration is the source of truth for computed schemas;
  * the manifest is checked against every on-disk `tool-*` package. `--check`
  * verifies the committed artifact. The original decision is recorded in
- * `.agents/notes/archived/process/2026-07-02-tool-schema-catalog.md`.
  */
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'

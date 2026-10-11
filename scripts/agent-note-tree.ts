@@ -18,9 +18,6 @@ const AGENT_NOTE_LIFECYCLES = ['proposed', 'implemented', 'rejected'] as const
  */
 export const AGENT_NOTE_CLASSES = ['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing'] as const
 
-/** Historical implemented notes live outside the active lifecycle tree. */
-const AGENT_NOTE_ARCHIVE = 'archived'
-
 /** Non-Agent Note Markdown allowed to sit directly at a lifecycle root. */
 const ROOT_ALLOWLIST = new Set(['AGENTS.md', 'CLAUDE.md'])
 
@@ -49,9 +46,8 @@ export function walkAgentNoteTree(): { notes: AgentNote[]; errors: string[] } {
       continue
     }
     if (entry.isDirectory()
-      && entry.name !== AGENT_NOTE_ARCHIVE
       && !(AGENT_NOTE_LIFECYCLES as readonly string[]).includes(entry.name)) {
-      errors.push(`structure: ${entry.name}/ — unknown lifecycle folder (allowed: ${AGENT_NOTE_LIFECYCLES.join(', ')}, plus ${AGENT_NOTE_ARCHIVE}/)`)
+      errors.push(`structure: ${entry.name}/ — unknown lifecycle folder (allowed: ${AGENT_NOTE_LIFECYCLES.join(', ')})`)
     }
   }
   for (const lifecycle of AGENT_NOTE_LIFECYCLES) {

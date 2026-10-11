@@ -58,6 +58,6 @@ Run `pnpm run test:approval-policy` for policy parsing, effective review decisio
 
 ## Dev Note
 
-[archived Production blame weighting](../../.agents/notes/archived/process/2026-09-11-production-blame-approval-weight.md) records the scoring rationale and measured costs.
+archived Production blame weighting records the scoring rationale and measured costs.
 
-[archived PR-scoped delegation](../../.agents/notes/archived/process/2026-09-15-pr-approval-delegation.md) records score ownership and revocation choices.
+archived PR-scoped delegation records score ownership and revocation choices.

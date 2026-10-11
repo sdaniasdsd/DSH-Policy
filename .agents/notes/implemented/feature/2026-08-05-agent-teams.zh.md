@@ -42,7 +42,7 @@ fresh child 不继承对话。fork child 只捕获一次 Lead 已完成 turn 前
 
 事件投影和 checkpoint 准入期间，未知 mailbox 内容保持为已解码 JSON。校验只检查其 type，不重建字段，因为通用对象解析可能省略有效的自有 `__proto__` 键。本地声明的内容变体接受结构校验；不透明的插件字段不获得 Team 语义。缓存失效是必要的，因为只修正解析器无法恢复缓存状态中省略的键。[Team 文档](../../../../packages/experimental/agent-team/README.zh.md)拥有恢复行为的说明。
 
-`send_message` 对 running、idle 和 cold target 使用 Steer。新发送返回 inbox 接收结果。[Team Steer 消息决策](../../archived/simplification/2026-08-30-team-send-message-steer.md)记录单一工具调度的理由。
+`send_message` 对 running、idle 和 cold target 使用 Steer。新发送返回 inbox 接收结果。Team Steer 消息决策记录单一工具调度的理由。
 
 共享 task 是带 Team-local id 与单调 revision 的完整快照。每次变更都携带 `expectedRevision`。任意 member 可以创建、读取或 claim ready 且无 owner 的任务；Owner 或 Lead 可以编辑和转换；只有 Lead 可以分配给另一个 member。数字 task id 保持在安全整数分配范围内；该范围耗尽时会失败，不会复用 id。依赖必须指向未删除任务，并形成完整 DAG。删除任务保留为 tombstone。`writeScopes` 是规范化路径前缀，只产生重叠诊断，绝不会阻止 claim 或授予写权限。
 
