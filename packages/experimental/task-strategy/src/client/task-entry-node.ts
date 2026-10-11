@@ -11,7 +11,7 @@ declare module '@deepseek-ai/dsh-client-ui-chat/client' {
   interface ChatNodeDataMap { 'task-strategy-entry': EntryView }
 }
 
-/** Group all snapshots for one original request into one stable chat card. */
+/** Group request snapshots into a stable card; ordinary chat and associated inputs keep a hidden node. */
 export const taskEntryDefinition: ConversationNodeDefinition<EntryView> = {
   kind: 'task-strategy-entry', target: 'chat',
   match: event => event.type === 'task-strategy/entry'
@@ -25,11 +25,12 @@ export const taskEntryDefinition: ConversationNodeDefinition<EntryView> = {
     const match = context.matches.findLast(item => item.event.type === 'task-strategy/entry')
     const data = context.state ?? (match?.event.type === 'task-strategy/entry' ? match.event.data.view : undefined)
     const anchor = context.start ?? match
-    if (data === undefined || anchor === undefined || data.progress === 'conversation' || data.progress?.startsWith('Associated with ')) return null
+    if (data === undefined || anchor === undefined) return null
+    const hidden = data.progress === 'conversation' || data.progress?.startsWith('Associated with ')
     return { key: context.key, id: context.id, kind: 'task-strategy-entry', target: 'chat',
       anchorSeq: anchor.event.seq,
       // A Job/proposal may outlive the model turn; keep its controls outside thought/process disclosure.
-      location: { kind: 'session' }, visibility: 'visible', data }
+      location: { kind: 'session' }, visibility: hidden ? 'hidden' : 'visible', data }
   },
 }
 
