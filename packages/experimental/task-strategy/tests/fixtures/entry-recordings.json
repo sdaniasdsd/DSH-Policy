@@ -1,0 +1,126 @@
+[
+  {
+    "fingerprint": "b82039ea97e40565ff5a0f3365d970cb25df957547cca7141ab1e83730226b16",
+    "source": {
+      "childSessionId": "689896ad-8319-49bf-a59a-4dbbf9d7f45a",
+      "captured": "2026-10-10",
+      "scope": "original human input, offered task identities and request-time route; boundary response replay, not full provider wire"
+    },
+    "request": {
+      "input": [
+        {
+          "type": "text",
+          "text": "你好"
+        }
+      ],
+      "ownedTasks": [],
+      "route": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash",
+        "reasoningEffort": "high",
+        "maxTokens": 512
+      }
+    },
+    "response": {
+      "stopReason": "completed",
+      "structured": {
+        "kind": "chat"
+      }
+    }
+  },
+  {
+    "fingerprint": "152c0a44253a46b91a26fb300e57696c4693a9bd3737727f744e7524f5fa4374",
+    "source": {
+      "childSessionId": "fb5bd2ea-a8eb-4fec-bae5-ae4cc8f4b7ee",
+      "captured": "2026-10-10",
+      "scope": "original human input, offered task identities and request-time route; boundary response replay, not full provider wire"
+    },
+    "request": {
+      "input": [
+        {
+          "type": "text",
+          "text": "查看一下目前的调用流程是否符合标准"
+        }
+      ],
+      "ownedTasks": [],
+      "route": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash",
+        "reasoningEffort": "high",
+        "maxTokens": 512
+      }
+    },
+    "response": {
+      "stopReason": "completed",
+      "structured": {
+        "kind": "new-task"
+      }
+    }
+  },
+  {
+    "fingerprint": "36de401da5fed1decff079d1cdea80cbc04457fb86709d8ee342be435b0adf83",
+    "source": {
+      "childSessionId": "2d1ac2d2-1e3c-4334-9971-52fab52fd8bb",
+      "captured": "2026-10-10",
+      "scope": "original human input, offered task identities and request-time route; boundary response replay, not full provider wire"
+    },
+    "request": {
+      "input": [
+        {
+          "type": "text",
+          "text": "查看一下目前的调用流程是否符合设计目的"
+        }
+      ],
+      "ownedTasks": [
+        {
+          "requestId": "message:c1a9f2f9-bd51-43f0-9b87-620e729bc927",
+          "state": "running"
+        }
+      ],
+      "route": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash",
+        "reasoningEffort": "high",
+        "maxTokens": 512
+      }
+    },
+    "response": {
+      "stopReason": "completed",
+      "structured": {
+        "kind": "supplement",
+        "requestId": "fd5d2cd9-7c62-440e-92c8-2297569794c6"
+      }
+    }
+  },
+  {
+    "fingerprint": "4bb10505771d4c43943fa4c514482a64fc6f7b8bdd3c5d8041e1921752b5db7e",
+    "source": {
+      "childSessionId": "653dd394-7af3-466e-8d57-bd82bef887c1",
+      "captured": "2026-10-10",
+      "scope": "original human input, offered task identities and request-time route; boundary response replay, not full provider wire"
+    },
+    "request": {
+      "input": [
+        {
+          "type": "text",
+          "text": "我想继续看看你这个claude的流程跑通了吗"
+        }
+      ],
+      "ownedTasks": [
+        {
+          "requestId": "message:c1a9f2f9-bd51-43f0-9b87-620e729bc927",
+          "state": "failed"
+        }
+      ],
+      "route": {
+        "provider": "deepseek-official",
+        "model": "deepseek-flash",
+        "reasoningEffort": "high",
+        "maxTokens": 512
+      }
+    },
+    "response": {
+      "stopReason": "max-tokens"
+    }
+  }
+]

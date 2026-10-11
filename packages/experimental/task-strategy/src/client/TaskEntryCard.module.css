@@ -1,0 +1,27 @@
+.card { border: 1px solid var(--border-color, #80808050); border-radius: 12px; padding: 14px 18px; margin: 12px 0; background: var(--background-secondary, transparent); overflow-wrap: anywhere; }
+.card header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.card p { margin: 8px 0; }
+.note { opacity: .7; font-size: .85em; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.controls button, .controls select { color: inherit; background: transparent; border: 1px solid var(--border-color, #80808060); border-radius: 6px; padding: 6px 10px; }
+.controls button:disabled, .controls select:disabled { opacity: .5; }
+
+/* Share the glass surface without changing the card layout. */
+.card {
+  border-color: var(--dsw-alias-border-l3, #80808050);
+  background: var(--dsw-alias-button-floating-fill, #ffffff);
+  background: linear-gradient(145deg, #ffffff20, #ffffff04), color-mix(in srgb, var(--dsw-alias-button-floating-fill, #ffffff) 84%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff80, inset 0 -1px 0 #ffffff14, 0 4px 16px #00000006;
+}
+.controls button, .controls select {
+  border-color: var(--dsw-alias-border-l3, #80808060);
+  background: var(--dsw-alias-button-floating-fill, #ffffff);
+  background: linear-gradient(160deg, #ffffff20, #ffffff04), color-mix(in srgb, var(--dsw-alias-button-floating-fill, #ffffff) 78%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff60, 0 1px 4px #00000006;
+}
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+  .card { -webkit-backdrop-filter: blur(8px) saturate(1.15); backdrop-filter: blur(8px) saturate(1.15); }
+}
+@media (forced-colors: active) {
+  .card, .controls button, .controls select { background: Canvas; border-color: ButtonText; box-shadow: none; backdrop-filter: none; }
+}

@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write README.md
+/deepseek-harness-policy-edition:
+  en: b10df251978ed1a6
+  zh: c2d0bed3b41e45e6
+/deepseek-harness-policy-edition/policy-edition-our-changes:
+  en: 62cce2b65b0c9904
+  zh: bedac70827aa564c
+/deepseek-harness-policy-edition/policy-edition-our-changes/policy-edition-0-1-0-installer:
+  en: 23d6f6a567db3333
+  zh: 4478c5e183dfa08d
+/deepseek-harness-policy-edition/developer-preview:
+  en: 4ef4d8a71ac143f0
+  zh: 1bfc3149ba8e5543
+/deepseek-harness-policy-edition/run:
+  en: 4e0248e4c6474fc6
+  zh: eb2fb8d78c7d6bc0
+/deepseek-harness-policy-edition/run/run-from-npm:
+  en: 96647f2ecf828828
+  zh: 813f82c5e9eb061f
+/deepseek-harness-policy-edition/run/run-from-source:
+  en: 546d2e78b61e72a4
+  zh: 7b5782e29462ef42
+/deepseek-harness-policy-edition/community-and-support:
+  en: fd3f695506d58bb6
+  zh: 870f03666d3f06ef
+/deepseek-harness-policy-edition/contributing:
+  en: cabc2d3e9f8898bd
+  zh: 83b6d238bae29ce3
+/deepseek-harness-policy-edition/development:
+  en: 803ca2b11b497bed
+  zh: 8b4071eb0e7783ef
+/deepseek-harness-policy-edition/citation:
+  en: 6704e9e5a8d49a91
+  zh: 85c9cdd8d56f8e9d
+/deepseek-harness-policy-edition/license:
+  en: 926995344fc1c72b
+  zh: c92fab5abf85932f

@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-10-orchestration-plugins.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-10-orchestration-plugins.md
+/pluggable-orchestration-and-task-runtime:
+  en: 19109652cd5aa121
+  zh: cb410fa37bec78d0
+/pluggable-orchestration-and-task-runtime/approved-scope:
+  en: 7c49962e3b10b48a
+  zh: 138a3a4da90937a0
+/pluggable-orchestration-and-task-runtime/responsibilities:
+  en: af584e21384d6458
+  zh: 37b32219f35117a0
+/pluggable-orchestration-and-task-runtime/plugin-contract:
+  en: 3f84c169ab73ebad
+  zh: 0fdb91b3615fbdaa
+/pluggable-orchestration-and-task-runtime/acceptance:
+  en: 8d6cfbb54e4ab21b
+  zh: add6ed9164d17780

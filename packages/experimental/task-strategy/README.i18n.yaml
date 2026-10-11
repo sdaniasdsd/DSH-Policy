@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/task-strategy/README.md
+/:
+  en: ce27a1e337993f07
+  zh: 2b88226221db7de6
+/deepseek-ai-dsh-experimental-task-strategy:
+  en: 4687e7ff363d0aa6
+  zh: 8f60d9209397983c
+/deepseek-ai-dsh-experimental-task-strategy/summary:
+  en: 2e5d78ac69a598ea
+  zh: d0a13f60bc7f639b
+/deepseek-ai-dsh-experimental-task-strategy/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 1db86285abf6c499
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package:
+  en: ba37bcee3e299af8
+  zh: 5d060ad825dc3083
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/explainable-token-estimates:
+  en: 8c24c80fc352d571
+  zh: 6a152b648504383c
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/independent-author-decisions:
+  en: 67bb583f25814057
+  zh: f306712ac0c65505
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/task-runtime-and-orchestration-plugins:
+  en: 5e038ee2ffc5f143
+  zh: 6d46b5f466bdd7e3
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/task-owned-strategy-replacement:
+  en: 3189749060780501
+  zh: f0abc385e0f8a5bf
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/automatic-intake-and-optional-choice:
+  en: 8374553c409acf64
+  zh: e179a43ba9c52329
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/automatic-root-entry:
+  en: 8bd2bba5e19c033f
+  zh: c8642dcf14df8565
+/deepseek-ai-dsh-experimental-task-strategy/use-this-package/dsh-source-trial:
+  en: 363615a076c1eae3
+  zh: 5fffa101a4197fe8
+/deepseek-ai-dsh-experimental-task-strategy/understand-the-implementation:
+  en: 94fcba7035f35e79
+  zh: caa8fa87cb70cd2e
+/deepseek-ai-dsh-experimental-task-strategy/further-exploration:
+  en: 57341c5949bd5e66
+  zh: dc10e98439b23064
+/deepseek-ai-dsh-experimental-task-strategy/dsh-style-policies-and-feedback:
+  en: cbbac990a9ca271c
+  zh: 928b747b8b30df76
+/deepseek-ai-dsh-experimental-task-strategy/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-experimental-task-strategy/model-experience/upper-decision-tools-and-lower-task-input:
+  en: 54734e7f89a54236
+  zh: 3b160813f5823038
+/deepseek-ai-dsh-experimental-task-strategy/model-experience/upper-decision-tools-and-lower-task-input/what-the-model-sees:
+  en: 57f99470f75f9139
+  zh: d72336d857c7fa56
+/deepseek-ai-dsh-experimental-task-strategy/model-experience/upper-decision-tools-and-lower-task-input/token-effect:
+  en: 401d727559f42f75
+  zh: 7c8ddd69b05bd0a6
+/deepseek-ai-dsh-experimental-task-strategy/model-experience/upper-decision-tools-and-lower-task-input/kv-cache-effect:
+  en: 74d170604ef10ba1
+  zh: 9f52dfe323505760
+/deepseek-ai-dsh-experimental-task-strategy/known-limitations-and-deferred-work:
+  en: 17aa933b736f8a07
+  zh: c4aebeba41842e30
+/deepseek-ai-dsh-experimental-task-strategy/known-limitations-and-deferred-work/dev-note:
+  en: 0fd94ee06df797ce
+  zh: a8e1d0ac5404f1c5

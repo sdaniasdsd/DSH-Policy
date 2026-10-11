@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-10-task-strategy-default-entry.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-10-10-task-strategy-default-entry.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-10-10-task-strategy-default-entry:
+  en: 8101e6eaa4d00c3f
+  zh: 7ac8b2bd5e280b1a
+/2026-10-10-task-strategy-default-entry/summary:
+  en: 101f9003e2ac905b
+  zh: 9b5dce9a75ae47e3
+/2026-10-10-task-strategy-default-entry/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-10-10-task-strategy-default-entry/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-10-10-task-strategy-default-entry/compatibility:
+  en: 11aa259bb4052ef4
+  zh: b96965abccf697c5
+/2026-10-10-task-strategy-default-entry/verification:
+  en: c399fdf47b483fc0
+  zh: 2c22624a2e04405b
+/2026-10-10-task-strategy-default-entry/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

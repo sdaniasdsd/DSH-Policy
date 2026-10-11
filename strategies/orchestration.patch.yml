@@ -1,0 +1,19 @@
+# Load after workflows.patch.yml and configured official Codex/Claude provider bundles.
+# Enable only installed and authenticated native products.
+- id: experimental-task-strategy
+  config:
+    allowedExecutors: [codex, claude-code, zcode]
+- id: orchestration-codex
+  disabled: true
+  config:
+    providerName: codex
+- id: orchestration-claude
+  disabled: true
+  config:
+    providerName: claude-code
+- id: orchestration-zcode
+  disabled: true
+  config:
+    command: zcode
+    mode: plan
+    enableWorkflow: true

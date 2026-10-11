@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write strategies/README.md
+/task-strategy-pack-dsh-strategy-layer:
+  en: 0fade326c17aaa00
+  zh: 0c756d76f52bdace
+/task-strategy-pack-dsh-strategy-layer/1-carrier-and-data-structure:
+  en: 33076b9fc1a4db11
+  zh: 453a59127f870355
+/task-strategy-pack-dsh-strategy-layer/2-the-three-strategies-in-this-pack:
+  en: c169913055456c54
+  zh: 8fee14e87484aeba
+/task-strategy-pack-dsh-strategy-layer/3-usage:
+  en: 2cff1a34bf05a119
+  zh: 615bb33ee1c2a7e7
+/task-strategy-pack-dsh-strategy-layer/4-failure-notes-observed-not-assumed:
+  en: 0bb7425f8f816272
+  zh: 2af1c6794dbd36c3
+/task-strategy-pack-dsh-strategy-layer/5-installation:
+  en: b51d9deaeed6e11f
+  zh: 25d01d020c7caf5a
+/task-strategy-pack-dsh-strategy-layer/6-configurable-workflows-and-token-estimates:
+  en: e444ff4df4286fdf
+  zh: b76fac987c23134a

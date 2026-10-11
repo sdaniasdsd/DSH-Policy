@@ -1,0 +1,91 @@
+.control { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--dsh-color-border, #8885); border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
+.toggle:disabled { opacity: .55; cursor: default; }
+.track { display: inline-flex; align-items: center; width: 28px; height: 16px; padding: 2px; box-sizing: border-box; border-radius: 10px; background: #8888; }
+.track[data-automatic="true"] { background: #3978ed; }
+.thumb { display: block; height: 12px; width: 12px; border-radius: 50%; background: white; transform: translateX(0); transition: transform .15s ease; }
+.track[data-automatic="true"] .thumb { transform: translateX(12px); }
+.toggle:focus-visible { outline: 2px solid #3978ed; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .thumb { transition: none; } }
+.select { font: inherit; font-size: 12px; max-width: 160px; border: 1px solid var(--dsh-color-border, #8885); border-radius: 6px; padding: 4px 6px; color: inherit; background: transparent; cursor: pointer; }
+.select:disabled { opacity: .55; cursor: default; }
+.select option { color: #202020; background: #fff; }
+.error { font-size: 11px; color: #c54545; }
+
+/* A visual skin only: keep the existing control geometry and interactions. */
+.toggle, .select {
+  border-color: var(--dsw-alias-border-l3, #8885);
+  background: var(--dsw-alias-button-floating-fill, #ffffff);
+  background: linear-gradient(160deg, #ffffff24, #ffffff04), color-mix(in srgb, var(--dsw-alias-button-floating-fill, #ffffff) 78%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff70, inset 0 -1px 0 #ffffff14, 0 2px 7px #00000008;
+}
+.toggle:hover:not(:disabled), .select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, currentColor 25%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff90, inset 0 -1px 0 #ffffff20, 0 3px 9px #0000000d;
+}
+.track {
+  background: linear-gradient(180deg, #ffffff20, #00000012), #8888;
+  box-shadow: inset 0 1px 2px #00000024, 0 1px 0 #ffffff50;
+}
+.track[data-automatic="true"] {
+  background: linear-gradient(180deg, #ffffff24, #0000000d), #3978ed;
+}
+.thumb {
+  background: linear-gradient(145deg, #fff, #eef2f9);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 3px #00000030;
+}
+.select option {
+  color: var(--dsw-alias-label-primary, #202020);
+  background: var(--dsw-alias-button-floating-fill, #fff);
+}
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+  .toggle, .select { -webkit-backdrop-filter: blur(8px) saturate(1.2); backdrop-filter: blur(8px) saturate(1.2); }
+}
+@media (forced-colors: active) {
+  .toggle, .select { background: Canvas; border-color: ButtonText; box-shadow: none; backdrop-filter: none; }
+  .track { background: ButtonText; box-shadow: none; }
+  .track[data-automatic="true"] { background: Highlight; }
+  .thumb { background: Canvas; box-shadow: none; }
+}
+
+/* Animate the decorative lens; Host acknowledgment still owns the selected state. */
+.filters { position: absolute; pointer-events: none; }
+.toggle { position: relative; }
+.toggle > span { position: relative; z-index: 1; }
+.toggle::before, .toggle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, #ffffff80 48%, #ffffff10 56%, transparent 66%);
+  background-size: 240% 100%;
+  background-position: 120% 0;
+  opacity: 0;
+}
+.toggle[aria-checked="true"]::after { animation: sheenAutomatic .7s ease-out; }
+.toggle[aria-checked="false"]::after { animation: sheenManual .7s ease-out; }
+.toggle:hover:not(:disabled)::before, .toggle:focus-visible::before { animation: sheenHover .85s ease-out; }
+.track { position: relative; }
+.thumb {
+  position: relative;
+  background: linear-gradient(145deg, #ffffffbd, #eef2f966);
+  transition: transform .46s cubic-bezier(.3, 1.5, .5, 1), scale .18s ease-out, background .18s ease-out;
+  backdrop-filter: blur(.3px) saturate(1.5);
+}
+.toggle:active:not(:disabled) .thumb { scale: 1.18 .88; }
+@supports (backdrop-filter: url("#lens")) {
+  .thumb { backdrop-filter: var(--glass-refraction) saturate(1.5) brightness(1.12); }
+}
+@keyframes sheenAutomatic { 0% { background-position: 120% 0; opacity: 0; } 30% { opacity: .7; } 100% { background-position: -20% 0; opacity: 0; } }
+@keyframes sheenManual { 0% { background-position: -20% 0; opacity: 0; } 30% { opacity: .7; } 100% { background-position: 120% 0; opacity: 0; } }
+@keyframes sheenHover { 0% { background-position: 120% 0; opacity: 0; } 30% { opacity: .6; } 100% { background-position: -20% 0; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .thumb { transition: none; }
+  .toggle[aria-checked]::after, .toggle:hover:not(:disabled)::before, .toggle:focus-visible::before { animation: none; }
+  .toggle:active:not(:disabled) .thumb { scale: none; }
+}
+@media (forced-colors: active) {
+  .thumb { background: Canvas; backdrop-filter: none; box-shadow: none; }
+  .toggle::before, .toggle::after { display: none; }
+}

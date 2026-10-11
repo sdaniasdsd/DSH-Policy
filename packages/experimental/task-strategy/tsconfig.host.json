@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo" },
+  "include": ["src/*.ts"],
+  "exclude": ["src/css-modules.d.ts"],
+  "references": [
+    { "path": "../../session/working-directory" }, { "path": "../../llm/llm" }, { "path": "../../core/session" }, { "path": "../../core/system-prompt" },
+    { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/cosmokit" }, { "path": "../../../vendor/schemastery" },
+    { "path": "../../core/agent" }, { "path": "../../core/tools" },
+    { "path": "../../preset/agent-preset-registry" }, { "path": "../../jobs/jobs" },
+    { "path": "../../subagent/subagent" }, { "path": "../../typert/protocol" },
+    { "path": "../../llm/token-meter" }, { "path": "../../util/brand" }, { "path": "../../subprocess/subprocess" }
+  ]
+}
