@@ -56,7 +56,7 @@ PR opening initializes an empty Project `Start Date` for every referenced Issue,
 
 Before removing a legacy organization field, compare every value with its Project value, including archived Project items.
 
-Lifecycle processing is event-driven, not a reconciler. Omitted events do not repair Project state, and concurrent Project mutations have no atomic compare-and-swap. Selective evaluation does not redesign required-check authority or guarantee measured Actions-minute savings. The [archived selective-evaluation decision](../../.agents/notes/archived/process/2026-09-07-selective-issue-policy-evaluation.md) records the trade-offs.
+Lifecycle processing is event-driven, not a reconciler. Omitted events do not repair Project state, and concurrent Project mutations have no atomic compare-and-swap. Selective evaluation does not redesign required-check authority or guarantee measured Actions-minute savings. The archived selective-evaluation decision records the trade-offs.
 
 -----
 

@@ -10,7 +10,7 @@ The documentation system has strong placement, freshness, linking, bilingual, an
 
 ### Semantic correctness can pass without a current owner
 
-The gates prove structure and generated freshness, not that maintained prose still names the live mechanism. The former `dsh-doc-site-sync` skill told authors to reuse a nonexistent `en-docs` sidebar and to add sections to a removed `sectionOrder`; [website/docs.ts](../../../../website/docs.ts) owns `en-guide`, `en-develop`, `en-reference`, and `sections`. The implemented [product-first README decision](../../archived/process/2026-07-22-product-first-root-readme.md) describes an internal-testing notice and ACP, Python, and JSON-RPC surface sections absent from the [root README](../../../../README.md), although implemented Agent Notes must track shipped facts.
+The gates prove structure and generated freshness, not that maintained prose still names the live mechanism. The former `dsh-doc-site-sync` skill told authors to reuse a nonexistent `en-docs` sidebar and to add sections to a removed `sectionOrder`; [website/docs.ts](../../../../website/docs.ts) owns `en-guide`, `en-develop`, `en-reference`, and `sections`. The implemented product-first README decision describes an internal-testing notice and ACP, Python, and JSON-RPC surface sections absent from the [root README](../../../../README.md), although implemented Agent Notes must track shipped facts.
 
 The budget policy has the same split. [docs/AGENTS.md](../../../../docs/AGENTS.md#wordcount-budgets) states a 1,800-word target and 5% headroom for `architecture.md`, but the [budget manifest](../../../../scripts/doc-budgets.manifest.json) allows 2,400 words while the file contains 1,313. The budget gate passes because it checks the manifest ceiling, not the target or ratchet rule. High-impact prose therefore needs a named source or a focused check that consumes the source; a second hand-written copy is not a freshness mechanism.
 
@@ -32,7 +32,7 @@ The standing documentation file is 1,320 words against a 1,320-word ceiling and 
 
 ### Baseline
 
-The audit excludes `vendor/`, frozen `.agents/notes/archived/`, recorded snapshots, and fixtures. It counts 1,042 English Markdown files and 986 Chinese counterparts in the maintained corpus, with 1,106,138 English words. Active Agent Notes account for 580 files and 637,850 words; Markdown under `packages/` accounts for 276 files and 225,630 words; `docs/` accounts for 112 files and 193,456 words. These quantities describe maintenance and retrieval pressure, not defects by themselves.
+The audit excludes `vendor/`, recorded snapshots, and fixtures. It counts 1,042 English Markdown files and 986 Chinese counterparts in the maintained corpus, with 1,106,138 English words. Active Agent Notes account for 580 files and 637,850 words; Markdown under `packages/` accounts for 276 files and 225,630 words; `docs/` accounts for 112 files and 193,456 words. These quantities describe maintenance and retrieval pressure, not defects by themselves.
 
 The system’s strongest properties should remain: one fact owner by tier, canonical Markdown projected into the website without copies, complete bilingual pairing, generated catalogs that fail when source changes, type-equivalent declarations, compilable TypeScript examples, checked links and anchors, and package-local model-experience and limitation contracts. The proposal changes quality criteria and entry structure, not those guarantees.
 
@@ -56,7 +56,7 @@ The [dsh-doc skill](../../../skills/dsh-doc/SKILL.md) owns the first executable 
 - English technical prose uses an ASD-STE100-inspired, non-certified clarity review: explicit actors and actions, stable terms, direct verbs, separated instructions and conditions, and preserved modality, exceptions, timing, and numbers. The 20-word instruction and 25-word description limits are review prompts. Precision overrides them.
 - Package contracts remain beside code. Cross-package material moves deliberately toward `docs/learn/overview/`, `docs/learn/cordis/`, `docs/learn/practices/`, `docs/user/`, `docs/developer/`, `docs/developer/discussion/`, `docs/scratch/`, and the parallel `docs/subsystems/` tier.
 - English and Chinese pages keep equal authority, matching structure, links, code, frontmatter layout, and exact physical line count.
-- Inline pair metadata is the target replacement for sidecars. The prototype may carry both until the verifier, merge driver, recovery flow, generated-region recorder, and archive checks consume a non-self-referential pair digest.
+- Inline pair metadata is the target replacement for sidecars. The prototype may carry both until the verifier, merge driver, recovery flow, and generated-region recorder consume a non-self-referential pair digest.
 - Repository-root internal links are the target authoring model. The prototype keeps renderer-valid relative links because leading `/` currently leaves the repository on GitHub, bypasses `verify-md-links`, and remains unprojected by the website.
 - `Further Exploration` is an optional newcomer route to three to seven adjacent pages.
 - Every authored page ends with `Dev Note`, the sole place for active rough context. It remains non-authoritative, links rather than duplicates task state, and is promoted or cleaned when work closes.
@@ -121,7 +121,7 @@ This proposal does not shorten exhaustive facts, merge audience tiers, publish i
 - The root user path, Web quick start, first-plugin tutorial, contributor setup, and architecture overview each name an observable outcome and a verification owner without duplicating implementation detail.
 - The budget manifest records both target and temporary ceiling, and its check reports or rejects a violated headroom/ratchet state.
 - The docs-site workflow contains no copied invalid sidebar name or section-owner claim, and a focused test prevents recurrence.
-- The sidecar remains the single consistency record because it preserves equal authority, last-confirmed-text recovery, automatic merge safety, generated-region recording, and archive sealing without creating owner-file conflicts.
+- The sidecar remains the single consistency record because it preserves equal authority, last-confirmed-text recovery, automatic merge safety, and generated-region recording without creating owner-file conflicts.
 - An accepted repository-root link form renders correctly on GitHub and the documentation site and remains locally target/anchor checked before relative links are migrated.
 - One large standalone catalog and one mixed subsystem page demonstrate a compact entry layer and lower measured lookup cost while preserving exhaustive generated truth, stable links, bilingual pairing, and deterministic freshness.
 - `pnpm run doc-sync`, `pnpm run lint`, the focused new checks, and `git diff --check` pass.

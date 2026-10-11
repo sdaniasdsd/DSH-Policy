@@ -44,6 +44,6 @@ HMAC 密钥是 `ctx.credentials` 中位于 `client-connection/browser-session` �
 
 持久密钥使 cookie 跨重启生效，也让被盗 cookie 最多保有配置的绝对有效期。删除记录并重启进程是全局撤销机制；当前 Connection 刻意避免在每个请求上访问凭据提供方。如果 HTTP listener 的 authority 经未加密网络可达，cookie 就可能以明文传输。启动 URL 含进程凭据，必须视为敏感输出；运行时诊断不会重复它。
 
-本决策部分取代[浏览器信任说明](2026-07-28-api-browser-trust-boundary.zh.md)中的认证延期与未认证非 loopback 后果。该说明仍是媒体类型、Host、Origin、Fetch-Metadata 和配置 authority 校验的有效权威。没有 active Agent Note 被归档：重叠只发生在局部，两条安全规则都保有未来决策价值。
+本决策部分取代[浏览器信任说明](2026-07-28-api-browser-trust-boundary.zh.md)中的认证延期与未认证非 loopback 后果。该说明仍是媒体类型、Host、Origin、Fetch-Metadata 和配置 authority 校验的有效权威。两份记录都继续保留，因为它们各自的安全规则仍有长期价值。
 
 [原生 HTTPS 监听器决策](2026-09-23-native-https-web-listener.zh.md)取代本说明仅支持 HTTP 传输及不设置 `Secure` 的前提。`Secure` 由监听器协议决定；令牌交换、签名 cookie 的 authority 与凭据有效期仍由本说明定义。

@@ -7,13 +7,8 @@ pre-commit:
     - name: translation pairing (staged records)
       glob: '*.i18n.yaml'
       exclude:
-        - '.agents/notes/archived/**'
         - '.agents/task-strategy-history/**'
       run: node_modules/.bin/tsx scripts/verify-translation-pairing.ts --cached {staged_files}
-
-    - name: archived agent notes
-      glob: '.agents/notes/archived/**'
-      run: node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts
 
     - name: lint (staged)
       glob: '*.{ts,tsx,mts,cts,mjs}'
@@ -43,13 +38,8 @@ pre-merge-commit:
     - name: translation pairing (staged records)
       glob: '*.i18n.yaml'
       exclude:
-        - '.agents/notes/archived/**'
         - '.agents/task-strategy-history/**'
       run: node_modules/.bin/tsx scripts/verify-translation-pairing.ts --cached {staged_files}
-
-    - name: archived agent notes
-      glob: '.agents/notes/archived/**'
-      run: node_modules/.bin/tsx scripts/verify-archived-agent-notes.ts
 
 pre-push:
   jobs:

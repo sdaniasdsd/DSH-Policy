@@ -143,10 +143,7 @@ jobs:
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
-      # DSH_ARCHIVE_BASE_REF below compares the frozen-archive gate against
-      # github.event.before, so full history is required: depth 2 would miss it
-      # on multi-commit or force pushes; full fetch is cheap here because
-      # checkout resolves against the VM's local mirror.
+      # Full history is cheap here because checkout resolves against the VM's local mirror.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -181,7 +178,6 @@ jobs:
 
       - name: Run complete unsharded primary Node CI serially
         env:
-          DSH_ARCHIVE_BASE_REF: ${{ github.event.before }}
           DSH_COVERAGE_MAX_WORKERS: '1'
           DSH_E2E_MAX_WORKERS: '1'
           DSH_GATE_CONCURRENCY: '1'
