@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-10-11-dsh-policy-npm-installer-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-11-dsh-policy-npm-installer-design.md
+/dsh-policy-npm-installer:
+  en: b6572ec5c2683845
+  zh: 081a33967864ead5
+/dsh-policy-npm-installer/goal:
+  en: 14a99e75f239ef96
+  zh: 62c6016bb98f0632
+/dsh-policy-npm-installer/user-command:
+  en: 6564a98a66bfa591
+  zh: e6ad49a658ff8ba8
+/dsh-policy-npm-installer/package-and-artifact:
+  en: f3cf4fedd1c2cf33
+  zh: 2125e23d8a12c081
+/dsh-policy-npm-installer/download-and-launch-behavior:
+  en: d973e79c387b8db4
+  zh: bb30f307c931432a
+/dsh-policy-npm-installer/release-and-verification:
+  en: eca73ce2589399d6
+  zh: 9c34e77eaa373659
+/dsh-policy-npm-installer/constraints-and-current-release-access:
+  en: 7158e103461af930
+  zh: 01b3acb4bf092dd4

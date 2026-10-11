@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-12-dsh-policy-refresh-release.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-12-dsh-policy-refresh-release.md
+/dsh-policy-0-2-1-implementation-plan:
+  en: aad98e33c72d3561
+  zh: aeb16473b50983ae
+/dsh-policy-0-2-1-implementation-plan/global-constraints:
+  en: 46bfa877888c6072
+  zh: c038c13dd45e02eb
+/dsh-policy-0-2-1-implementation-plan/review-focus:
+  en: 74a065f8ea924d7e
+  zh: 70a299888bb94c85
+/dsh-policy-0-2-1-implementation-plan/task-1-refresh-regression-and-source-integration:
+  en: 49ed2de4d9d1d7a7
+  zh: 2c1de728d2d74bd0
+/dsh-policy-0-2-1-implementation-plan/task-2-version-and-windows-installer:
+  en: e4267b782d2f35e3
+  zh: a36258753df4217c

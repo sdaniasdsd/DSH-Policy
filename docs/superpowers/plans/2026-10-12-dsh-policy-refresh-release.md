@@ -1,5 +1,7 @@
 # DSH Policy 0.2.1 Implementation Plan
 
+English | [中文](2026-10-12-dsh-policy-refresh-release.zh.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Deliver updated source and a Windows patch installer that preserves live chat progress and completion updates.
@@ -28,12 +30,12 @@
 
 - [x] Reproduce node withdrawal with real assembler and assistant definitions; expect failure before fix.
 - [x] Preserve hidden nodes; expect regression tests to pass.
-- [ ] Commit source and integrate latest remote main.
+- [x] Commit source and integrate latest remote main.
 
 ## Task 2: Version and Windows installer
 
-- [ ] Change policy packaging assertions to 0.2.1; expect version assertion failure.
-- [ ] Update policy metadata and artifact prefix; expect focused tests to pass.
+- [x] Change policy packaging assertions to 0.2.1; expect version assertion failure.
+- [x] Update policy metadata and artifact prefix; expect focused tests to pass.
 - [ ] Run official Windows unsigned packaging with build version 0.2.1-alpha.2.20261012.1; expect installer and packaged-runtime smoke success.
 - [ ] Verify archived compiled fix and metadata; copy installer to delivery directory with SHA-256.
 - [ ] Review complete source diff, commit, and update local main.

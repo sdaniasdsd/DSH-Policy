@@ -1,5 +1,7 @@
 # DSH Policy npm Installer
 
+English | [中文](2026-10-11-dsh-policy-npm-installer-design.zh.md)
+
 ## Goal
 
 Let a Windows x64 user start installation of the published DSH Policy desktop edition with one npm command, without installing a strategy plugin or copying the desktop executable into an npm tarball.
