@@ -75,7 +75,10 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
     $previous = 0
     $window = [InstallerCapture]::Find($Process.Id)
     while ([InstallerCapture]::FindButton($Process.Id, $copy.INSTALLER_FINISH) -eq [IntPtr]::Zero) {
-        if ($Process.HasExited -or $timer.Elapsed.TotalSeconds -gt 30) { throw 'Installer did not complete' }
+        if ($Process.HasExited -or $timer.Elapsed.TotalSeconds -gt 30) {
+            [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory ($Theme + '-failure.png')))
+            throw "Installer did not complete: $([InstallerCapture]::VisibleText($Process.Id))"
+        }
         $visible = [InstallerCapture]::VisibleText($Process.Id)
         if ($visible.Contains('msctls_progress32') -ne $expected.nativeProgressVisible) { throw 'Stock green progress bar is visible' }
         if ($visible -match 'HarnessInstallerProgress[^\r\n]*?(\d+)%') {
@@ -86,6 +89,7 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
         }
         Start-Sleep -Milliseconds 25
     }
+    $window = [InstallerCapture]::TopLevel((Wait-Control $Process $copy.INSTALLER_FINISH))
     if ([InstallerCapture]::GetProp($window, 'HarnessInstaller.CompletedPercent').ToInt32() -ne 100) { throw 'Finish page replaced an incomplete progress bar' }
     $checkbox = Wait-Control $Process $copy.INSTALLER_LAUNCH
     $state = [InstallerCapture]::SendMessage($checkbox, 0xF0, [IntPtr]::Zero, [IntPtr]::Zero).ToInt32()

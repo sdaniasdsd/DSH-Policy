@@ -32,6 +32,7 @@ export async function checkPnpm(resourcesRuntime) {
       dependencies: { 'desktop-pnpm-smoke-dependency': 'file:./dependency' }, scripts: { check: 'node check.cjs' },
     }))
     writeFileSync(join(scratch, 'npmrc'), '')
+    writeFileSync(join(scratch, 'pnpm-workspace.yaml'), 'packages:\n  - .\nnodeLinker: hoisted\nenableGlobalVirtualStore: false\n')
     writeFileSync(join(scratch, 'check.cjs'), `
 const assert = require('node:assert/strict')
 assert.equal(require('desktop-pnpm-smoke-dependency').answer, 42)
@@ -43,7 +44,9 @@ console.log('desktop-node-script-ok')
 `)
     const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => /^(?:systemroot|windir|comspec|LD_LIBRARY_PATH)$/iu.test(name)))
     const systemBin = process.platform === 'win32' ? join(process.env.SystemRoot, 'System32') : '/usr/bin:/bin'
-    const run = args => execFileSync(process.execPath, ['--expose-internals', pnpm, ...args], {
+    const run = args => execFileSync(process.execPath, ['--expose-internals', pnpm,
+      `--config.userconfig=${join(scratch, 'npmrc')}`, `--config.store-dir=${join(scratch, 'store')}`,
+      '--config.enable-global-virtual-store=false', ...args], {
       cwd: scratch, encoding: 'utf8', timeout: 45_000, windowsHide: true,
       env: { ...environment, pnpm_config_verify_deps_before_run: 'false',
         ELECTRON_RUN_AS_NODE: '1', DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
@@ -56,6 +59,8 @@ console.log('desktop-node-script-ok')
     })
     assert.equal(run(['--version']).trim(), versions.pnpm)
     run(['install', '--offline', '--ignore-scripts'])
+    assert.ok(existsSync(join(scratch, 'node_modules', 'desktop-pnpm-smoke-dependency', 'index.cjs')),
+      'Offline install must materialize the dependency before executing scripts')
     assert.match(run(['run', 'check']), /desktop-node-script-ok/u)
   } finally {
     await rm(scratch, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })

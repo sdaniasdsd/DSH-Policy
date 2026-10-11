@@ -563,4 +563,6 @@ The account provider’s `embeddedPageDist` configuration adds a `dist` query pa
 
 ## Dev Note
 
+The offline pnpm smoke fixture pins its private configuration and store through CLI arguments and disables the global virtual store. The automatic-entry smoke supplies the session identity required by the Agent manager. Installer tests compile UTF-8 NSIS sources explicitly and use the test payload's executable name for installation, upgrade, launch and uninstall checks. Timeout diagnostics retain visible controls and a screenshot.
+
 Pre-launch CDN and capacity decisions are tracked in the [Desktop update proposal](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.md#cdn-and-capacity-qualification).

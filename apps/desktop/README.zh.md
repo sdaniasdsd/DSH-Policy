@@ -565,4 +565,6 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 
 ## 开发备注
 
+离线 pnpm 冒烟夹具通过命令行参数固定私有配置和存储目录，并禁用全局虚拟存储。自动入口冒烟检查提供 Agent 管理器要求的会话标识。安装器测试显式按 UTF-8 编译 NSIS 源文件，并使用测试载荷的可执行文件名执行安装、升级、启动和卸载检查。超时诊断保留可见控件信息和截图。
+
 上线前 CDN 与容量决策见[桌面更新提案](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.zh.md#cdn-and-capacity-qualification)。

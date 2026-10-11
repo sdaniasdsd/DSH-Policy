@@ -124,7 +124,7 @@ export function apply(ctx) {
       }
       const unregister = ctx.llm.registerAdapter(['desktop-entry-smoke'], new Model())
       try {
-        handle = await ctx.agents.create({ agentOptions: { provider: 'desktop-entry-smoke', model: 'smoke' },
+        handle = await ctx.agents.create({ sessionId: 'desktop-entry-smoke', agentOptions: { provider: 'desktop-entry-smoke', model: 'smoke' },
           setup: async owner => { await ctx.agentPresets.mount(owner, 'standard') } })
         const parent = handle.agent
         const input = createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Complete the smoke task' }] })

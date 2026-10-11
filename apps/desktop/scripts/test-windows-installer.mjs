@@ -86,7 +86,7 @@ Section
 SectionEnd
 `)
   const compiler = await getMakeNsisPath()
-  await execute(compiler.path, ['/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
+  await execute(compiler.path, ['/INPUTCHARSET', 'UTF8', '/V2', payloadSource], { ...childOptions, env: { ...childOptions.env, ...compiler.env } })
   if (sign) await sign({ path: join(payload, `${productName}.exe`), hash: 'sha256', isNest: false })
   const sourceStrings = await readFile(join(appRoot, 'installer', 'strings.nsh'), 'utf8')
   for (const language of ['en_US', 'zh_CN']) {
@@ -104,7 +104,7 @@ SectionEnd
     const include = join(languageOutput, 'include.nsh')
     await writeFile(include, `!define INSTALLER_BUILD_DIR "${join(output, 'ui')}"\n!define INSTALLER_STRINGS_FILE "${strings}"\n!include "${join(appRoot, 'scripts', 'installer.nsh')}"\n`)
     await build({ projectDir: appRoot, prepackaged: payload, targets: Platform.WINDOWS.createTarget(['nsis'], Arch.x64), publish: 'never',
-      config: { ...config, productName, extraMetadata: { ...config.extraMetadata, name: packageName },
+      config: { ...config, productName, executableName: productName, extraMetadata: { ...config.extraMetadata, name: packageName },
         artifactName: 'installer-test.exe', directories: { output: languageOutput },
         nsis: { ...config.nsis, guid, include, installerLanguages: [language] }, beforeBuild: undefined, afterPack: undefined, afterSign: undefined, artifactBuildCompleted: undefined },
     })
