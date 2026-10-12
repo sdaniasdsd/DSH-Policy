@@ -2831,6 +2831,112 @@ function settlementNotices(agent: Agent): { sender: string; text: string; summar
   })
 }
 
+describe('active-only adjacent-Agent delivery', () => {
+  it('active-only messages reach a running child', async () => {
+    const release = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('first'), gate: release.promise },
+      { chunks: textResponse('adjusted') },
+    ])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    try {
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+      const id = await ctx.subagents.sendMessage(parent, started.childId, message('adjust work'), {
+        signal: testSignal, activeOnly: true,
+      })
+      expect(ctx.agents.get(started.childId)?.inbox.nextStep).toContainEqual(expect.objectContaining({
+        id, source: { kind: 'agent-message', form: 'relay', senderSessionId: parent.id },
+      }))
+    } finally { release.resolve(undefined) }
+    await started.result
+    const loaded = await loadStoredSession(ctx.sessionPersistence, started.childId)
+    expect(hasUserText(loaded.events, 'adjust work')).toBe(true)
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('active-only messages never cold-resume an absent child', async () => {
+    const { ctx, parent, adapter } = await setup([textResponse('first'), textResponse('unwanted resume')])
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await started.result
+    await expect(ctx.subagents.sendMessage(parent, started.childId, message('late adjustment'), {
+      signal: testSignal, activeOnly: true,
+    })).rejects.toMatchObject({ code: 'TARGET_NOT_RUNNING' })
+    expect(ctx.agents.get(started.childId)).toBeUndefined()
+    expect(adapter.requests).toHaveLength(1)
+  })
+
+  it('active-only rejects an idle target', async () => {
+    const release = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([
+      { chunks: textResponse('child done') },
+      { chunks: textResponse('grandchild done'), gate: release.promise },
+      { chunks: textResponse('child acknowledgement') },
+    ])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    const child = ctx.agents.get(started.childId)!
+    const grandchild = await ctx.subagents.startActivation({ ...startSpec(child), delivery: 'parent' })
+    try {
+      await vi.waitFor(() => {
+        expect(adapter.requests).toHaveLength(2)
+        expect(child.status).toBe('idle')
+      })
+      await expect(ctx.subagents.sendMessage(parent, started.childId, message('must not wake'), {
+        signal: testSignal, activeOnly: true,
+      })).rejects.toMatchObject({ code: 'TARGET_NOT_RUNNING' })
+      expect(child.inbox.nextStep).toEqual([])
+    } finally { release.resolve(undefined) }
+    await grandchild.result
+    await started.result
+  })
+
+  it('active-only rejects a closing target without resuming it', async () => {
+    const { ctx, parent, adapter } = await setup([textResponse('first'), textResponse('unwanted resume')])
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    const closing = started.dispose()
+    const rejected = expect(ctx.subagents.sendMessage(parent, started.childId, message('raced'), {
+      signal: testSignal, activeOnly: true,
+    })).rejects.toMatchObject({ code: 'TARGET_NOT_RUNNING' })
+    await closing
+    await rejected
+    expect(ctx.agents.get(started.childId)).toBeUndefined()
+    expect(adapter.requests.length).toBeLessThanOrEqual(1)
+  })
+
+  it('active-only rejects an idle parent', async () => {
+    const release = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([{ chunks: textResponse('done'), gate: release.promise }])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    try {
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(1) })
+      await expect(ctx.subagents.sendMessage(ctx.agents.get(started.childId)!, parent.id, message('do not wake parent'), {
+        signal: testSignal, activeOnly: true,
+      })).rejects.toMatchObject({ code: 'TARGET_NOT_RUNNING' })
+      expect(parent.inbox.nextStep).toEqual([])
+    } finally { release.resolve(undefined) }
+    await started.result
+  })
+
+  it('default messaging still resumes an inactive child', async () => {
+    const { ctx, parent, adapter } = await setup([textResponse('first'), textResponse('continued')])
+    parkParent(ctx, parent)
+    const started = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await started.result
+    await ctx.subagents.sendMessage(parent, started.childId, message('continue'), { signal: testSignal })
+    await waitNoActivation(ctx, started.childId)
+    expect(adapter.requests).toHaveLength(2)
+    const loaded = await loadStoredSession(ctx.sessionPersistence, started.childId)
+    expect(hasUserText(loaded.events, 'continue')).toBe(true)
+  })
+})
+
 describe('continuable adjacent-Agent delivery', () => {
   it('rejects a stale sender before resolving either adjacent target', async () => {
     const { ctx, parent } = await setup([])

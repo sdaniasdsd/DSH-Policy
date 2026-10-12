@@ -53,8 +53,9 @@ type ChildDeliveryOptions =
      */
     readonly source?: MessageSource
     readonly signal: AbortSignal
+    readonly activeOnly?: boolean
   }
-  | { readonly delivery: 'queue'; readonly source: MessageSource; readonly signal: AbortSignal }
+  | { readonly delivery: 'queue'; readonly source: MessageSource; readonly signal: AbortSignal; readonly activeOnly?: boolean }
 
 /** Package-private hooks supplied by the owning service. */
 interface SubagentHost {
@@ -564,7 +565,7 @@ export class SubagentManager {
       && senderActivation.handle.agent === sender
       && senderActivation.parent.id === targetId) {
       options.signal.throwIfAborted()
-      return this.sendToParent(senderActivation, sender, content)
+      return this.sendToParent(senderActivation, sender, content, options.activeOnly)
     }
     if (sender.session.header.parentSession === targetId) {
       throw new SubagentError(
@@ -575,6 +576,7 @@ export class SubagentManager {
     return this.deliverToChild(sender, targetId, content, {
       signal: options.signal,
       delivery: 'steer',
+      ...options.activeOnly === undefined ? {} : { activeOnly: options.activeOnly },
     })
   }
 
@@ -1257,8 +1259,14 @@ export class SubagentManager {
     while (true) {
       const live = await this.locks.run(childId, async () => {
         const activation = this.resident.get(childId)
-        if (activation === undefined) return this.coldResume(parent, childId, content, options)
+        if (activation === undefined) {
+          options.signal.throwIfAborted()
+          if (options.activeOnly === true) throw new SubagentError(`subagent "${childId}" is not running`, 'TARGET_NOT_RUNNING')
+          return this.coldResume(parent, childId, content, options)
+        }
         requireLocalActivation(activation)
+        this.authorizeLineage(parent, childId, activation.parent.id)
+        if (options.activeOnly === true) this.assertExecutingTarget(activation)
         const disposal = activation.closing
         /* v8 ignore next 3 -- the send-versus-dispose cutoff needs a delivery to
          * observe the transaction inside the same critical section that opened it. */
@@ -1267,6 +1275,7 @@ export class SubagentManager {
         }
         if (contentHasImage(content)) {
           await this.assertImageCapable(requireLocalActivation(activation).handle.agent, options.signal)
+          if (options.activeOnly === true) this.assertExecutingTarget(activation)
           if (activation.closing !== undefined) {
             await Promise.allSettled([activation.closing])
             return undefined
@@ -1289,6 +1298,7 @@ export class SubagentManager {
     activation: Activation,
     sender: Agent,
     content: ContentBlock[],
+    activeOnly = false,
   ): MessageId {
     /* v8 ignore next 6 -- only synchronous re-entrant teardown can open this
      * transaction between exact-agent authorization and this no-await span. */
@@ -1304,6 +1314,9 @@ export class SubagentManager {
         'direct parent is not live; the message was not delivered',
         'PARENT_UNAVAILABLE',
       )
+    }
+    if (activeOnly && parent.status !== 'running') {
+      throw new SubagentError(`agent "${parent.id}" is not running`, 'TARGET_NOT_RUNNING')
     }
     const message = createAgentMessage(sender, content)
     this.sendAgentMessage(parent, message)
@@ -1428,6 +1441,7 @@ export class SubagentManager {
     options.signal.throwIfAborted()
     this.assertAdmitting(parent)
     this.authorizeLineage(parent, activation.childId, activation.parent.id)
+    if (options.activeOnly === true) this.assertExecutingTarget(activation)
     this.acquireOwnership(parent, activation.childId)
     try {
       this.deliver(activation, message, options.delivery)
@@ -1435,6 +1449,13 @@ export class SubagentManager {
       this.wake(activation)
     }
     return message.id
+  }
+
+  /** Refuse continuation at the same synchronous cutoff that accepts the inbox message. */
+  private assertExecutingTarget(activation: Activation): void {
+    if (activation.closing !== undefined || requireLocalActivation(activation).handle.agent.status !== 'running') {
+      throw new SubagentError(`subagent "${activation.childId}" is not running`, 'TARGET_NOT_RUNNING')
+    }
   }
 
   /** Refuse image content for a child whose fixed model accepts text only. */

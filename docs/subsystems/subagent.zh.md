@@ -191,6 +191,8 @@ interface ContinuableCreateSpec {
 
 sendMessage 根据确切的在线发送者实例授权，仅允许相邻本地代理通信。运行中的子代理接收引导输入；不在线的可继续子代理从持久化恢复。外部执行拒绝后续消息。本地与外部执行都会通过父级结束通知自动回传最终文本、结构化结果、诊断和状态。本地子代理也可以通过 send_message 发送消息。caller 回传会抑制结束通知。drainDescendants 与 drainChildren 对本地和外部 activation 都等待所属任务清理完成。
 
+Host 调用方可以在 `sendMessage` 中设置 `activeOnly: true`，仅在目标正在执行时接收输入。空闲、不在线或正在关闭的目标返回 `TARGET_NOT_RUNNING`；该模式不会唤醒或从持久化恢复目标。检查在收件箱接收时执行，避免查询后已结束的目标被迟到消息重启。省略选项时保留通常的延续行为。接收成功返回消息 id，不表示模型已经处理消息。
+
 ```ts type-equiv
 /** Durable attribution for one model-authored message between Agents. */
 interface AgentMessageSource {
@@ -226,6 +228,8 @@ interface SubagentSettledMessageSource {
 interface SubagentSendMessageOptions {
   /** Caller cancellation, owning the operation only until inbox acceptance. */
   readonly signal: AbortSignal
+  /** Require an executing target at acceptance; never wake or cold-resume an idle, absent, or closing target. */
+  readonly activeOnly?: boolean
 }
 ```
 

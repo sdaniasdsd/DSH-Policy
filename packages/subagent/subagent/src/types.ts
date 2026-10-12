@@ -71,6 +71,8 @@ export type SubagentInterruptAuthority =
 export interface SubagentSendMessageOptions {
   /** Caller cancellation, owning the operation only until inbox acceptance. */
   readonly signal: AbortSignal
+  /** Require an executing target at acceptance; never wake or cold-resume an idle, absent, or closing target. */
+  readonly activeOnly?: boolean
 }
 
 /**

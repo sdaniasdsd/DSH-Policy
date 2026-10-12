@@ -191,6 +191,8 @@ interface ContinuableCreateSpec {
 
 sendMessage authorizes the exact live sender and permits only adjacent local agents. Running children receive steering input; absent continuable children resume from persistence. External executions reject follow-ups. Both local and external executions automatically report their final text, structured result, diagnostic, and status in the parent settlement notice. Local children can also send messages through send_message. caller delivery suppresses settlement notices. drainDescendants and drainChildren await owned work teardown for local and external activations.
 
+Host callers can set `activeOnly: true` on `sendMessage` to accept input only while the target is executing. Idle, absent, and closing targets reject with `TARGET_NOT_RUNNING`; this mode never wakes or cold-resumes them. The check runs at inbox acceptance, so a target ending after inspection cannot be restarted by a late message. Omitting the option retains ordinary continuation behavior. Acceptance returns a message id and does not confirm model processing.
+
 ```ts type-equiv
 /** Durable attribution for one model-authored message between Agents. */
 interface AgentMessageSource {
@@ -226,6 +228,8 @@ interface SubagentSettledMessageSource {
 interface SubagentSendMessageOptions {
   /** Caller cancellation, owning the operation only until inbox acceptance. */
   readonly signal: AbortSignal
+  /** Require an executing target at acceptance; never wake or cold-resume an idle, absent, or closing target. */
+  readonly activeOnly?: boolean
 }
 ```
 
