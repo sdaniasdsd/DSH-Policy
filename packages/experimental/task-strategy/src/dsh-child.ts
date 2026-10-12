@@ -9,6 +9,8 @@ import { parseWorkflowProposal, workflowOutputSchema, parseReviewReport, reviewO
 import { normalizeReadPath, verifyArtifacts } from './verification.ts'
 import type { ReadEvidence } from './verification.ts'
 import { selectorAgentOptions } from './selector-agent-options.ts'
+import type { SubagentResult } from '@deepseek-ai/dsh-subagent'
+import { ChildDisposalError } from './errors.ts'
 
 function readPath(value: unknown): string | undefined {
   if (value === null || typeof value !== 'object' || !('file_path' in value) || typeof value.file_path !== 'string') return undefined
@@ -100,8 +102,10 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
       ...step.workflowOutput === true ? { outputSchema: workflowOutputSchema }
         : step.reviewOutput === true ? { outputSchema: reviewOutputSchema } : {},
     } })
+    let executionResult: SubagentResult | undefined
+    let executionFailure: { error: unknown } | undefined
     try {
-      const result = await run.result
+      const result = executionResult = await run.result
       return { sessionId: run.childId, stopReason: result.stopReason,
         usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
         output: result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'),
@@ -109,11 +113,21 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...step.workflowOutput !== true || result.stopReason !== 'completed' ? {}
           : { workflow: parseWorkflowProposal(result.structured) },
         ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
-          review: parseReviewReport(result.structured, overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
+          review: parseReviewReport(result.structured,
+            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
         ...step.artifactChecks === undefined ? {} : {
           verification: verifyArtifacts(step.artifactChecks,
             overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
       }
-    } finally { await run.dispose() }
+    } catch (error) {
+      executionFailure = { error }
+      throw error
+    } finally {
+      try { await run.dispose() }
+      catch (error) {
+        throw new ChildDisposalError(run.childId, executionResult, executionFailure?.error,
+          error, executionFailure !== undefined)
+      }
+    }
   } finally { if (timer !== undefined) clearTimeout(timer); release() }
 }

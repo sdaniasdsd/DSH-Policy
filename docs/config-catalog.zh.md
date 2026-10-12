@@ -99,6 +99,8 @@ export interface Config {
 ```ts config-catalog
 /** Agent-loop plugin configuration. */
 export interface Config {
+  /** Exact legacy source.plugin identities allowed at live user-context ingress; defaults to none. */
+  legacyPluginSources: string[]
   /**
    * Maximum parallel-safe calls in flight per agent step. `1` is serial;
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.

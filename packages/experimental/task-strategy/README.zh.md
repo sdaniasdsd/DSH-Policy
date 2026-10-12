@@ -25,6 +25,8 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
+DSH 子级释放失败以 `CHILD_DISPOSAL_FAILED` 拒绝。错误保留子级标识、已观察到的执行结果、执行或解释异常及释放异常。父级报告说明已观察到的执行状态；清理失败不能证明没有执行工作，也不会触发自动重放。
+
 <a id="token-estimates"></a>
 ### 可解释的 Token 估算
 

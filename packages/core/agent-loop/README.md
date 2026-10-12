@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+For a known legacy context producer, set `legacyPluginSources: [deja]` on the loop's composition entry. Live inbox and pre-step admission converts only matching `{ kind: 'plugin', plugin: 'deja' }` sources into `{ kind: 'plugin:deja' }`, preserving message identity, content, and other source metadata without mutating the producer's object. Unlisted or unidentified legacy producers fail before their messages enter the session log. The list uses self-declared producer identities, not authenticated plugin ownership. Restored events and the persistence codec remain strict; upgrade the producer to a native source kind to remove its compatibility entry.
+
 Mount `dsh-agent-loop` in any composition that should run agents. It supplies the driver behind `ctx.agents` and starts any agents you declare in its config; both [`dsh-base`](../../bundle/base/README.md) and [`dsh-sdk-minimal`](../../bundle/sdk-minimal/README.md) mount it as an explicit row.
 
 ### Configure declarative agents
@@ -46,6 +48,7 @@ Agents declared in the config start automatically when the plugin loads. Each en
 | Field | Default | Meaning |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | Parallel-safe tool calls in flight per step; `1` is serial |
+| `legacyPluginSources` | `[]` | Exact legacy `source.plugin` identifiers allowed at live user-context ingress |
 | `agents[].id` | required | Stable label; a fresh session mints `${id}-session-<uuid>` unless `sessionId` is set |
 | `agents[].provider` / `agents[].model` | — | Model route; both required before dispatch |
 | `agents[].reasoningEffort` | — | Non-empty initial reasoning effort; `agent/request` may override it |

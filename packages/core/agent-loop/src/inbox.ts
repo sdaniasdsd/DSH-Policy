@@ -16,6 +16,7 @@ import type {
   InboxWireState,
 } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
+import { admitUserMessage } from './message-admission.ts'
 
 /** Wire validation for pending agent input reconstructed from durable inbox splices. */
 export const inboxProjectionSchema = z.object({
@@ -70,12 +71,14 @@ export const inboxProjectionDefinition = {
  * @param projections - registry with the standard Inbox projection registered by AgentLoop.
  * @param session - session whose durable events store pending input.
  * @param dispatch - agent-scoped notifications for Inbox lifecycle events.
+ * @param legacyPluginSources - explicitly allowed legacy producer identifiers for live input.
  */
 export class ReactLoopInbox implements InboxContract {
   constructor(
     private readonly projections: SessionProjectionRegistry,
     private readonly session: Session,
     private readonly dispatch: AgentEventDispatch,
+    private readonly legacyPluginSources: readonly string[] = [],
   ) {}
 
   /** Prompts awaiting individual turns. */
@@ -202,6 +205,8 @@ export class ReactLoopInbox implements InboxContract {
     inserted: UserMessage[],
     discardRemoved: boolean,
   ): UserMessage[] {
+    inserted = inserted.map((message, index) => admitUserMessage(message, this.legacyPluginSources,
+      `agent "${this.session.id}" inbox ${target}.inserted[${index}]`))
     const state = this.current()
     const inbox = state[target]
     const truncatedStart = Math.trunc(start)

@@ -16,7 +16,7 @@ import type { Message } from '@deepseek-ai/dsh-llm'
 import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from './types.ts'
 import type { TypertLookup } from '@deepseek-ai/dsh-typert-protocol'
 import type { CreateSessionOptions, EpochHeader, PluginRecord, PluginRecordMap, PluginRecordType, PrepareSessionOptions, RequestContext, SessionEvent, SessionEventMap, SessionEventType, SessionHeader, SessionId, SessionSeedEventState, SurfaceIntent, SurfaceEventType } from './types.ts'
-import { SurfaceManager, validateSessionEventData, validateSurfaceMetadata } from './surface.ts'
+import { SurfaceManager, validateSessionEventData, validateSessionMessageSources, validateSurfaceMetadata } from './surface.ts'
 import type { SessionSurface, SessionMessageProjection } from './surface.ts'
 import { foldRequestHeader } from './request-header.ts'
 import { ToolHistoryProjection } from './tool-history.ts'
@@ -32,6 +32,7 @@ export type { AssistantMessage, DeveloperMessage, SystemMessage, ToolResultMessa
 export { interruptedTurnClosers, ToolCallRecovery, TOOL_NOT_STARTED, TOOL_OUTCOME_UNKNOWN } from './repair.ts'
 export type { SessionSurface, SurfaceFoldReplacement, SurfaceFoldResult, SessionMessageProjection, SessionMessageProjectionContext } from './surface.ts'
 export { deriveEventMessage, foldSurface, isAppendSurfaceEvent, isReplacementSurfaceEvent, isSurfaceEvent, isSurfaceEligibleType } from './surface.ts'
+export { SessionMessageSourceError } from './surface.ts'
 export { canonicalHeader, foldRequestHeader, headerEquals } from './request-header.ts'
 export { KNOWN_SESSION_EVENT_TYPES } from './known-event-types.ts'
 
@@ -171,6 +172,7 @@ export function adoptSessionEvent<T extends SessionEvent>(event: T): T {
     event,
     `session event at seq ${event.seq}`,
   )
+  validateSessionMessageSources(event, `session event at seq ${event.seq}`)
   switch (event.type) {
     case 'user/message':
       deepFreeze(event.data)
@@ -239,6 +241,7 @@ function assertSessionEventEnvelope(value: unknown, index: number): asserts valu
       assertCurrentLlmShape(event, index)
       break
   }
+  validateSessionMessageSources(event as SessionEvent, `seed ${type} at index ${index}`)
 }
 
 /** Reject obsolete request headers and malformed messages at the seed/load boundary. */
@@ -822,6 +825,7 @@ export class Session {
       ...(surfaceMetadataSnapshot as { surfaceOp?: unknown; sourceEventSeqs?: unknown }),
     } as unknown as SessionEvent<T>)
     validateSessionEventData(event, `session event "${type}" at seq ${event.seq}`)
+    validateSessionMessageSources(event, `session event "${type}" at seq ${event.seq}`)
     this.commit(event as SessionEvent, entry)
     return event
   }

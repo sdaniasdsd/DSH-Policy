@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Append, seed/restore, and adoption reject missing, empty, or retired `kind: 'plugin'` sources in every durable message slot, including inbox and title-request messages. `SessionMessageSourceError` identifies rejection with code `INVALID_MESSAGE_SOURCE` and a candidate location; failed appends publish no event and consume no sequence number. Unknown nonempty native kinds remain accepted. Compatibility belongs to live producer ingress, before Session admission, and never rewrites stored events.
+
 Mount `dsh-session` wherever a session must exist. It creates and holds event-sourced `Session` instances in memory; durable storage is layered on by a persistence plugin that subscribes to the `session/event` feed.
 
 ### Create and inspect sessions

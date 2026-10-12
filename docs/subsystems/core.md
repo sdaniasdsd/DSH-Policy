@@ -21,6 +21,8 @@ A turn flows through the six packages in one loop: the driver in [`agent-loop`](
 
 ## Creation and ownership
 
+The concrete loop's `legacyPluginSources` configuration lists exact legacy producer identities accepted at live user-context ingress; its default is empty. Inbox and pre-step admission converts matching wrapper sources into `plugin:<identity>` before they can enter the Session log. See the [loop package contract](../../packages/core/agent-loop/README.md) for conversion and rejection semantics.
+
 Consumers create agents through `ctx.agents` — `create()` builds a fresh session and agent under one caller-supplied `SessionId`, `resume()` loads a persisted session first — or declaratively through the loop's config entries. Programmatic creation returns the owner's handle:
 
 Source: [`packages/core/agent/src/index.ts`](../../packages/core/agent/src/index.ts)

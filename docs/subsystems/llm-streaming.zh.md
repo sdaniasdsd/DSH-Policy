@@ -10,6 +10,8 @@
 
 ## 内容块与消息
 
+Agent loop 的实时兼容适配器向 `MessageSourceMap` 声明 `plugin:${string}` 来源命名空间，带有可选的 `ContextFormed` 字段。它只为循环配置明确启用的旧生产者身份生成此归属；静态声明不会启用生产者，也不会放宽原生存储来源校验。
+
 一段对话由 `Message` 组成；一条消息是一个类型化**内容块**的数组。块的联合类型从 `ContentBlockMap` 派生。
 
 源码：[`packages/llm/llm/src/types.ts`](../../packages/llm/llm/src/types.ts)

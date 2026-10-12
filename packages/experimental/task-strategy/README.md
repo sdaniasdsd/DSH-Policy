@@ -25,6 +25,8 @@ Write named author strategies that choose task stages, child plugin presets, too
 <a id="use-this-package"></a>
 ## Use this package
 
+DSH child disposal failures reject with `CHILD_DISPOSAL_FAILED`. The error retains the child identity, any observed execution result, the execution or interpretation failure, and the disposal failure. The parent report states the observed execution outcome; cleanup failure cannot establish that no work occurred, and does not trigger an automatic replay.
+
 <a id="token-estimates"></a>
 ### Explainable token estimates
 

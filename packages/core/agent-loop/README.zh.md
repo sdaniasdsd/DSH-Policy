@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+对于已知的旧上下文生产者，在循环的组合条目上设置 `legacyPluginSources: [deja]`。实时 inbox 和 pre-step 准入只将匹配的 `{ kind: 'plugin', plugin: 'deja' }` 来源转换为 `{ kind: 'plugin:deja' }`，保留消息标识、内容及其他来源元数据，不修改生产者对象。名单外或身份缺失的旧生产者会在消息进入会话日志前失败。名单按生产者自行声明的身份匹配，不认证插件归属。恢复事件及持久化编解码器仍严格校验；生产者升级为原生 source kind 后可移除兼容条目。
+
 在任何应运行 agent 的组合中挂载 `dsh-agent-loop`。它提供 `ctx.agents` 背后的驱动器，并启动你在配置中声明的 agent；[`dsh-base`](../../bundle/base/README.zh.md) 与 [`dsh-sdk-minimal`](../../bundle/sdk-minimal/README.zh.md) 都将它作为显式配置行挂载。
 
 ### 配置声明式 agent
@@ -46,6 +48,7 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | 每个步骤同时在途的并行安全工具调用数；`1` 为串行 |
+| `legacyPluginSources` | `[]` | 实时 user 上下文入口允许的旧 `source.plugin` 精确标识 |
 | `agents[].id` | 必填 | 稳定标签；未设置 `sessionId` 时，全新会话会生成 `${id}-session-<uuid>` |
 | `agents[].provider` / `agents[].model` | — | 模型路由；分发前两者都必须存在 |
 | `agents[].reasoningEffort` | — | 非空的初始推理强度；`agent/request` 可以覆盖它 |

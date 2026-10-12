@@ -6,6 +6,8 @@ The in-memory, event-sourced model of [dsh-session](../../packages/core/session)
 
 Source: [`packages/core/session/src/types.ts`](../../packages/core/session/src/types.ts)
 
+Current message attribution is checked before Session append publication and after structural validation during seed, restore, or adoption. `SessionMessageSourceError` exposes `code: 'INVALID_MESSAGE_SOURCE'` and `subject`, the candidate message location. Surface messages, pending inbox insertions, and title-request messages require a source object with a nonempty kind other than the retired `plugin` wrapper. Unknown native kinds remain readable; optional live compatibility is owned by the [agent loop](../../packages/core/agent-loop/README.md).
+
 ## `SessionEventMap` — the event vocabulary
 
 The append-only event types. Merge-extensible: a plugin declares extra event types via declaration merging — e.g. the [compaction seam](compaction.md) adds `compaction/start` / `compaction/summary` / `compaction/end`, and `@deepseek-ai/dsh-hook-protocol` adds log-only `hook/invoked` / `hook/result` records for a hook bridge. Like `compaction/*`, these are NOT `SurfaceEventType`s (no `surfaceOp`). The generated [persistence log event catalog](../persistence-catalog.md) enumerates every member — core and merged — with its payload, surface badge, and declaration site.

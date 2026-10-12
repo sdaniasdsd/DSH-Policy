@@ -23,6 +23,8 @@
 
 ## 创建与所有权
 
+具体循环的 `legacyPluginSources` 配置列出实时 user 上下文入口接受的旧生产者精确身份，默认为空。Inbox 和 pre-step 准入会在消息进入 Session 日志前，将匹配的包装来源转换为 `plugin:<identity>`。转换和拒绝语义见 [loop 包约定](../../packages/core/agent-loop/README.zh.md)。
+
 消费方通过 `ctx.agents` 创建 agent——`create()` 在一个调用方提供的 `SessionId` 下构建全新会话与 agent，`resume()` 先加载持久会话——或者通过循环的声明式配置条目创建。编程式创建返回归属所有者的句柄：
 
 源码：[`packages/core/agent/src/index.ts`](../../packages/core/agent/src/index.ts)

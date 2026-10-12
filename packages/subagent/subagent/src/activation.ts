@@ -145,20 +145,24 @@ export function observeLocalFailure(activation: LocalActivation, wake: () => voi
 /**
  * Capture local output and retain failures without a later committed turn ending.
  * @param activation - the settled local execution and any structured result.
- * @returns final output, stop reason, and committed structured value.
+ * @returns final output, stop reason, committed error diagnostic, and committed structured value.
  */
 export function captureLocalResult(activation: LocalActivation): SubagentResult {
   // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
   const events = activation.handle.agent.session.snapshotEvents(activation.outputStart)
   const output = finalAssistantOutput(events) ?? []
   const stopReason = activation.failureAt === undefined ? epochStopReason(events) : 'error'
+  const lastTurn = events.findLast(event => event.type === 'turn/end')
+  const diagnostic = activation.failureAt === undefined && stopReason === 'error'
+    && lastTurn?.type === 'turn/end' && lastTurn.data.reason.kind === 'error'
+    ? { diagnostic: lastTurn.data.reason.error.message } : {}
   const structured = activation.structured
   if (structured !== undefined) {
     const captured = structured.captured()
-    if (captured !== undefined) return { output, stopReason, structured: captured.value }
+    if (captured !== undefined) return { output, stopReason, ...diagnostic, structured: captured.value }
     if (stopReason === 'completed') return { output, stopReason: 'error' }
   }
-  return { output, stopReason }
+  return { output, stopReason, ...diagnostic }
 }
 
 /** Serialize each durable child's delivery, release, and disposal. */

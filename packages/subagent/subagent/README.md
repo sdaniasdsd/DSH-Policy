@@ -25,6 +25,8 @@ Use `dsh-subagent` to delegate work through named providers and collect managed 
 <a id="use-this-package"></a>
 ## Use this package
 
+A local error result includes the latest committed turn's error message as its diagnostic, while retaining any closing output. An uncommitted later failure does not borrow an earlier turn's diagnostic. Execution settlement and activation disposal remain separate obligations; a result is not proof that buffered persistence or cleanup succeeded.
+
 Each start accepts an optional `cwd`; relative paths resolve against the parent's current working directory, and omission captures that current directory. The child keeps its parent's origin metadata and permission roots. A child-owned directory value follows any inherited history, survives continuation and restart, and is independent of later parent changes.
 
 This package is the contract every delegation setup shares. You enable it by mounting the service together with one or more provider backends and the model-facing delegation tool; from then on, an agent can delegate work and the service routes each request to the named provider.

@@ -156,6 +156,50 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** Invalid current message attribution; rejection occurs before the event is committed. */
+export class SessionMessageSourceError extends Error {
+  readonly code = 'INVALID_MESSAGE_SOURCE'
+
+  /**
+   * @param subject - message location in the candidate event.
+   */
+  constructor(readonly subject: string) {
+    super(`${subject} requires a producer-owned source kind; retired kind "plugin" is not accepted`)
+    this.name = 'SessionMessageSourceError'
+  }
+}
+
+/** Validate a current message slot without interpreting producer-owned metadata. */
+function validateMessageSource(message: unknown, subject: string): void {
+  const source = isRecord(message) ? message['source'] : undefined
+  if (!isRecord(source) || typeof source['kind'] !== 'string'
+    || source['kind'].length === 0 || source['kind'] === 'plugin') {
+    throw new SessionMessageSourceError(subject)
+  }
+}
+
+/**
+ * Check source attribution in every current durable message slot, including pending inbox input.
+ * @param event - current event awaiting admission.
+ * @param subject - candidate event location used in diagnostics.
+ * @throws SessionMessageSourceError when a message has no producer-owned source kind.
+ */
+export function validateSessionMessageSources(event: Pick<SessionEvent, 'type' | 'data'>, subject: string): void {
+  const type: string = event.type
+  const data: unknown = event.data
+  if (SURFACE_EVENT_TYPES.has(type)) {
+    validateMessageSource(type === 'user/message' ? data : isRecord(data) ? data['message'] : undefined,
+      `${subject}${type === 'user/message' ? '' : '.message'}`)
+    return
+  }
+  const key = type === 'agent/inbox/spliced' ? 'inserted'
+    : type === 'session/title-llm-request' ? 'messages' : undefined
+  if (key === undefined) return
+  const messages = isRecord(data) ? data[key] : undefined
+  if (!Array.isArray(messages)) throw new SessionMessageSourceError(`${subject}.${key}`)
+  for (const [index, message] of messages.entries()) validateMessageSource(message, `${subject}.${key}[${index}]`)
+}
+
 /**
  * Reject noncanonical request-header fields, developer roles/content, and contradictory tool failure metadata.
  * This does not validate complete event payloads or embedded provider streams.

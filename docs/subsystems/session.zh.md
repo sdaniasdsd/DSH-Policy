@@ -6,6 +6,8 @@
 
 源码：[`packages/core/session/src/types.ts`](../../packages/core/session/src/types.ts)
 
+当前消息归属在 Session 追加发布前检查，seed、restore 或 adoption 则在结构校验后检查。`SessionMessageSourceError` 公开 `code: 'INVALID_MESSAGE_SOURCE'` 和表示候选消息位置的 `subject`。Surface 消息、待处理 inbox 插入和标题请求消息必须带有来源对象，其 kind 非空且不是退役的 `plugin` 包装。未知原生 kind 仍可读取；可选的实时兼容由 [agent loop](../../packages/core/agent-loop/README.zh.md) 负责。
+
 ## `SessionEventMap`：事件词汇
 
 仅追加的事件类型。可通过声明合并扩展：插件通过 declaration merging 声明额外的事件类型。例如[压缩（compaction） seam](compaction.zh.md) 添加了 `compaction/start` / `compaction/summary` / `compaction/end`，`@deepseek-ai/dsh-hook-protocol` 为钩子桥接添加了仅记录日志的 `hook/invoked` / `hook/result` 记录。与 `compaction/*` 一样，这些都不是 `SurfaceEventType`（没有 `surfaceOp`）。生成的[持久化日志事件目录](../persistence-catalog.zh.md)列举了所有成员（核心与合并扩展的），包含其 payload、surface 标记与声明位置。

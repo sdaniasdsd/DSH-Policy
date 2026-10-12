@@ -10,6 +10,8 @@ Source: [`packages/llm/llm/src/types.ts`](../../packages/llm/llm/src/types.ts)
 
 ## Content blocks and messages
 
+The agent loop's live compatibility adapter contributes the `plugin:${string}` source namespace to `MessageSourceMap`, with optional `ContextFormed` fields. It emits this attribution only for legacy producer identities explicitly enabled in the loop configuration; the static declaration does not enable a producer or relax native stored-source validation.
+
 A conversation is `Message`s; a message is an array of typed **content blocks**. The block union derives from `ContentBlockMap`.
 
 Source: [`packages/llm/llm/src/types.ts`](../../packages/llm/llm/src/types.ts)

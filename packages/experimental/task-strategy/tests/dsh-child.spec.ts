@@ -4,6 +4,27 @@ import { liveParent } from './live-parent.ts'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import { createAssistantMessage, MessageId, ToolCallId } from '@deepseek-ai/dsh-llm'
 
+it.each([false, true])('preserves execution facts when child disposal also fails: execution failure %s', async (fails) => {
+  const { ctx, parent } = await liveParent()
+  const result = { stopReason: 'completed' as const, output: [{ type: 'text' as const, text: 'already executed' }] }
+  const executionError = new Error('execution failed after partial work')
+  const disposalError = new Error('persistence failed')
+  const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: { startActivation: async () => ({
+    childId: SessionId('child'), messageId: MessageId('work'),
+    result: fails ? Promise.reject(executionError) : Promise.resolve(result),
+    dispose: async () => { throw disposalError },
+  }) } }
+  let failure: unknown
+  try {
+    await executeDshChild(services, parent, 'spawn', { label: 'inspect', instruction: 'inspect' },
+      'inspect', new AbortController().signal, 65536)
+  } catch (error) { failure = error }
+  expect(failure).toMatchObject({ code: 'CHILD_DISPOSAL_FAILED', childId: 'child',
+    executionResult: fails ? undefined : result, executionFailure: fails ? executionError : undefined,
+    disposalFailure: disposalError })
+  expect(String(failure)).toContain(fails ? 'execution failed' : 'execution returned completed')
+})
+
 it('normalizes Windows read separators and isolates each child evidence budget', async () => {
   const { ctx, parent } = await liveParent()
   const child = Session.create(SessionId('child'), undefined, { ...parent.session.header, id: SessionId('child'), parentSession: parent.id })

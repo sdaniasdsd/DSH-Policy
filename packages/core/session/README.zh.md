@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+追加、seed/restore 和 adoption 会在每个持久消息槽位拒绝缺失、空值或退役的 `kind: 'plugin'` 来源，包括 inbox 和标题请求消息。`SessionMessageSourceError` 用 `INVALID_MESSAGE_SOURCE` 代码及候选位置标识拒绝；失败的追加不发布事件、不消耗序列号。未知的非空原生 kind 仍可接受。兼容处理属于 Session 准入之前的实时生产者入口，从不重写已存储事件。
+
 在必须存在会话的任何地方挂载 `dsh-session`。它在内存中创建并持有事件溯源的 `Session` 实例；持久存储由订阅 `session/event` 流的持久化插件叠加。
 
 ### 创建与检查会话
