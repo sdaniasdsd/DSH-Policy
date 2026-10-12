@@ -11,8 +11,17 @@ describe('session orchestration choices', () => {
     const preferences = modes.capturePreferences(owner)
     modes.selectTier(owner, 'low')
     expect(preferences).toEqual({ tier: 'high' })
-    expect(() => modes.selectTier(owner, 'bad')).toThrow('tier')
+    expect(() => { modes.selectTier(owner, 'bad') }).toThrow('tier')
     expect(modes.read(owner).tier).toBe('low')
+  })
+  it('captures extreme-high and preserves it after a rejected tier', () => {
+    const modes = new OrchestrationModes(), owner = {}
+    modes.register({ id: 'codex-style', label: 'Codex style', strategy: 'codex-style', defaultTier: 'medium' }, () => {})
+    modes.select(owner, 'codex-style')
+    modes.selectTier(owner, 'extreme-high')
+    expect(modes.capturePreferences(owner)).toEqual({ tier: 'extreme-high' })
+    expect(() => { modes.selectTier(owner, 'ultra') }).toThrow('tier')
+    expect(modes.read(owner).tier).toBe('extreme-high')
   })
   it('keeps choices per owner and captures the selected plugin for later admission', () => {
     const modes = new OrchestrationModes(), owner = {}, other = {}
@@ -27,11 +36,11 @@ describe('session orchestration choices', () => {
   })
   it('rejects unavailable, duplicate and reserved modes without changing selection', () => {
     const modes = new OrchestrationModes(), owner = {}
-    expect(() =>{  modes.select(owner, 'codex'); }).toThrow('unavailable')
+    expect(() =>{  modes.select(owner, 'codex') }).toThrow('unavailable')
     modes.register({ id: 'codex', label: 'Codex', strategy: 'native' }, () => { throw new Error('backend missing') })
     expect(modes.read(owner).options[1]?.available).toBe(false)
     expect(modes.read(owner).options[1]?.reason).toContain('backend missing')
-    expect(() =>{  modes.select(owner, 'codex'); }).toThrow('backend missing')
+    expect(() =>{  modes.select(owner, 'codex') }).toThrow('backend missing')
     expect(modes.read(owner).selected).toBe('dsh')
     expect(() => modes.register({ id: 'codex', label: 'Codex', strategy: 'other' }, () => {})).toThrow('Duplicate')
     expect(() => modes.register({ id: 'dsh', label: 'DSH', strategy: 'other' }, () => {})).toThrow('reserved')

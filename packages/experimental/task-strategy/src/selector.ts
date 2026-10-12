@@ -54,8 +54,9 @@ async function choose(parent: Agent, candidates: readonly WorkflowCandidate[], i
     + 'Known input is partial, scenario totals depend on assumptions, and unknown cost is not zero. '
     + 'Costs describe strategy children only; they exclude this selection and the parent.\n'
     + (workflow ? 'Choose the strategy yourself without asking the user to select. Consider every registered strategy, not only orchestration styles. '
-      + 'Use low for small, clear tasks; medium for work needing investigation and verification; high for complex work needing deeper review. '
-      + 'For strategies with tiers choose only a supported tier. For fixed strategies use tier default. '
+      + 'Use low for one localized change with known requirements; medium for one feature needing context gathering and acceptance checks; high for changes spanning files or milestones with interface and regression concerns. '
+      + 'Use extreme-high for cross-module or long development work needing separate perspectives on requirements, compatibility, edge cases, error paths and integration. Match the registered style to its described workflow. '
+      + 'Tiers describe task scope and review density; each strategy owns its stage concurrency and work assignments. Choose the least intensive supported tier that covers the task. For fixed strategies use tier default. '
       + 'Return a short reason in the user language (one sentence), based on task fit and uncertainty.\n' : '')
     + JSON.stringify({ task: input.task, preferences: input.preferences ?? {}, strategies: candidates })
   if (Buffer.byteLength(prompt, 'utf8') > options.maxPromptBytes) throw new Error('Strategy selection prompt exceeds byte limit')
@@ -73,7 +74,7 @@ async function choose(parent: Agent, candidates: readonly WorkflowCandidate[], i
       prompt: [{ type: 'text', text: prompt }], toolFilter: { allow: [] },
       agentOptions: await selectorAgentOptions(parent, options, combined),
       outputSchema: { type: 'object', properties: { strategy: { type: 'string', enum: ids },
-        ...workflow ? { tier: { type: 'string', enum: ['low', 'medium', 'high', 'default'] }, reason: { type: 'string' } } : {} },
+        ...workflow ? { tier: { type: 'string', enum: ['low', 'medium', 'high', 'extreme-high', 'default'] }, reason: { type: 'string' } } : {} },
       required: workflow ? ['strategy', 'tier', 'reason'] : ['strategy'], additionalProperties: false },
     } })
     let selected: WorkflowDecision
@@ -85,7 +86,7 @@ async function choose(parent: Agent, candidates: readonly WorkflowCandidate[], i
         throw new Error('Strategy selection output exceeds byte limit')
       }
       if (workflow) {
-        const choice = z.object({ strategy: z.string(), tier: z.enum(['low', 'medium', 'high', 'default']),
+        const choice = z.object({ strategy: z.string(), tier: z.enum(['low', 'medium', 'high', 'extreme-high', 'default']),
           reason: z.string().trim().min(1).max(240) }).strict().parse(result.structured)
         const candidate = candidates.find(row => row.id === choice.strategy)
         if (candidate === undefined || (candidate.tiers !== undefined && !candidate.tiers.some(row => row.tier === choice.tier))) {

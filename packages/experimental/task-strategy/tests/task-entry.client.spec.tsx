@@ -13,10 +13,18 @@ import type { ConversationNodeContext } from '@deepseek-ai/dsh-client-ui-convers
 afterEach(cleanup)
 const base: EntryView = { sessionId: SessionId('owner'), messageId: MessageId('message'), requestId: 'request', state: 'selecting' }
 describe('task entry chat card', () => {
+  it.each([
+    ['en', 'Extreme high'], ['zh', '极端高'],
+  ])('shows the captured extreme-high tier in %s receipts', (language, label) => {
+    render(<TaskEntryPanel view={{ ...base, state: 'running', receipt: { jobId: JobId('job'), name: 'Work', strategy: 'superpowers-style',
+      selection: { kind: 'auto', tier: 'extreme-high', reason: 'Broad verification requested.' } } }} language={language} connected={true} strategies={[]}
+    cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText(new RegExp(label))).toBeTruthy()
+  })
   it('shows the initial Agent choice and explanation without claiming verification', () => {
     render(<TaskEntryPanel view={{ ...base, state: 'running', receipt: { jobId: JobId('job'), name: 'Work', strategy: 'codex-style',
       selection: { kind: 'auto', tier: 'high', reason: '涉及多个模块，需要复核。' } } }} language="zh" connected={true} strategies={[]}
-      cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
     expect(screen.getByText(/Agent 自主选择.*高/)).toBeTruthy()
     expect(screen.getByText(/涉及多个模块，需要复核/)).toBeTruthy()
     expect(screen.queryByText(/已登记检查通过/)).toBeNull()
@@ -43,9 +51,9 @@ describe('task entry chat card', () => {
       onConnectionLoss: (listener: () => void) => { lose = listener; return () => {} }, cancel: async () => {},
       switchStrategy: async () => {}, resume: async () => {} } satisfies TaskEntryCardProps
     render(<TaskEntryCard {...props} />)
-    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(false) })
+    await vi.waitFor(() => { expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消任务' }).disabled).toBe(false) })
     lose()
-    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(true) })
+    await vi.waitFor(() => { expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消任务' }).disabled).toBe(true) })
     expect(screen.getByRole('status').textContent).toContain('连接')
   })
   it('shows the committed replacement binding instead of the initial receipt strategy', () => {
@@ -71,7 +79,7 @@ describe('task entry chat card', () => {
       onReset: (listener: () => void) => { reset = listener; return () => {} },
       cancel: async () => {}, switchStrategy: async () => {}, resume: async () => {} } satisfies TaskEntryCardProps
     render(<TaskEntryCard {...props} />)
-    expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '取消任务' }).disabled).toBe(true)
     reset()
     await vi.waitFor(() => { expect(screen.getByText('已取消')).toBeTruthy() })
     old.resolve({ ...base, state: 'running' })

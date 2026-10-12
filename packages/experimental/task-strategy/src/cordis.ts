@@ -341,7 +341,7 @@ export default class TaskStrategies extends TypertRemoteService {
           if (choice.kind === 'auto' && choice.workflow === true) {
             const tierStrategies = this.orchestrationModes.tierStrategies()
             const candidates = this.list(captured).map(candidate => ({ ...candidate,
-              ...!tierStrategies.has(candidate.id) ? {} : { tiers: (['low', 'medium', 'high'] as const)
+              ...!tierStrategies.has(candidate.id) ? {} : { tiers: (['low', 'medium', 'high', 'extreme-high'] as const)
                 .filter(tier => captured.preferences?.tier === undefined || captured.preferences.tier === tier)
                 .map(tier => ({ tier, cost: this.list({ task: captured.task, preferences: { ...captured.preferences, tier } })
                   .find(row => row.id === candidate.id)?.cost })) } }))

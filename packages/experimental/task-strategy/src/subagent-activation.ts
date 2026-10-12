@@ -19,12 +19,15 @@ export async function startCancellableActivation(
   }
   const abort = (): void => {
     // The result finalizer and explicit disposal retain the rejected cleanup promise.
-    void dispose().catch(error => { void error })
+    void dispose().catch((error: unknown) => { void error })
   }
-  const result = activation.result.finally(async () => {
-    spec.signal.removeEventListener('abort', abort)
-    if (closing !== undefined) await closing
-  })
+  const result = (async () => {
+    try { return await activation.result }
+    finally {
+      spec.signal.removeEventListener('abort', abort)
+      if (closing !== undefined) await closing
+    }
+  })()
   spec.signal.addEventListener('abort', abort, { once: true })
   if (spec.signal.aborted) abort()
   return { ...activation, result, dispose }

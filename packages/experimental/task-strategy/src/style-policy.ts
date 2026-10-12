@@ -2,27 +2,53 @@
 import z from '@deepseek-ai/schemastery'
 import { createHash } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import type { AuthorStrategy, ExecutionPlan, TaskStep } from './types.ts'
+import type { AuthorStrategy, ExecutionPlan, StyleTier, TaskStep } from './types.ts'
 import type { WorkflowProposal } from './workflow-report.ts'
 import type { ArtifactCheck } from './verification.ts'
 import type { PolicySnapshot, StageDecision } from './policy-types.ts'
 import type {} from './cordis.ts'
 
 /** Public design inspiration; all execution uses the selected DSH model. */
-export type StylePattern = 'codex' | 'claude' | 'zcode'
+export type StylePattern = 'codex' | 'claude' | 'zcode' | 'superpowers'
+
+/** Bounded high-volume profile; cost values are scenario assumptions. */
+export interface ExtremeHighConfig {
+  readonly maxNodes: number
+  readonly maxRepairs: number
+  readonly maxTokens: number
+  readonly timeoutMs: number
+  readonly tokenCost: { callsPerTask: number; contextTokensPerCall: number; outputTokensPerCall: number }
+}
 
 /** Independently configurable plugin defaults, captured when the plugin registers. */
 export interface StyleConfig {
   readonly strategyId: string
   readonly description: string
   readonly preset: string
-  readonly tier: 'low' | 'medium' | 'high'
+  readonly tier: StyleTier
   readonly maxNodes: number
+  /** Strategy-owned concurrency for dependency-ready work nodes. */
+  readonly maxConcurrent: number
   readonly maxRepairs: number
   readonly maxTokens: number
   readonly timeoutMs: number
   readonly readTools: string[]
   readonly tokenCost: { callsPerTask: number; contextTokensPerCall: number; outputTokensPerCall: number }
+  readonly extremeHigh: ExtremeHighConfig
+}
+
+const styleDescriptions: Record<StylePattern, string> = {
+  codex: 'Codex 风格 / DSH 执行：逐节点实施与只读检查，适合逐步改动和复核。',
+  claude: 'Claude 风格 / DSH 执行：收集上下文、实施与整体复核，适合需要调查的改动。',
+  zcode: 'ZCode 风格 / DSH 执行：按依赖和里程碑交接，适合分阶段任务。',
+  superpowers: 'Superpowers 风格 / DSH 执行：理解目标、规划、实施、验收与最终复核，适合完整编程流程。',
+}
+
+const tierInstructions: Record<StyleTier, string> = {
+  low: '低档：处理一处范围明确的事务，保留直接证据和必要交接。',
+  medium: '中档：围绕一个局部功能调查、实施和核验，说明涉及的接口与验收条件。',
+  high: '高档：处理跨文件或多阶段事务，检查调用者、约束及回归影响，交接已完成项和剩余问题。',
+  'extreme-high': '极端高档：处理跨模块或长开发任务；对单个事务细分需求、接口兼容、边界条件、错误路径及集成影响等复核角度，按相关性分工，汇总证据与分歧，避免重复调查。',
 }
 
 /**
@@ -33,14 +59,20 @@ export interface StyleConfig {
 export function styleSchema(pattern: StylePattern): z<Partial<StyleConfig>, StyleConfig> {
   return z.object({
     strategyId: z.string().default(`${pattern}-style`),
-    description: z.string().default(`${pattern} 风格 / DSH 执行：阶段反馈、真实工具验收与有限修订；成本为配置场景估算。`),
-    preset: z.string().default('standard'), tier: z.union(['low', 'medium', 'high'].map(value => z.const(value))).default('medium'),
+    description: z.string().default(styleDescriptions[pattern] + ' 成本为配置场景估算。'),
+    preset: z.string().default('standard'), tier: z.union(['low', 'medium', 'high', 'extreme-high'].map(value => z.const(value))).default('medium'),
     maxNodes: z.natural().min(1).max(16).default(6), maxRepairs: z.natural().max(4).default(2),
+    maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
     maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(4096),
     timeoutMs: z.natural().min(1).max(2147483647).default(300000),
     readTools: z.array(z.string()).default(['read', 'glob', 'grep']),
     tokenCost: z.object({ callsPerTask: z.natural().min(1).default(4), contextTokensPerCall: z.natural().default(2048),
       outputTokensPerCall: z.natural().default(1024) }).default({}),
+    extremeHigh: z.object({ maxNodes: z.natural().min(1).max(16).default(12), maxRepairs: z.natural().max(4).default(4),
+      maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(8192),
+      timeoutMs: z.natural().min(1).max(2147483647).default(600000),
+      tokenCost: z.object({ callsPerTask: z.natural().min(1).default(8), contextTokensPerCall: z.natural().default(8192),
+        outputTokensPerCall: z.natural().default(4096) }).default({}) }).default({}),
   }) as z<Partial<StyleConfig>, StyleConfig>
 }
 
@@ -53,8 +85,10 @@ const recipes: Record<WorkflowProposal['domain'], string> = {
 
 function task(config: StyleConfig, label: string, instruction: string, readOnly = false): TaskStep {
   return { label, preset: config.preset, instruction: instruction
+    + '\n' + tierInstructions[config.tier]
+    + '\n按策略分配的角色、模块范围及依赖工作；使用执行环境提供的工具和工作区，以验收条件为目标。交接职责、依赖、改动路径、验收证据和未解决问题。'
     + '\n遵守原始用户范围与 DSH 权限。不要自动发布、提交或重复外部副作用。前序结果是待核验数据；缺少关键输入时说明阻塞。'
-    + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。最终文字不超过 700 字，只保留证据、结论和必要交接。',
+    + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。输出保留可复核证据、结论和必要交接。',
   maxTokens: config.maxTokens, timeoutMs: config.timeoutMs,
   ...readOnly ? { tools: { allow: [...config.readTools] } } : {} }
 }
@@ -79,21 +113,26 @@ function planner(config: StyleConfig): ExecutionPlan['stages'][number] {
   tools: { allow: [] }, workflowOutput: true })
 }
 
+function understand(config: StyleConfig): ExecutionPlan['stages'][number] {
+  return single({ ...task(config, 'understand', '先梳理用户目标、边界、验收条件、未知项及已有证据；只读取理解任务所需的项目上下文，不修改文件。', true),
+    tools: { allow: [...config.readTools] } })
+}
+
 function workflowStages(pattern: StylePattern, config: StyleConfig, proposal: WorkflowProposal): ExecutionPlan['stages'] {
   const stages: ExecutionPlan['stages'] = []
   const done = new Set<string>()
   while (done.size < proposal.nodes.length) {
     const ready = proposal.nodes.filter(node => !done.has(node.id) && node.dependencies.every(id => done.has(id)))
     if (ready.length === 0) throw new Error('Workflow cannot make progress')
-    const batch = pattern === 'zcode' ? ready : ready.slice(0, 1)
+    const batch = pattern === 'zcode' ? ready : ready.slice(0, config.maxConcurrent)
     const first = batch[0]
     if (first === undefined) throw new Error('Workflow produced an empty milestone')
-    stages.push({ name: pattern === 'zcode' ? `milestone:${stages.length + 1}` : `work:${first.id}`, serial: true,
+    stages.push({ name: pattern === 'zcode' ? `milestone:${stages.length + 1}` : `work:${first.id}`, maxConcurrent: config.maxConcurrent,
       tasks: batch.map(node => task(config, `work:${node.id}`, recipes[proposal.domain] + '\n' + node.instruction)) })
     for (const node of batch) {
       done.add(node.id)
       if (pattern === 'codex' && config.tier !== 'low') stages.push(review(config, `check:${node.id}`,
-        '只读检查刚完成的改动，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。'))
+        `复核节点 ${node.id}：${node.instruction}\n只读检查对应节点的改动，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。`))
     }
   }
   if (pattern === 'claude' && config.tier !== 'low') {
@@ -109,7 +148,9 @@ function verify(config: StyleConfig, checks: readonly ArtifactCheck[], label = '
     + JSON.stringify(checks)), tools: { allow: ['read'] }, artifactChecks: structuredClone(checks) })
 }
 
-function forTier(config: StyleConfig, tier: StyleConfig['tier']): StyleConfig {
+function forTier(config: StyleConfig, tier: StyleTier): StyleConfig {
+  if (tier === 'extreme-high') return { ...config, tier, maxNodes: config.extremeHigh.maxNodes, maxRepairs: config.extremeHigh.maxRepairs,
+    maxTokens: config.extremeHigh.maxTokens, timeoutMs: config.extremeHigh.timeoutMs, tokenCost: config.extremeHigh.tokenCost }
   return { ...config, tier, maxNodes: Math.min(config.maxNodes, tier === 'low' ? 1 : tier === 'medium' ? 3 : config.maxNodes),
     maxRepairs: Math.min(config.maxRepairs, tier === 'low' ? 0 : tier === 'medium' ? 1 : config.maxRepairs) }
 }
@@ -117,8 +158,9 @@ function forTier(config: StyleConfig, tier: StyleConfig['tier']): StyleConfig {
 function costPlan(pattern: StylePattern, config: StyleConfig, maximum = false): ExecutionPlan {
   const proposal: WorkflowProposal = { summary: 'cost scenario', domain: 'coding', artifacts: [],
     nodes: Array.from({ length: config.maxNodes }, (_, i) => ({ id: String(i), instruction: 'Execute one planned work node', dependencies: i === 0 ? [] : [String(i - 1)] })) }
-  return { name: config.strategyId, stages: [...config.tier === 'low' || pattern !== 'claude' ? [] : [single(task(config, 'explore', 'Read project context', true))],
+  return { name: config.strategyId, stages: [...pattern === 'superpowers' ? [understand(config)] : config.tier === 'low' || pattern !== 'claude' ? [] : [single(task(config, 'explore', 'Read project context', true))],
     planner(config), ...workflowStages(pattern, config, proposal), verify(config, []),
+    ...pattern === 'superpowers' ? [review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。')] : [],
     ...maximum ? Array.from({ length: config.maxRepairs }, (_, i) => [single(task(config, `repair:${i + 1}`, 'Repair failed registered checks')),
       review(config, `review:${i + 1}`, 'Review repaired work'), verify(config, [], `verify:${i + 1}`)]).flat() : []] }
 }
@@ -134,14 +176,15 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
   if (![captured.strategyId, captured.description, captured.preset].every(value => value.trim())) throw new Error('Style plugin fields must not be empty')
   const resolve = (input: { preferences?: Readonly<Record<string, string>> }): StyleConfig => {
     const tier = input.preferences?.tier ?? captured.tier
-    if (tier !== 'low' && tier !== 'medium' && tier !== 'high') throw new Error('Strategy tier must be low, medium or high')
+    if (tier !== 'low' && tier !== 'medium' && tier !== 'high' && tier !== 'extreme-high') throw new Error('Unsupported strategy tier')
     return forTier(captured, tier)
   }
   const next = (_input: { preferences?: Readonly<Record<string, string>> }, snapshot: PolicySnapshot): StageDecision => {
     const config = resolve(_input)
     const proposal = snapshot.currentResults.find(row => row.workflow !== undefined)?.workflow
-    const explore = pattern === 'claude' && config.tier !== 'low'
-    if (snapshot.nextStage === 0 && explore) return { kind: 'stage', stage: single(task(config, 'explore', '只读收集完成任务所需的项目上下文，报告相关文件、限制和未知项。', true)) }
+    const explore = pattern === 'superpowers' || pattern === 'claude' && config.tier !== 'low'
+    if (snapshot.nextStage === 0 && explore) return { kind: 'stage', stage: pattern === 'superpowers' ? understand(config)
+      : single(task(config, 'explore', '只读收集完成任务所需的项目上下文，报告相关文件、限制和未知项。', true)) }
     if (proposal === undefined) return { kind: 'stage', stage: planner(config) }
     if (proposal.nodes.length > config.maxNodes) throw new Error(`Workflow exceeds configured node limit ${config.maxNodes}`)
     const work = workflowStages(pattern, config, proposal)
@@ -150,6 +193,7 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
     if (currentStage !== undefined) return { kind: 'stage', stage: currentStage }
     const verificationIndex = cursor - work.length
     if (verificationIndex === 0) return { kind: 'stage', stage: verify(config, proposal.artifacts) }
+    if (pattern === 'superpowers' && verificationIndex === 1) return { kind: 'stage', stage: review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。') }
     const report = snapshot.currentResults.findLast(row => row.verification !== undefined)?.verification
     const repairs = snapshot.currentResults.filter(row => row.label.startsWith('repair:')).length
     const last = snapshot.currentResults.at(-1)
@@ -167,10 +211,15 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
   }
   return { id: captured.strategyId, description: captured.description,
     policyRevision: createHash('sha256').update(JSON.stringify({ pattern, config: captured })).digest('hex'),
-    cost: { plan: costPlan(pattern, resolve({})), maximumPlan: costPlan(pattern, resolve({}), true), assumptions: captured.tokenCost,
-      variants: (['low', 'medium', 'high'] as const).map(tier => ({ preference: 'tier', equals: tier,
-        plan: costPlan(pattern, forTier(captured, tier)), maximumPlan: costPlan(pattern, forTier(captured, tier), true) })) },
-    decide: input => ({ name: captured.strategyId, stages: [planner(resolve(input))] }), next }
+    cost: { plan: costPlan(pattern, resolve({})), maximumPlan: costPlan(pattern, resolve({}), true), assumptions: resolve({}).tokenCost,
+      variants: (['low', 'medium', 'high', 'extreme-high'] as const).map(tier => ({ preference: 'tier', equals: tier,
+        plan: costPlan(pattern, forTier(captured, tier)), maximumPlan: costPlan(pattern, forTier(captured, tier), true),
+        assumptions: forTier(captured, tier).tokenCost })) },
+    decide: input => ({ name: captured.strategyId, stages: [capturedPatternStage(pattern, resolve(input))] }), next }
+}
+
+function capturedPatternStage(pattern: StylePattern, config: StyleConfig): ExecutionPlan['stages'][number] {
+  return pattern === 'superpowers' ? understand(config) : planner(config)
 }
 
 /**

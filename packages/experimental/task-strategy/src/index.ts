@@ -51,7 +51,8 @@ export class StrategyRegistry {
         : attachMaximum(estimatePlanCost(cost.plan, '', 'registration', this.measure, cost.assumptions), cost.maximumPlan, '', this.measure, cost.assumptions)
     // Validate every declared alternative during registration, without calling author code.
     if (cost !== undefined && this.measure !== undefined) {
-      for (const variant of cost.variants ?? []) attachMaximum(estimatePlanCost(variant.plan, '', 'registration', this.measure, cost.assumptions), variant.maximumPlan, '', this.measure, cost.assumptions)
+      for (const variant of cost.variants ?? []) attachMaximum(estimatePlanCost(variant.plan, '', 'registration', this.measure, variant.assumptions ?? cost.assumptions),
+        variant.maximumPlan, '', this.measure, variant.assumptions ?? cost.assumptions)
     }
     const registered = { id: strategy.id, description: strategy.description, decide: strategy.decide.bind(strategy),
       ...strategy.policyRevision === undefined ? {} : { policyRevision: strategy.policyRevision },
@@ -77,8 +78,9 @@ export class StrategyRegistry {
       }
       const variant = declaration.variants?.find(variant => input.preferences?.[variant.preference] === variant.equals)
       const plan = variant?.plan ?? declaration.plan
-      return { id, description, cost: attachMaximum(estimatePlanCost(plan, input.task, 'task', this.measure, declaration.assumptions),
-        variant?.maximumPlan ?? declaration.maximumPlan, input.task, this.measure, declaration.assumptions) }
+      const assumptions = variant?.assumptions ?? declaration.assumptions
+      return { id, description, cost: attachMaximum(estimatePlanCost(plan, input.task, 'task', this.measure, assumptions),
+        variant?.maximumPlan ?? declaration.maximumPlan, input.task, this.measure, assumptions) }
     })
   }
 
@@ -108,9 +110,13 @@ export class StrategyRegistry {
     const capturedInput = structuredClone(input)
     const captured = captureStrategy(id, strategy.decide(structuredClone(capturedInput)))
     const next = strategy.next?.bind(strategy)
-    return { ...captured, ...strategy.policyRevision === undefined ? {} : { policyRevision: strategy.policyRevision }, ...next === undefined ? {} : {
-      next: (snapshot) => structuredClone(next(structuredClone(capturedInput), structuredClone(snapshot))),
-    } }
+    return {
+      ...captured,
+      ...strategy.policyRevision === undefined ? {} : { policyRevision: strategy.policyRevision },
+      ...next === undefined
+        ? {}
+        : { next: snapshot => structuredClone(next(structuredClone(capturedInput), structuredClone(snapshot))) },
+    }
   }
 }
 

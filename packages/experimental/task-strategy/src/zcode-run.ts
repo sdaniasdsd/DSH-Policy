@@ -42,7 +42,7 @@ export async function runZcode(
   }
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
-  const timer = setTimeout(() => deadline.abort(new Error('ZCode execution timed out')), spec.timeoutMs)
+  const timer = setTimeout(() => { deadline.abort(new Error('ZCode execution timed out')) }, spec.timeoutMs)
   let handle: ReturnType<Subprocess['spawn']> | undefined
   try {
     handle = subprocess.spawn({ argv, cwd, env: spec.env, signal: combined, graceMs: spec.graceMs,

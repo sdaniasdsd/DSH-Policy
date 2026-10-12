@@ -3,6 +3,9 @@ import type { SelectionConfig } from './selection-types.ts'
 import type { PolicySnapshot, StageDecision } from './policy-types.ts'
 import type { ArtifactCheck, VerificationReport } from './verification-types.ts'
 import type { WorkflowProposal, ReviewReport } from './workflow-types.ts'
+
+/** Supported style orchestration intensity. */
+export type StyleTier = 'low' | 'medium' | 'high' | 'extreme-high'
 export type { EntryView } from './entry-types.ts'
 export type { TaskSwitch } from './runtime-types.ts'
 
@@ -37,7 +40,14 @@ export interface TaskStep {
 /** Sequential stages, with concurrent children inside each stage. */
 export interface ExecutionPlan {
   readonly name: string
-  readonly stages: { readonly name: string; readonly serial?: boolean; readonly tasks: TaskStep[] }[]
+  readonly stages: {
+    readonly name: string
+    /** Explicit serial execution; incompatible with maxConcurrent greater than one. */
+    readonly serial?: boolean
+    /** Author-selected worker count; omission uses the carrier's default. */
+    readonly maxConcurrent?: number
+    readonly tasks: TaskStep[]
+  }[]
 }
 
 /** A trusted, finite synchronous plan decision; asynchronous work belongs to the executor. */
@@ -135,6 +145,7 @@ export type ExecutionEvent =
 
 /** Validated per-run limits and caller cancellation. */
 export interface ExecutionOptions {
+  /** Default worker count for stages without an explicit author choice. */
   readonly maxConcurrent: number
   readonly maxTasks: number
   readonly maxResultBytes: number
@@ -149,12 +160,21 @@ export interface ExecutionResult {
   readonly error?: string
 }
 
+/** One preference-selected alternative and its optional scenario assumptions. */
+export interface StrategyVariant {
+  readonly preference: string
+  readonly equals: string
+  readonly plan: ExecutionPlan
+  readonly maximumPlan?: ExecutionPlan
+  readonly assumptions?: TokenCostAssumptions
+}
+
 /** Declarative author policy with optional preference-selected alternatives. */
 export interface StrategyDefinition {
   readonly id: string
   readonly description: string
   readonly plan: ExecutionPlan
-  readonly variants?: { readonly preference: string; readonly equals: string; readonly plan: ExecutionPlan; readonly maximumPlan?: ExecutionPlan }[]
+  readonly variants?: readonly StrategyVariant[]
   /** Optional scenario assumptions; no hidden output or turn defaults. */
   readonly tokenCost?: TokenCostAssumptions
 }
@@ -169,6 +189,7 @@ export interface AdapterConfig {
   /** Explicit opt-in for external execution adapters; omission permits none. */
   readonly allowedExecutors?: string[] | undefined
   readonly strategies: StrategyDefinition[]
+  /** Default worker count; each author stage may supply its own maxConcurrent. */
   readonly maxConcurrent: number
   readonly maxTasks: number
   readonly maxPlanBytes: number

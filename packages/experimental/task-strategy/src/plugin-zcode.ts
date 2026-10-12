@@ -46,7 +46,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   const subprocess = ctx.subprocess
   const executable = await subprocess.resolveExecutable(captured.command, captured.env)
-  const spec: ZcodeRunSpec = { ...captured, executable }
+  const spec: ZcodeRunSpec = { executable, args: captured.args, env: captured.env,
+    mode: captured.mode, enableWorkflow: captured.enableWorkflow, timeoutMs: captured.timeoutMs,
+    graceMs: captured.graceMs, maxPromptBytes: captured.maxPromptBytes, maxOutputBytes: captured.maxOutputBytes }
   ctx.taskRuns.registerExecutor({ id: captured.executorId, description: captured.description, check: () => {},
     execute: (parent, _step, prompt, signal) => {
       const cwd = parent.session.header.cwd

@@ -5562,7 +5562,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ExecutionPlan',
-    declaration: 'export interface ExecutionPlan {\n    readonly name: string;\n    readonly stages: {\n        readonly name: string;\n        readonly serial?: boolean;\n        readonly tasks: TaskStep[];\n    }[];\n}',
+    declaration: 'export interface ExecutionPlan {\n    readonly name: string;\n    readonly stages: {\n        readonly name: string;\n        readonly serial?: boolean;\n        readonly maxConcurrent?: number;\n        readonly tasks: TaskStep[];\n    }[];\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -6342,11 +6342,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OrchestrationMode',
-    declaration: 'export interface OrchestrationMode {\n    readonly id: string;\n    readonly label: string;\n    readonly strategy: string;\n    readonly defaultTier?: \'low\' | \'medium\' | \'high\';\n}',
+    declaration: 'export interface OrchestrationMode {\n    readonly id: string;\n    readonly label: string;\n    readonly strategy: string;\n    readonly defaultTier?: StyleTier;\n}',
   },
   {
     name: 'OrchestrationState',
-    declaration: 'export interface OrchestrationState {\n    readonly selected: string;\n    readonly tier?: \'low\' | \'medium\' | \'high\';\n    readonly options: readonly {\n        readonly id: string;\n        readonly label: string;\n        readonly available: boolean;\n        readonly reason?: string;\n    }[];\n}',
+    declaration: 'export interface OrchestrationState {\n    readonly selected: string;\n    readonly tier?: StyleTier;\n    readonly options: readonly {\n        readonly id: string;\n        readonly label: string;\n        readonly available: boolean;\n        readonly reason?: string;\n    }[];\n}',
   },
   {
     name: 'OTelEventRecord',
@@ -7786,7 +7786,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'StrategyDefinition',
-    declaration: 'export interface StrategyDefinition {\n    readonly id: string;\n    readonly description: string;\n    readonly plan: ExecutionPlan;\n    readonly variants?: {\n        readonly preference: string;\n        readonly equals: string;\n        readonly plan: ExecutionPlan;\n        readonly maximumPlan?: ExecutionPlan;\n    }[];\n    readonly tokenCost?: TokenCostAssumptions;\n}',
+    declaration: 'export interface StrategyDefinition {\n    readonly id: string;\n    readonly description: string;\n    readonly plan: ExecutionPlan;\n    readonly variants?: readonly StrategyVariant[];\n    readonly tokenCost?: TokenCostAssumptions;\n}',
   },
   {
     name: 'StrategyInput',
@@ -7797,8 +7797,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type StrategyTokenCost = {\n    readonly kind: \'unknown\';\n    readonly reason: \'dynamic-plan\' | \'estimator-unavailable\';\n} | {\n    readonly kind: \'estimated\';\n    readonly basis: \'registration\' | \'task\';\n    readonly planName: string;\n    readonly tasks: number;\n    readonly stages: number;\n    readonly knownInputTokens: number;\n    readonly unknowns: readonly TokenCostUnknown[];\n    readonly assumptions?: TokenCostAssumptions;\n    readonly estimatedInputTokens?: number;\n    readonly estimatedOutputTokens?: number;\n    readonly estimatedTotalTokens?: number;\n    readonly maximumScenarioTokens?: number;\n    readonly maximumScenarioTasks?: number;\n};',
   },
   {
+    name: 'StrategyVariant',
+    declaration: 'export interface StrategyVariant {\n    readonly preference: string;\n    readonly equals: string;\n    readonly plan: ExecutionPlan;\n    readonly maximumPlan?: ExecutionPlan;\n    readonly assumptions?: TokenCostAssumptions;\n}',
+  },
+  {
     name: 'StreamChunk',
     declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: ToolCallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: ReplayEnvelope;\n};',
+  },
+  {
+    name: 'StyleTier',
+    declaration: 'export type StyleTier = \'low\' | \'medium\' | \'high\' | \'extreme-high\';',
   },
   {
     name: 'SubagentActivation',
@@ -8014,7 +8022,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskReceipt',
-    declaration: 'export interface TaskReceipt {\n    readonly jobId: JobId;\n    readonly name: string;\n    readonly strategy: string;\n    readonly selection?: {\n        readonly kind: \'auto\' | \'fallback\';\n        readonly tier?: \'low\' | \'medium\' | \'high\';\n        readonly reason: string;\n    };\n}',
+    declaration: 'export interface TaskReceipt {\n    readonly jobId: JobId;\n    readonly name: string;\n    readonly strategy: string;\n    readonly selection?: {\n        readonly kind: \'auto\' | \'fallback\';\n        readonly tier?: StyleTier;\n        readonly reason: string;\n    };\n}',
   },
   {
     name: 'TaskResult',

@@ -2,14 +2,19 @@
 import type { UserMessage, MessageId } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TaskReceipt, TaskRunView } from './runtime-types.ts'
-import type { StrategyTokenCost } from './types.ts'
+import type { StrategyTokenCost, StyleTier } from './types.ts'
 
 /** Plugin-owned orchestration mode and its registered execution policy. */
-export interface OrchestrationMode { readonly id: string; readonly label: string; readonly strategy: string; readonly defaultTier?: 'low' | 'medium' | 'high' }
+export interface OrchestrationMode {
+  readonly id: string
+  readonly label: string
+  readonly strategy: string
+  readonly defaultTier?: StyleTier
+}
 /** Session-local composer selection and current plugin availability; resets with the Host owner. */
 export interface OrchestrationState {
   readonly selected: string
-  readonly tier?: 'low' | 'medium' | 'high'
+  readonly tier?: StyleTier
   readonly options: readonly { readonly id: string; readonly label: string; readonly available: boolean; readonly reason?: string }[]
 }
 

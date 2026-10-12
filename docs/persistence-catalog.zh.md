@@ -65,7 +65,7 @@
 | `event:subagent/descriptor` | event | `b79ada42962cad0190a9d465805260567621fa3a4abd757eb31e6016b52d5ab5` | [`{ type: "subagent/descriptor" }`](#persistence-type-sha256-b79ada42962cad0190a9d465805260567621fa3a4abd757eb31e6016b52d5ab5) |
 | `event:subagent/model-selection-policy` | event | `a6567ccb2e530606b775371eb4fa31468d72084339968e8b0440a516a23b39dc` | [`{ type: "subagent/model-selection-policy" }`](#persistence-type-sha256-a6567ccb2e530606b775371eb4fa31468d72084339968e8b0440a516a23b39dc) |
 | `event:system/message` | event | `69081694be231d56fd9580ba14645fd5e35373202605d5c5c841a9435b5fa3b1` | [`{ type: "system/message" }`](#persistence-type-sha256-69081694be231d56fd9580ba14645fd5e35373202605d5c5c841a9435b5fa3b1) |
-| `event:task-strategy/entry` | event | `bfca45855aa0a65e57c7f0adae934706bb235122c222fa0006c2d36947f3a810` | [`{ type: "task-strategy/entry" }`](#persistence-type-sha256-bfca45855aa0a65e57c7f0adae934706bb235122c222fa0006c2d36947f3a810) |
+| `event:task-strategy/entry` | event | `dbd54651611635dc6abb01938296dec712a1e01212c768c33f89ae327ae6c02b` | [`{ type: "task-strategy/entry" }`](#persistence-type-sha256-dbd54651611635dc6abb01938296dec712a1e01212c768c33f89ae327ae6c02b) |
 | `event:team/member` | event | `4fb59762612c3e3ac3a3bd4f84c9c148d3c3893bd422ba2b201cc039fabd49bc` | [`{ type: "team/member" }`](#persistence-type-sha256-4fb59762612c3e3ac3a3bd4f84c9c148d3c3893bd422ba2b201cc039fabd49bc) |
 | `event:team/message/delivered` | event | `48f9c19417a1abbedfa59f4667bba36b93ac2db407adf5e84cb3ba0de30942cb` | [`{ type: "team/message/delivered" }`](#persistence-type-sha256-48f9c19417a1abbedfa59f4667bba36b93ac2db407adf5e84cb3ba0de30942cb) |
 | `event:team/message/queued` | event | `21fb6a90d5068f6a0003b7ab316ed2f56342477146a65c00db0f13c4d8df667d` | [`{ type: "team/message/queued" }`](#persistence-type-sha256-21fb6a90d5068f6a0003b7ab316ed2f56342477146a65c00db0f13c4d8df667d) |
@@ -979,7 +979,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 'task-strategy/entry': EntryEvent
 ```
 
-来源：[`packages/experimental/task-strategy/src/entry-types.ts:49`](../packages/experimental/task-strategy/src/entry-types.ts)
+来源：[`packages/experimental/task-strategy/src/entry-types.ts:54`](../packages/experimental/task-strategy/src/entry-types.ts)
 
 ### `team/*`
 
@@ -1831,6 +1831,14 @@ SHA-256: `fc351843b8ecbd05d739c4ca4fcd4bc7cfad6c0beacbbd48389959bb1bf06cf3`
 SHA-256: `05210aebe32e91fcdc0f8af7e6cc98c359ffbeb3aa74d805f1394f34f7725dc6`
 
 `"external-or-mixed"`
+
+<a id="persistence-type-sha256-bbacb218c1d0128d02f8b4c2d2f2b7fa8dc8344e9daffeaf5023f5d8db9e326d"></a>
+
+### `"extreme-high"`
+
+SHA-256: `bbacb218c1d0128d02f8b4c2d2f2b7fa8dc8344e9daffeaf5023f5d8db9e326d`
+
+`"extreme-high"`
 
 <a id="persistence-type-sha256-b57a2889408de36e4516807194c73bdecd51a92f633ccd05db81bf049200f420"></a>
 
@@ -3561,7 +3569,7 @@ SHA-256: `2f7930d630ceb4fdb11761cab2799dc818edde6d7ca6c02afe49eb48ff6dcb5c`
 
 仅表示归属的新增 kind：`task-strategy-entry`, `tmux-context`, `user-question-reply`, `working-directory`.
 
-<a id="persistence-type-sha256-84093e3c8640e9a108d906bdeab0e8e3be6b3df61e2b65e27a0ab91676ac3440"></a>
+<a id="persistence-type-sha256-4f29925f9a26da0ff88c803f3abfd8bcaf835ce925d020506c0545755c5869f5"></a>
 
 <a id="persistence-type-entryevent"></a>
 
@@ -3569,16 +3577,16 @@ SHA-256: `2f7930d630ceb4fdb11761cab2799dc818edde6d7ca6c02afe49eb48ff6dcb5c`
 
 ### `EntryEvent`
 
-SHA-256: `84093e3c8640e9a108d906bdeab0e8e3be6b3df61e2b65e27a0ab91676ac3440`
+SHA-256: `4f29925f9a26da0ff88c803f3abfd8bcaf835ce925d020506c0545755c5869f5`
 
-来源：[`packages/experimental/task-strategy/src/entry-types.ts:41`](../packages/experimental/task-strategy/src/entry-types.ts)
+来源：[`packages/experimental/task-strategy/src/entry-types.ts:46`](../packages/experimental/task-strategy/src/entry-types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
 | `input` | 必需 | [`UserMessage`](#persistence-type-sha256-262c59dba1e56ae7e2414df28f944c7d5f3b0012ad23b06ebe9ca480b1cd152f) |
-| `view` | 必需 | [`EntryView`](#persistence-type-sha256-85f81391bee763cfa0723a69b4ce6b4af567f451f5751e8972157e7c831fd8d9) |
+| `view` | 必需 | [`EntryView`](#persistence-type-sha256-ea2d26804fe6e374a99ac94f491989200ac0a620a47af850e30efdfc52a21ab1) |
 
-<a id="persistence-type-sha256-85f81391bee763cfa0723a69b4ce6b4af567f451f5751e8972157e7c831fd8d9"></a>
+<a id="persistence-type-sha256-ea2d26804fe6e374a99ac94f491989200ac0a620a47af850e30efdfc52a21ab1"></a>
 
 <a id="persistence-type-entryview"></a>
 
@@ -3586,9 +3594,9 @@ SHA-256: `84093e3c8640e9a108d906bdeab0e8e3be6b3df61e2b65e27a0ab91676ac3440`
 
 ### `EntryView`
 
-SHA-256: `85f81391bee763cfa0723a69b4ce6b4af567f451f5751e8972157e7c831fd8d9`
+SHA-256: `ea2d26804fe6e374a99ac94f491989200ac0a620a47af850e30efdfc52a21ab1`
 
-来源：[`packages/experimental/task-strategy/src/entry-types.ts:26`](../packages/experimental/task-strategy/src/entry-types.ts)
+来源：[`packages/experimental/task-strategy/src/entry-types.ts:31`](../packages/experimental/task-strategy/src/entry-types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -3597,7 +3605,7 @@ SHA-256: `85f81391bee763cfa0723a69b4ce6b4af567f451f5751e8972157e7c831fd8d9`
 | `messageId` | 必需 | `string` |
 | `progress` | 可选 | `string` |
 | `proposal` | 可选 | [`{ id, strategy?, task }`](#persistence-type-sha256-2df6fd125e751e5bdfd536c77c28c69001351c03afb309eafd12834b26d3f998) |
-| `receipt` | 可选 | [`TaskReceipt`](#persistence-type-sha256-dbdc16602c6861c16f25056f3548de9c5373891e495d38c836f9e53e062811cb) |
+| `receipt` | 可选 | [`TaskReceipt`](#persistence-type-sha256-6c0dcb3a962e0736d4c04146728fa279217ce37bf9df8c952c0a686ed3edf335) |
 | `requestId` | 必需 | `string` |
 | `run` | 可选 | [`{ binding, completedStages, completedTasks, error?, … }`](#persistence-type-sha256-2d4f999bf0720c48c7d4a29c4c72b23aadb441e3df32559c63f4f6c21191c730) |
 | `sessionId` | 必需 | `string` |
@@ -5088,7 +5096,7 @@ SHA-256: `65a8400e451e667e5b6e34df72ceb81fca8c12330330fa72083ad40279b189ad`
 |---|---|---|
 | `kind` | 必需 | `"system-prompt"` |
 
-<a id="persistence-type-sha256-dbdc16602c6861c16f25056f3548de9c5373891e495d38c836f9e53e062811cb"></a>
+<a id="persistence-type-sha256-6c0dcb3a962e0736d4c04146728fa279217ce37bf9df8c952c0a686ed3edf335"></a>
 
 <a id="persistence-type-packagesexperimentaltask-strategysrcruntime-typeststaskreceipt"></a>
 
@@ -5096,7 +5104,7 @@ SHA-256: `65a8400e451e667e5b6e34df72ceb81fca8c12330330fa72083ad40279b189ad`
 
 ### `TaskReceipt`
 
-SHA-256: `dbdc16602c6861c16f25056f3548de9c5373891e495d38c836f9e53e062811cb`
+SHA-256: `6c0dcb3a962e0736d4c04146728fa279217ce37bf9df8c952c0a686ed3edf335`
 
 来源：[`packages/experimental/task-strategy/src/runtime-types.ts:71`](../packages/experimental/task-strategy/src/runtime-types.ts)
 
@@ -5104,7 +5112,7 @@ SHA-256: `dbdc16602c6861c16f25056f3548de9c5373891e495d38c836f9e53e062811cb`
 |---|---|---|
 | `jobId` | 必需 | `string` |
 | `name` | 必需 | `string` |
-| `selection` | 可选 | [`{ kind, reason, tier? }`](#persistence-type-sha256-9b561d3aa7c0fdf178e2c4f7556b9c92a03b52b8f1ffa008b4bbd256ea5318a9) |
+| `selection` | 可选 | [`{ kind, reason, tier? }`](#persistence-type-sha256-3552b9175eaaacfecfb2901a1f71c2def99d9088a1f481448ccc2d6505b7d006) |
 | `strategy` | 必需 | `string` |
 
 <a id="persistence-type-sha256-dfce5db4aa42b7ebe0bb79eca92553587287e18c06b9eba85cbfb9d332e26acd"></a>
@@ -5281,7 +5289,7 @@ SHA-256: `4b7ddaf3710b88ff9b8df66304f5f97bf03688fd19730eedc2e9535203c820ea`
 
 SHA-256: `da5a7e8564a15a1e83f0af4ed82b45b6af1f03882956eb5539266e6764983ecc`
 
-来源：[`packages/experimental/task-strategy/src/types.ts:57`](../packages/experimental/task-strategy/src/types.ts)
+来源：[`packages/experimental/task-strategy/src/types.ts:67`](../packages/experimental/task-strategy/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -5299,7 +5307,7 @@ SHA-256: `da5a7e8564a15a1e83f0af4ed82b45b6af1f03882956eb5539266e6764983ecc`
 
 SHA-256: `5080b8455007dc2b55acf811277573212bfc486c93e745a792630f14e4612802`
 
-来源：[`packages/experimental/task-strategy/src/types.ts:76`](../packages/experimental/task-strategy/src/types.ts)
+来源：[`packages/experimental/task-strategy/src/types.ts:86`](../packages/experimental/task-strategy/src/types.ts)
 
 以下类型之一：
 
@@ -6006,18 +6014,6 @@ SHA-256: `904bf499d98be4a3a5f836fcac533b6c4899569b018071e6604e1d32657d00fd`
 - `"replace"`
 - `"set"`
 
-<a id="persistence-type-sha256-a49d1f78c32027e20f567158604dd21931d04937086affdd717231be7ac9f875"></a>
-
-### `union (3 variants)`
-
-SHA-256: `a49d1f78c32027e20f567158604dd21931d04937086affdd717231be7ac9f875`
-
-以下类型之一：
-
-- `"high"`
-- `"low"`
-- `"medium"`
-
 <a id="persistence-type-sha256-c078d3e7622484912c52e5180dbc5e08b2bdf97ab20ca947662b5003e0974c23"></a>
 
 ### `union (3 variants)`
@@ -6041,6 +6037,19 @@ SHA-256: `fd0d91a1f9dd2efb8959bdf5e07f8f0a98b1cdfa38ce8d4732ebde0b44c3abd4`
 - `"completed"`
 - `"in_progress"`
 - `"pending"`
+
+<a id="persistence-type-sha256-104511cb6b0b2da2ae2a93a4e5d9f4498c1f7c71f236561f34049acfea880d0c"></a>
+
+### `union (4 variants)`
+
+SHA-256: `104511cb6b0b2da2ae2a93a4e5d9f4498c1f7c71f236561f34049acfea880d0c`
+
+以下类型之一：
+
+- `"extreme-high"`
+- `"high"`
+- `"low"`
+- `"medium"`
 
 <a id="persistence-type-sha256-62e6a429ff3f390a46ac39fb468692032f42936ca0db19b53454184189401379"></a>
 
@@ -6761,7 +6770,7 @@ SHA-256: `45a574b7f37b0bd74954dd642bd60b34db7ed2928fc509250f254d8b1932605d`
 
 SHA-256: `2df6fd125e751e5bdfd536c77c28c69001351c03afb309eafd12834b26d3f998`
 
-来源：[`packages/experimental/task-strategy/src/entry-types.ts:36`](../packages/experimental/task-strategy/src/entry-types.ts)
+来源：[`packages/experimental/task-strategy/src/entry-types.ts:41`](../packages/experimental/task-strategy/src/entry-types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -6856,11 +6865,11 @@ SHA-256: `1ccb56061942f5ccb0d30c9e4f2883b9d115ff906560029de637b61d3cde896d`
 | `turn` | 必需 | `number` |
 | `usage` | 可选 | [`TokenUsage`](#persistence-type-sha256-fec5442b9ee4122e10514d81d5a43648003fe8bfb7ee2ba50c0cdbdd383ed394) |
 
-<a id="persistence-type-sha256-9b561d3aa7c0fdf178e2c4f7556b9c92a03b52b8f1ffa008b4bbd256ea5318a9"></a>
+<a id="persistence-type-sha256-3552b9175eaaacfecfb2901a1f71c2def99d9088a1f481448ccc2d6505b7d006"></a>
 
 ### `{ kind, reason, tier? }`
 
-SHA-256: `9b561d3aa7c0fdf178e2c4f7556b9c92a03b52b8f1ffa008b4bbd256ea5318a9`
+SHA-256: `3552b9175eaaacfecfb2901a1f71c2def99d9088a1f481448ccc2d6505b7d006`
 
 来源：[`packages/experimental/task-strategy/src/runtime-types.ts:76`](../packages/experimental/task-strategy/src/runtime-types.ts)
 
@@ -6868,7 +6877,7 @@ SHA-256: `9b561d3aa7c0fdf178e2c4f7556b9c92a03b52b8f1ffa008b4bbd256ea5318a9`
 |---|---|---|
 | `kind` | 必需 | [`union (2 variants)`](#persistence-type-sha256-328cde978c36c447cfdfdd3ea9a2732594db44e3460f46e3d011891f3a6e2338) |
 | `reason` | 必需 | `string` |
-| `tier` | 可选 | [`union (3 variants)`](#persistence-type-sha256-a49d1f78c32027e20f567158604dd21931d04937086affdd717231be7ac9f875) |
+| `tier` | 可选 | [`union (4 variants)`](#persistence-type-sha256-104511cb6b0b2da2ae2a93a4e5d9f4498c1f7c71f236561f34049acfea880d0c) |
 
 <a id="persistence-type-sha256-0a30c3be336cdd4f8f34e66543a3d46d611c43986edd9b3ce6cbb9b721d3b5d3"></a>
 
@@ -7015,7 +7024,7 @@ SHA-256: `ba4c40b4381e0dcdfab8fc9fc75b5c9b3e8f09ef56deeb1bec8e703b0ef8cd6d`
 
 SHA-256: `6a3d0d9048f5a2687410f460c99df4b505b5c7381c3b1938141862c060b3ea5b`
 
-来源：[`packages/experimental/task-strategy/src/types.ts:80`](../packages/experimental/task-strategy/src/types.ts)
+来源：[`packages/experimental/task-strategy/src/types.ts:90`](../packages/experimental/task-strategy/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -7708,7 +7717,7 @@ SHA-256: `1d76406cbb2ddadb0dbbb51e9d8bc6cf678fed455cf8eb512f36f7c86d37a62f`
 
 SHA-256: `8f5f43dec7fa89c2b5c24687eb4cd72ace3890d861bdc9275c9573d0d605a3a7`
 
-来源：[`packages/experimental/task-strategy/src/entry-types.ts:59`](../packages/experimental/task-strategy/src/entry-types.ts)
+来源：[`packages/experimental/task-strategy/src/entry-types.ts:64`](../packages/experimental/task-strategy/src/entry-types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -8056,7 +8065,7 @@ SHA-256: `8fcb0b44a575e998665c053643d1ab04c82f39253ebd190ac0c975b78e40b543`
 
 SHA-256: `04962c61bb2efeed57f98de797269aba097d3e0a5c5b8dca2994451b22531df0`
 
-来源：[`packages/experimental/task-strategy/src/types.ts:80`](../packages/experimental/task-strategy/src/types.ts)
+来源：[`packages/experimental/task-strategy/src/types.ts:90`](../packages/experimental/task-strategy/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -9200,17 +9209,17 @@ SHA-256: `69081694be231d56fd9580ba14645fd5e35373202605d5c5c841a9435b5fa3b1`
 | `time` | 必需 | `number` |
 | `type` | 必需 | `"system/message"` |
 
-<a id="persistence-type-sha256-bfca45855aa0a65e57c7f0adae934706bb235122c222fa0006c2d36947f3a810"></a>
+<a id="persistence-type-sha256-dbd54651611635dc6abb01938296dec712a1e01212c768c33f89ae327ae6c02b"></a>
 
 <a id="persistence-type-eventtask-strategyentry"></a>
 
 ### `{ type: "task-strategy/entry" }`
 
-SHA-256: `bfca45855aa0a65e57c7f0adae934706bb235122c222fa0006c2d36947f3a810`
+SHA-256: `dbd54651611635dc6abb01938296dec712a1e01212c768c33f89ae327ae6c02b`
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
-| `data` | 必需 | [`EntryEvent`](#persistence-type-sha256-84093e3c8640e9a108d906bdeab0e8e3be6b3df61e2b65e27a0ab91676ac3440) |
+| `data` | 必需 | [`EntryEvent`](#persistence-type-sha256-4f29925f9a26da0ff88c803f3abfd8bcaf835ce925d020506c0545755c5869f5) |
 | `ignorable` | 可选 | `true` |
 | `seq` | 必需 | `number` |
 | `time` | 必需 | `number` |

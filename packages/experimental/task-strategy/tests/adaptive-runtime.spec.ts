@@ -13,8 +13,8 @@ describe('synchronous stage policies', () => {
     const observed: number[] = []
     let once = false
     const run = new TaskRun('task', captureStrategy('old', plan), async () => ({ stopReason: 'completed', output: 'old evidence',
-      verification: { status: 'passed', checks: [] } }), { ...options, onEvent: event => {
-      if (event.type === 'task-end' && !once) { once = true; run.requestSwitch(() => ({ ...captureStrategy('new', plan), next: snapshot => {
+      verification: { status: 'passed', checks: [] } }), { ...options, onEvent: (event) => {
+      if (event.type === 'task-end' && !once) { once = true; run.requestSwitch(() => ({ ...captureStrategy('new', plan), next: (snapshot) => {
         observed.push(snapshot.currentResults.length)
         if (snapshot.nextStage === 0) { expect(snapshot.results).toHaveLength(1); return { kind: 'stage', stage: stage('new planner') } }
         return { kind: 'finish', reason: 'done' }
@@ -45,7 +45,9 @@ describe('synchronous stage policies', () => {
     const run = new TaskRun('task', { ...captureStrategy('bounded', plan),
       next: () => ({ kind: 'stage', stage: stage('again') }),
     }, async () => { count++; return { stopReason: 'completed', output: 'ok' } }, options)
-    expect(await run.start()).toMatchObject({ status: 'failed', error: expect.stringContaining('cumulative task limit') })
+    const result = await run.start()
+    expect(result.status).toBe('failed')
+    expect(result.error).toContain('cumulative task limit')
     expect(count).toBe(3)
   })
 
@@ -62,7 +64,7 @@ describe('synchronous stage policies', () => {
     const run = new TaskRun('task', { ...captureStrategy('blocked', plan),
       next: () => ({ kind: 'blocked', reason: 'Need a target' }),
     }, async () => { throw new Error('must not execute') }, { ...options,
-      onEvent: event => { if (event.type === 'waiting') { expect(run.inspect().error).toBe('Need a target'); run.cancel('stop') } },
+      onEvent: (event) => { if (event.type === 'waiting') { expect(run.inspect().error).toBe('Need a target'); run.cancel('stop') } },
     })
     expect((await run.start()).status).toBe('cancelled')
   })

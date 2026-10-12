@@ -56,7 +56,7 @@ describe('native ZCode headless integration', () => {
     const b = bench()
     const done = Promise.withResolvers<{ exitCode: number; signal: null }>()
     b.spawn.mockImplementation((spec) => {
-      spec.signal!.addEventListener('abort', () => done.resolve({ exitCode: 0, signal: null }), { once: true })
+      spec.signal!.addEventListener('abort', () => { done.resolve({ exitCode: 0, signal: null }) }, { once: true })
       return { ...b.handle, done: done.promise }
     })
     const ctx = new Context(); contexts.push(ctx); await ctx.plugin(b.Process)

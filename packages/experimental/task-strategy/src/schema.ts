@@ -16,6 +16,7 @@ export const planSchema = z.object({
   stages: z.array(z.object({
     name: z.string().required(),
     serial: z.boolean(),
+    maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER),
     tasks: z.array(z.object({
       label: z.string().required(),
       preset: z.string(),

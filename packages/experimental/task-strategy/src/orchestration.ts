@@ -1,11 +1,12 @@
 import { errorText } from './errors.ts'
 import type { OrchestrationMode, OrchestrationState } from './entry-types.ts'
+import type { StyleTier } from './types.ts'
 
 /** Effect-scoped mode registrations and owner-local selections, without changing model routing. */
 export class OrchestrationModes {
   private readonly registrations = new Map<string, { mode: OrchestrationMode; check: () => void }>()
   private readonly selections = new WeakMap<object, string>()
-  private readonly tiers = new WeakMap<object, 'low' | 'medium' | 'high'>()
+  private readonly tiers = new WeakMap<object, StyleTier>()
 
   /**
    * Capture live style strategies that declare tier support.
@@ -38,7 +39,7 @@ export class OrchestrationModes {
    * @param tier - requested low, medium or high tier.
    */
   selectTier(owner: object, tier: string): void {
-    if (tier !== 'low' && tier !== 'medium' && tier !== 'high') throw new Error('Strategy tier must be low, medium or high')
+    if (tier !== 'low' && tier !== 'medium' && tier !== 'high' && tier !== 'extreme-high') throw new Error('Unsupported strategy tier')
     const mode = this.registrations.get(this.selections.get(owner) ?? 'dsh')
     if (mode?.mode.defaultTier === undefined) throw new Error('This mode does not support tier selection')
     mode.check(); this.tiers.set(owner, tier)
@@ -65,7 +66,7 @@ export class OrchestrationModes {
    * @returns detached availability facts and the retained choice.
    */
   read(owner: object): OrchestrationState {
-    const tier = this.capturePreferences(owner).tier as 'low' | 'medium' | 'high' | undefined
+    const tier = this.capturePreferences(owner).tier as StyleTier | undefined
     return { selected: this.selections.get(owner) ?? 'dsh', ...tier === undefined ? {} : { tier }, options: [
       { id: 'dsh', label: 'DSH', available: true },
       ...[...this.registrations.values()].map(({ mode, check }) => {

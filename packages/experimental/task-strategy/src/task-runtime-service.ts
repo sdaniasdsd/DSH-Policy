@@ -99,7 +99,8 @@ export default class TaskRuns extends Service {
     const summary = { provider: config.provider, ...modelRoute.model === undefined ? {} : { model: modelRoute.model },
       ...modelRoute.provider === undefined ? {} : { modelProvider: modelRoute.provider },
       permissionAuthority: (config.allowedExecutors?.length ?? 0) === 0 ? 'dsh' as const : 'external-or-mixed' as const,
-      maxTasks: config.maxTasks, maxResultBytes: config.maxResultBytes, allowedPresets: [...config.allowedPresets], allowedExecutors: [...config.allowedExecutors ?? []] }
+      maxTasks: config.maxTasks, maxResultBytes: config.maxResultBytes,
+      allowedPresets: [...config.allowedPresets], allowedExecutors: [...config.allowedExecutors ?? []] }
     const execution = { ...summary, revision: createHash('sha256').update(JSON.stringify({ summary, rules: config, strategy: captured.id,
       plan: captured.revision, policy: captured.policyRevision })).digest('hex') }
     const subagents = this.ctx.subagents

@@ -18,6 +18,12 @@ export function validatePlan(plan: ExecutionPlan, options: Pick<ExecutionOptions
   let count = 0
   for (const stage of plan.stages) {
     if (!stage.name.trim() || stage.tasks.length === 0) throw new Error('Execution stage must not be empty')
+    if (stage.maxConcurrent !== undefined && (!Number.isSafeInteger(stage.maxConcurrent) || stage.maxConcurrent <= 0)) {
+      throw new Error('Stage concurrency must be a positive safe integer')
+    }
+    if (stage.serial === true && stage.maxConcurrent !== undefined && stage.maxConcurrent > 1) {
+      throw new Error('Serial stage cannot request more than one worker')
+    }
     count += stage.tasks.length
     for (const step of stage.tasks) {
       if (!step.label.trim() || !step.instruction.trim()) throw new Error('Task fields must not be empty')
@@ -119,7 +125,8 @@ async function executeStages(
           }
         }
       }
-      await Promise.all(Array.from({ length: Math.min(stage.serial === true ? 1 : maxConcurrent, stage.tasks.length) }, () => worker()))
+      const workers = stage.serial === true ? 1 : stage.maxConcurrent ?? maxConcurrent
+      await Promise.all(Array.from({ length: Math.min(workers, stage.tasks.length) }, () => worker()))
       results.push(...data.results())
     }
     if (failure !== undefined) return { status: 'failed', results, error: failure }
