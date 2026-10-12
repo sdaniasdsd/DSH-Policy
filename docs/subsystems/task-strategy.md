@@ -12,7 +12,7 @@ See the [package documentation](../../packages/experimental/task-strategy/README
 
 `AuthorStrategy.decide` and `StrategyRegistry.decide` synchronously produce detached plan data; asynchronous work belongs to the executor. The carrier's `ctx.taskStrategies.decide` remains asynchronous because it also performs admission. The package documentation defines author requirements.
 
-Host callers can submit a named strategy with a per-owner `requestId`, inspect its retained task state and request a replacement at a drained stage boundary. The JobId remains stable across replacements. Replacement preserves results and cumulative child limits; failed replacement waits for an explicit resume or another switch. Host controls and process-local state are defined in [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts); root model tools expose submit, list, plan and run.
+Host callers can submit a named strategy with a per-owner `requestId`, inspect its retained task state and request a replacement at a drained stage boundary. The JobId remains stable across replacements. Replacement preserves results and cumulative child limits; failed replacement waits for an explicit resume or another switch. Host controls and process-local state are defined in [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts); root model tools expose submit, list, plan, run, inspect and message.
 
 | Type | Host responsibility |
 |---|---|
@@ -21,6 +21,13 @@ Host callers can submit a named strategy with a per-owner `requestId`, inspect i
 | `TaskReceipt` | Accepted JobId, initial plan name and chosen strategy; not a completion report |
 | `TaskSwitch` | Target strategy, observed binding epoch, preferences and explicit zero-based start cursor |
 | `TaskRunView` | Committed binding, phase, retained results, cumulative usage and pending switch |
+| `TaskMemberView` | Session identity and label of one active local child |
+| `TaskMessageRequest` | Active child identity and nonempty adjustment text |
+| `TaskMessageReceipt` | Accepted message identity; not processing or adoption |
+
+Task coordination uses the original Job owner and Subagents message channel. `inspect(parent, jobId)` includes detached `activeMembers` entries with `{ sessionId, label }`; `sendMessage(parent, jobId, { childId, text }, signal)` on either `ctx.taskRuns` or `ctx.taskStrategies` returns only `{ messageId }` after inbox acceptance. The member must belong to that task and still be executing. Foreign owners, stopped tasks, idle or ended children and native executor targets reject without waking a session or changing backends. Nonempty text and the UTF-8 size of the complete serialized request are checked against the accepted task's captured `maxPlanBytes`; caller or task cancellation stops unaccepted delivery. Acceptance does not prove processing or decision adoption, and accepted messages are not retried automatically.
+
+Root model tools `task_strategy_inspect(jobId)` and `task_strategy_message(jobId, childId, text)` expose the same ownership checks, with names following `toolPrefix`. They remain available when automatic root entry is enabled and disappear when the carrier unloads; execution children retain their original tools. Inspect is a current snapshot and may become stale before a send. Complete identities are never sliced to meet `maxOutputBytes`; an oversized inspection explicitly refuses presentation and directs the caller to `job_output` or a larger output limit. If a message receipt exceeds that limit, the error retains its full accepted identity and says not to resend. These interfaces supply coordination primitives; risk grading, meetings and blackboard decision adoption belong to author strategies.
 
 Carrier remount with the same module and Jobs service retains live runs; process restart does not. Captured deployment rules remain fixed for each accepted run, while provider and preset availability are checked at admission. See the package's [limitations](../../packages/experimental/task-strategy/README.md#known-limitations-and-deferred-work) for execution recovery restrictions.
 
@@ -99,6 +106,16 @@ async startCaptured(parent: Agent, task: string, strategy: CapturedStrategy, rul
  * @returns detached binding and cumulative task state.
  */
 inspect(parent: Agent, jobId: JobId): TaskRunView
+
+/**
+ * Send an adjustment to one currently executing local member under the original owner.
+ * @param parent - exact live Agent owning this task.
+ * @param jobId - original Job identity.
+ * @param request - active child identity and nonempty text within captured maxPlanBytes.
+ * @param signal - caller cancellation, combined with the accepted task lifetime.
+ * @returns inbox acceptance identity, without claiming processing or adoption.
+ */
+async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
 
 /**
  * Request cancellation through the original Jobs service after checking task ownership.
@@ -275,6 +292,16 @@ submitTask(parent: Agent, request: TaskIntakeRequest, signal: AbortSignal): Prom
  * @returns detached task view; rejects foreign or unavailable Jobs.
  */
 inspect(parent: Agent, jobId: JobId): TaskRunView
+
+/**
+ * Deliver an adjustment through the original task owner's Subagents channel.
+ * @param parent - exact live Agent owning the Job.
+ * @param jobId - accepted task identity.
+ * @param request - currently active DSH member and bounded nonempty text.
+ * @param signal - cancellation of unaccepted delivery.
+ * @returns inbox acceptance identity, not processing or adoption.
+ */
+sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
 
 /**
  * Reserve replacement by a current named strategy at the next stage barrier.

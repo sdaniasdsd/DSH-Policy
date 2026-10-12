@@ -64,9 +64,13 @@ ZCode 使用官方[开源 CLI](https://github.com/zai-org/ZCode)，传入 `--pro
 
 `TaskRun` 和 `captureStrategy` 提供执行已捕获静态计划的普通代码库运行时。替换策略后，任务输入、结果、累计子任务准入数和结果字节上限继续保留。`requestSwitch(load, { expectedBindingEpoch, startStage })` 立即预留命令并同步捕获目标计划，当前阶段排空之后才准入并提交新绑定。目标游标是显式的零基下标，默认从零开始。切换被拒绝时进入 `waiting` 并保留旧绑定；`resume(expectedBindingEpoch)` 继续旧绑定，也可以再次切换到其他目标。两种命令都必须携带通过 `inspect()` 观察到的非负安全整数 `binding.epoch`；版本过期会在作者函数执行或状态改变前拒绝。`cancel(reason)` 立即取消活跃执行，在资源回收后结算。`load` 必须同步返回捕获的计划；异步工作归执行层管理。
 
-载体提供宿主方法 `submit(parent, request, signal)`、`inspect(parent, jobId)`、`requestSwitch(parent, jobId, request)` 和 `resume(parent, jobId, expectedBindingEpoch)`。`submit` 要求 `{ requestId, strategy, task, preferences? }`：同一活跃 Agent 的相同请求共享一次准入和回执，同一 id 携带不同内容会拒绝。准入失败会释放预留。第一个提交者的信号控制准入取消，后续重复调用不会取消已接收任务。等待和取消继续使用原版 Jobs 操作。切换请求要求 `{ strategy, expectedBindingEpoch, preferences?, startStage? }`，其中版本来自做出选择时读取的视图。`requestSwitch` 返回预留命令编号，通过 `inspect` 或 Job 日志读取已提交绑定。版本不匹配后，应重新检查任务并明确重新决定命令。这些宿主控制接口不添加模型工具或输入路由。
+载体提供宿主方法 `submit(parent, request, signal)`、`inspect(parent, jobId)`、`requestSwitch(parent, jobId, request)` 和 `resume(parent, jobId, expectedBindingEpoch)`。`submit` 要求 `{ requestId, strategy, task, preferences? }`：同一活跃 Agent 的相同请求共享一次准入和回执，同一 id 携带不同内容会拒绝。准入失败会释放预留。第一个提交者的信号控制准入取消，后续重复调用不会取消已接收任务。等待和取消继续使用原版 Jobs 操作。切换请求要求 `{ strategy, expectedBindingEpoch, preferences?, startStage? }`，其中版本来自做出选择时读取的视图。`requestSwitch` 返回预留命令编号，通过 `inspect` 或 Job 日志读取已提交绑定。版本不匹配后，应重新检查任务并明确重新决定命令。这些阶段边界宿主控制接口不添加输入路由。
 
 载体重载后，已接收任务继续使用捕获的部署规则，新载体可以通过同一个活跃 Agent 和 Jobs 服务控制这些任务。切换从当前注册表捕获新选定的计划，再按任务保留的规则准入。因此，如果原任务没有授权某个预设，新配置即使允许了它，也需要创建新任务才能使用。本切片使用原版 JobId 作为任务身份。
+
+任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
+
+根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；查询过大时明确拒绝展示，并提示使用 `job_output` 或提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
 
 ### 自动入口与可选选择
 

@@ -3,6 +3,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type TaskStrategies from './cordis.ts'
 import { boundText, parsePlan, parsePreferences } from './schema.ts'
+import { JobId } from '@deepseek-ai/dsh-jobs'
+import { SessionId } from '@deepseek-ai/dsh-session'
 
 function receiptText(receipt: { jobId: string; name: string }, maxBytes: number): string {
   const text = JSON.stringify(receipt)
@@ -28,6 +30,41 @@ function receiptText(receipt: { jobId: string; name: string }, maxBytes: number)
 export function strategyTools(service: TaskStrategies, prefix: string, maxBytes: number): ToolDefinition[] {
   const output = { schema: { type: 'string' as const }, render: (_args: object, value: string) => [{ type: 'text' as const, text: value }] }
   return [
+    defineTool({
+      name: `${prefix}_inspect`,
+      description: 'Inspect an owned task, including its currently active DSH child session identities. '
+        + 'Membership is a snapshot; a child may finish before a later message. Use job_output for full task results.',
+      parameters: { jobId: { type: 'string', required: true } }, output,
+      execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task inspection requires a calling agent')
+        const view = service.inspect(exec.agent, JobId(args.jobId))
+        const text = JSON.stringify(view)
+        if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+          throw new Error('Task inspection exceeds the output byte limit; use job_output or increase the output limit')
+        }
+        return Promise.resolve(text)
+      },
+    }),
+    defineTool({
+      name: `${prefix}_message`,
+      description: 'Send an adjustment from the exact task owner to one currently active DSH child returned by inspect. '
+        + 'Inbox acceptance returns only messageId; it does not mean the child processed or adopted the adjustment. '
+        + 'Idle, finished and native executor targets reject; this operation never wakes or restarts them. '
+        + 'Do not resend an accepted message because processing has not yet been observed.',
+      parameters: { jobId: { type: 'string', required: true }, childId: { type: 'string', required: true },
+        text: { type: 'string', required: true } }, output,
+      async execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task messaging requires a calling agent')
+        const receipt = await service.sendMessage(exec.agent, JobId(args.jobId), {
+          childId: SessionId(args.childId), text: args.text,
+        }, exec.signal)
+        const text = JSON.stringify(receipt)
+        if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+          throw new Error(`Message ${receipt.messageId} is already accepted; receipt identity exceeds the output byte limit. Do not resend.`)
+        }
+        return text
+      },
+    }),
     defineTool({
       name: `${prefix}_submit`,
       description: 'Submit the original task once using a stable requestId. Omit strategy to use the configured automatic or named default; '

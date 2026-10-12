@@ -25,7 +25,8 @@ import Presets from '@deepseek-ai/dsh-agent-preset-registry'
 import Preset from '@deepseek-ai/dsh-agent-preset'
 import Adapter from '../src/cordis.ts'
 import TaskRuns from '../src/task-runtime-service.ts'
-import type { ExecutionPlan } from '../src/types.ts'
+import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import type { AdapterConfig, ExecutionPlan } from '../src/types.ts'
 import type { TaskRuntimeRules } from '../src/runtime-types.ts'
 
 export interface TaskModelEntry { readonly chunks: StreamChunk[]; readonly gate?: Promise<void> }
@@ -62,7 +63,7 @@ export const workPlan: ExecutionPlan = {
 }
 
 /** Real Loader composition; only the external model stream is deterministic. */
-export async function bootTaskRuntime(entries: TaskModelEntry[]) {
+export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partial<AdapterConfig>, persistence = false) {
   const ctx = new Context()
   const directory = await mkdtemp(join(tmpdir(), 'dsh-task-message-'))
   cleanups.push(async () => {
@@ -79,6 +80,14 @@ export async function bootTaskRuntime(entries: TaskModelEntry[]) {
   })
   await ctx.loader.create({ name: 'cordis:include', config: { path: './cordis.yml' } })
   await ctx.loader.await()
+  if (config !== undefined) {
+    const entry = [...ctx.loader.entries()].find(entry => entry.options.id === 'task-strategy')!
+    await entry.fiber!.dispose()
+    entry.options.config = { ...entry.options.config as AdapterConfig, ...config }
+    await entry.init()
+    await ctx.loader.await()
+  }
+  if (persistence) await ctx.plugin(JsonlSessionPersistence, { root: join(directory, 'sessions') })
   const model = new TaskModel(entries)
   ctx.llm.registerAdapter(['mock'], model)
   const handle = await ctx.agents.create({ sessionId: SessionId('task-owner'),

@@ -12,7 +12,7 @@
 
 `AuthorStrategy.decide` 和 `StrategyRegistry.decide` 同步生成独立的计划数据，异步工作归执行层管理。载体的 `ctx.taskStrategies.decide` 还执行准入，因此仍为异步。作者要求见包文档。
 
-宿主调用方可以用所属 Agent 范围内的 `requestId` 提交命名策略，读取任务保留的状态，并在阶段排空后的边界请求替换。替换期间 JobId 保持固定，已有结果和累计子任务额度继续保留；替换失败时等待明确恢复或再次切换。宿主控制及进程内状态定义见 [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts)，根模型工具提供提交、列出、计划和执行。
+宿主调用方可以用所属 Agent 范围内的 `requestId` 提交命名策略，读取任务保留的状态，并在阶段排空后的边界请求替换。替换期间 JobId 保持固定，已有结果和累计子任务额度继续保留；替换失败时等待明确恢复或再次切换。宿主控制及进程内状态定义见 [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts)，根模型工具提供提交、列出、计划、执行、查询和发送消息。
 
 | 类型 | 宿主职责 |
 |---|---|
@@ -21,6 +21,13 @@
 | `TaskReceipt` | 已接收的 JobId、初始计划名及所选策略，不是完成报告 |
 | `TaskSwitch` | 目标策略、已观察到的绑定版本、偏好和显式的零基起始游标 |
 | `TaskRunView` | 已提交绑定、阶段、保留结果、累计用量及待处理切换 |
+| `TaskMemberView` | 一个活跃本地子任务的会话身份与标签 |
+| `TaskMessageRequest` | 活跃子任务身份与非空调整文本 |
+| `TaskMessageReceipt` | 已接收消息身份；不表示已处理或已采纳 |
+
+任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
+
+根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；查询过大时明确拒绝展示，并提示使用 `job_output` 或提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
 
 在保留同一模块和 Jobs 服务时重新挂载载体会保留活跃任务，进程重启不会。已接收任务的部署规则保持固定，提供方和预设的可用性则在准入时检查。执行恢复限制见包文档的[限制说明](../../packages/experimental/task-strategy/README.zh.md#known-limitations-and-deferred-work)。
 
@@ -99,6 +106,16 @@ async startCaptured(parent: Agent, task: string, strategy: CapturedStrategy, rul
  * @returns detached binding and cumulative task state.
  */
 inspect(parent: Agent, jobId: JobId): TaskRunView
+
+/**
+ * Send an adjustment to one currently executing local member under the original owner.
+ * @param parent - exact live Agent owning this task.
+ * @param jobId - original Job identity.
+ * @param request - active child identity and nonempty text within captured maxPlanBytes.
+ * @param signal - caller cancellation, combined with the accepted task lifetime.
+ * @returns inbox acceptance identity, without claiming processing or adoption.
+ */
+async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
 
 /**
  * Request cancellation through the original Jobs service after checking task ownership.
@@ -275,6 +292,16 @@ submitTask(parent: Agent, request: TaskIntakeRequest, signal: AbortSignal): Prom
  * @returns detached task view; rejects foreign or unavailable Jobs.
  */
 inspect(parent: Agent, jobId: JobId): TaskRunView
+
+/**
+ * Deliver an adjustment through the original task owner's Subagents channel.
+ * @param parent - exact live Agent owning the Job.
+ * @param jobId - accepted task identity.
+ * @param request - currently active DSH member and bounded nonempty text.
+ * @param signal - cancellation of unaccepted delivery.
+ * @returns inbox acceptance identity, not processing or adoption.
+ */
+sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
 
 /**
  * Reserve replacement by a current named strategy at the next stage barrier.

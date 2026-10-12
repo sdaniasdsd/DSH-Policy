@@ -23,7 +23,8 @@ import { adapterSchema } from './schema.ts'
 import type { ResolvedAdapterConfig } from './schema.ts'
 import { strategyTools } from './tools.ts'
 import type { AdapterConfig, AuthorStrategy, ExecutionPlan, StrategyInput, StrategyCatalogEntry } from './types.ts'
-import type { CapturedStrategy, TaskReceipt, TaskRunView, TaskSubmission, TaskSwitch } from './runtime-types.ts'
+import type { CapturedStrategy, TaskMessageRequest, TaskMessageReceipt,
+  TaskReceipt, TaskRunView, TaskSubmission, TaskSwitch } from './runtime-types.ts'
 import type { TaskIntakeRequest, WorkflowDecision } from './selection-types.ts'
 import { resolveSelection } from './selection.ts'
 import { selectStrategy, selectWorkflow } from './selector.ts'
@@ -391,6 +392,19 @@ export default class TaskStrategies extends TypertRemoteService {
    */
   inspect(parent: Agent, jobId: JobId): TaskRunView {
     return this.ctx.taskRuns.inspect(parent, jobId)
+  }
+
+  /**
+   * Deliver an adjustment through the original task owner's Subagents channel.
+   * @param parent - exact live Agent owning the Job.
+   * @param jobId - accepted task identity.
+   * @param request - currently active DSH member and bounded nonempty text.
+   * @param signal - cancellation of unaccepted delivery.
+   * @returns inbox acceptance identity, not processing or adoption.
+   */
+  sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt> {
+    this.assertOpen()
+    return this.ctx.taskRuns.sendMessage(parent, jobId, request, signal)
   }
 
   /**

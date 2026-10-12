@@ -477,11 +477,13 @@ async waitForChildren(parent: Agent): Promise<boolean>
  * continuable child. A running target admits it at the nearest step boundary;
  * an idle target starts a turn, and an absent direct child cold-resumes from
  * persistence. The service derives durable sender attribution from the exact
- * live sender. Caller cancellation stops only pre-acceptance work.
+ * live sender. Caller cancellation stops only pre-acceptance work. With
+ * activeOnly, the target must be executing at acceptance; idle, absent and
+ * closing targets reject without waking or cold-resuming.
  * @param sender - exact live Agent authorizing and originating the message.
  * @param targetId - durable direct-parent or direct-child session id.
  * @param content - model-authored content to deliver.
- * @param options - caller cancellation before inbox acceptance.
+ * @param options - caller cancellation and optional active-only admission.
  * @returns the accepted message's inbox id.
  * @throws when continuation services are unavailable, adjacency is rejected,
  *   or the message was not admitted.

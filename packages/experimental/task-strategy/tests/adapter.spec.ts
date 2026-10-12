@@ -45,6 +45,7 @@ import type { AdapterConfig, ExecutionPlan, ExecutionResult } from '../src/types
 import type { WorkflowProposal } from '../src/workflow-report.ts'
 import { strategyTools } from '../src/tools.ts'
 import { ownerRuns } from '../src/task-submissions.ts'
+import { bootTaskRuntime, workPlan } from './task-runtime-fixture.ts'
 
 const contexts: Context[] = []
 class EntryPtcRuntime extends PtcRuntime {
@@ -1754,5 +1755,121 @@ describe('codex orchestration boundary replay (no network)', () => {
       .toThrow('live calls are forbidden in replay')
     expect(() => replayCodex('codex', 'other-label', codexRecordings[0]!.request.prompt))
       .toThrow('live calls are forbidden in replay')
+  })
+})
+
+describe('Loader-composed task messaging', () => {
+  it('delivers a task-owner adjustment to the active child', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    const { ctx, parent, model } = await bootTaskRuntime([
+      { chunks: textResponse('first'), gate: gate.promise }, { chunks: textResponse('adjusted') },
+    ], undefined, true)
+    const jobId = await ctx.taskStrategies.start(parent, 'work', workPlan, new AbortController().signal)
+    let messageId = ''
+    let childId = SessionId('pending')
+    try {
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const inspection = await ctx.tools.execute({ callId: ToolCallId('inspect-members'), name: 'task_strategy_inspect',
+        arguments: { jobId }, agent: parent, signal: new AbortController().signal })
+      expect(inspection.isError).toBe(false)
+      const view = JSON.parse(inspection.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+      childId = view.activeMembers[0].sessionId
+      expect(childId).toBe(model.requests[0]!.sessionId)
+      const receipt = await ctx.tools.execute({ callId: ToolCallId('send-adjustment'), name: 'task_strategy_message',
+        arguments: { jobId, childId, text: 'adjustment_746: keep the public API' }, agent: parent,
+        signal: new AbortController().signal })
+      expect(receipt.isError).toBe(false)
+      const value = JSON.parse(receipt.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+      expect(Object.keys(value)).toEqual(['messageId'])
+      messageId = value.messageId
+      expect(model.requests).toHaveLength(1)
+      expect(ctx.tools.get('task_strategy_message', parent)?.description).toContain('Inbox acceptance')
+      expect(ctx.tools.get('task_strategy_inspect', parent)?.description).toContain('active')
+    } finally { gate.resolve(undefined) }
+    expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
+    expect(model.requests).toHaveLength(2)
+    expect(JSON.stringify(model.requests[1]!.messages)).toContain('adjustment_746: keep the public API')
+    const stored = await ctx.sessionPersistence.open(childId, 'read')
+    try {
+      const events = (await stored.read()).events
+      expect(events.some(event => event.type === 'user/message' && event.data.id === messageId
+        && event.data.source.kind === 'agent-message'
+        && event.data.source.senderSessionId === parent.id
+        && JSON.stringify(event.data.content).includes('adjustment_746'))).toBe(true)
+    } finally { await stored.close() }
+  })
+
+  it('does not replace an unsupported native target with DSH execution', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    const entered = Promise.withResolvers<undefined>()
+    const { ctx, parent, model } = await bootTaskRuntime([], { allowedExecutors: ['native'] })
+    ctx.taskRuns.registerExecutor({ id: 'native', description: 'native engine', check: () => {},
+      execute: async () => { entered.resolve(undefined); await gate.promise; return { stopReason: 'completed', output: 'done' } },
+    })
+    const jobId = await ctx.taskStrategies.start(parent, 'native work', { name: 'native', stages: [{ name: 'native',
+      tasks: [{ label: 'native worker', executor: 'native', instruction: 'work' }] }] }, new AbortController().signal)
+    try {
+      await entered.promise
+      expect(ctx.taskStrategies.inspect(parent, jobId).activeMembers).toEqual([])
+      const result = await ctx.tools.execute({ callId: ToolCallId('native-message'), name: 'task_strategy_message',
+        arguments: { jobId, childId: 'native-session', text: 'adjust' }, agent: parent, signal: new AbortController().signal })
+      expect(result.isError).toBe(true)
+      expect(JSON.stringify(result.content)).toContain('not an active DSH member')
+      expect(model.requests).toHaveLength(0)
+      expect(ctx.agents.list()).toHaveLength(1)
+    } finally { gate.resolve(undefined) }
+  })
+
+  it('removes inspect and message tools when the carrier is disposed', async () => {
+    const { ctx, parent } = await bootTaskRuntime([])
+    expect(ctx.tools.get('task_strategy_inspect', parent)).toBeDefined()
+    expect(ctx.tools.get('task_strategy_message', parent)).toBeDefined()
+    await [...ctx.loader.entries()].find(entry => entry.options.id === 'task-strategy')!.fiber!.dispose()
+    expect(ctx.tools.get('task_strategy_inspect', parent)).toBeUndefined()
+    expect(ctx.tools.get('task_strategy_message', parent)).toBeUndefined()
+  })
+
+  it('admits coordination controls at enabled root entry while denying business and foreign-task messages', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    const { ctx, parent, model } = await bootTaskRuntime([
+      { chunks: textResponse('first'), gate: gate.promise }, { chunks: textResponse('adjusted') },
+    ], { entry: { enabled: true }, toolPrefix: 'coord' })
+    const jobId = await ctx.taskStrategies.start(parent, 'work', workPlan, new AbortController().signal)
+    const foreign = await ctx.agents.create({ sessionId: SessionId('foreign-message-owner') })
+    try {
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const childId = model.requests[0]!.sessionId
+      const assembly = await parent.ctx.systemPrompt.assemble({ scope: parent, agent: parent })
+      expect(assembly.tools.map(tool => tool.name)).toContain('coord_inspect')
+      expect(assembly.tools.map(tool => tool.name)).toContain('coord_message')
+      expect(assembly.tools.map(tool => tool.name)).not.toContain('coding_only')
+      const execute = (name: string, args: object, agent = parent) => ctx.tools.execute({
+        callId: ToolCallId(name), name, arguments: args, agent, signal: new AbortController().signal,
+      })
+      expect((await execute('coord_inspect', { jobId })).isError).toBe(false)
+      expect((await execute('coord_message', { jobId, childId, text: 'adjust' })).isError).toBe(false)
+      expect((await execute('coding_only', {})).isError).toBe(true)
+      expect((await execute('coord_message', { jobId, childId, text: 'foreign' }, foreign.agent)).isError).toBe(true)
+      expect(ctx.tools.get('coord_message', ctx.agents.get(childId))).toBeUndefined()
+    } finally { gate.resolve(undefined) }
+  })
+
+  it('keeps a complete receipt identity when its presentation exceeds the output bound', async () => {
+    const gate = Promise.withResolvers<undefined>()
+    const { ctx, parent, model } = await bootTaskRuntime([
+      { chunks: textResponse('first'), gate: gate.promise }, { chunks: textResponse('adjusted') },
+    ])
+    parent.ctx.tools.register(strategyTools(ctx.taskStrategies, 'tiny', 1).find(tool => tool.name === 'tiny_message')!)
+    const jobId = await ctx.taskStrategies.start(parent, 'work', workPlan, new AbortController().signal)
+    try {
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const childId = model.requests[0]!.sessionId
+      const result = await ctx.tools.execute({ callId: ToolCallId('tiny-message'), name: 'tiny_message',
+        arguments: { jobId, childId, text: 'adjust' }, agent: parent, signal: new AbortController().signal })
+      expect(result.isError).toBe(true)
+      const id = ctx.agents.get(childId)!.inbox.nextStep[0]!.id
+      expect(JSON.stringify(result.content)).toContain(id)
+      expect(JSON.stringify(result.content)).toContain('already accepted')
+    } finally { gate.resolve(undefined) }
   })
 })

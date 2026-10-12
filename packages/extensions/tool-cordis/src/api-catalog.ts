@@ -2935,8 +2935,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async sendMessage( sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions, ): Promise<MessageId>',
-        description: 'Steer one model-authored message to the sender\'s direct parent or direct continuable child. A running target admits it at the nearest step boundary; an idle target starts a turn, and an absent direct child cold-resumes from persistence. The service derives durable sender attribution from the exact live sender. Caller cancellation stops only pre-acceptance work.',
-        parameters: [{ name: 'sender', description: 'exact live Agent authorizing and originating the message.' }, { name: 'targetId', description: 'durable direct-parent or direct-child session id.' }, { name: 'content', description: 'model-authored content to deliver.' }, { name: 'options', description: 'caller cancellation before inbox acceptance.' }],
+        description: 'Steer one model-authored message to the sender\'s direct parent or direct continuable child. A running target admits it at the nearest step boundary; an idle target starts a turn, and an absent direct child cold-resumes from persistence. The service derives durable sender attribution from the exact live sender. Caller cancellation stops only pre-acceptance work. With activeOnly, the target must be executing at acceptance; idle, absent and closing targets reject without waking or cold-resuming.',
+        parameters: [{ name: 'sender', description: 'exact live Agent authorizing and originating the message.' }, { name: 'targetId', description: 'durable direct-parent or direct-child session id.' }, { name: 'content', description: 'model-authored content to deliver.' }, { name: 'options', description: 'caller cancellation and optional active-only admission.' }],
         returns: 'the accepted message\'s inbox id.',
         throws: ['when continuation services are unavailable, adjacency is rejected, or the message was not admitted.'],
       },
@@ -3143,6 +3143,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'detached binding and cumulative task state.',
       },
       {
+        signature: 'async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>',
+        description: 'Send an adjustment to one currently executing local member under the original owner.',
+        parameters: [{ name: 'parent', description: 'exact live Agent owning this task.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'request', description: 'active child identity and nonempty text within captured maxPlanBytes.' }, { name: 'signal', description: 'caller cancellation, combined with the accepted task lifetime.' }],
+        returns: 'inbox acceptance identity, without claiming processing or adoption.',
+      },
+      {
         signature: 'cancel(parent: Agent, jobId: JobId, reason?: string): \'requested\' | \'already-finished\'',
         description: 'Request cancellation through the original Jobs service after checking task ownership.',
         parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'reason', description: 'optional cancellation detail.' }],
@@ -3276,6 +3282,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Read the committed binding and cumulative state of an owned run.',
         parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity, unchanged across switches.' }],
         returns: 'detached task view; rejects foreign or unavailable Jobs.',
+      },
+      {
+        signature: 'sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>',
+        description: 'Deliver an adjustment through the original task owner\'s Subagents channel.',
+        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity.' }, { name: 'request', description: 'currently active DSH member and bounded nonempty text.' }, { name: 'signal', description: 'cancellation of unaccepted delivery.' }],
+        returns: 'inbox acceptance identity, not processing or adoption.',
       },
       {
         signature: 'requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number',
@@ -7886,7 +7898,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentSendMessageOptions',
-    declaration: 'export interface SubagentSendMessageOptions {\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface SubagentSendMessageOptions {\n    readonly signal: AbortSignal;\n    readonly activeOnly?: boolean;\n}',
   },
   {
     name: 'SubagentSessionError',
@@ -8021,6 +8033,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TaskIntakeRequest extends StrategyInput {\n    readonly requestId: string;\n    readonly selection?: TaskSelection;\n}',
   },
   {
+    name: 'TaskMemberView',
+    declaration: 'export interface TaskMemberView {\n    readonly sessionId: SessionId;\n    readonly label: string;\n}',
+  },
+  {
+    name: 'TaskMessageReceipt',
+    declaration: 'export interface TaskMessageReceipt {\n    readonly messageId: MessageId;\n}',
+  },
+  {
+    name: 'TaskMessageRequest',
+    declaration: 'export interface TaskMessageRequest {\n    readonly childId: SessionId;\n    readonly text: string;\n}',
+  },
+  {
     name: 'TaskReceipt',
     declaration: 'export interface TaskReceipt {\n    readonly jobId: JobId;\n    readonly name: string;\n    readonly strategy: string;\n    readonly selection?: {\n        readonly kind: \'auto\' | \'fallback\';\n        readonly tier?: StyleTier;\n        readonly reason: string;\n    };\n}',
   },
@@ -8034,7 +8058,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskRunView',
-    declaration: 'export interface TaskRunView {\n    readonly phase: \'queued\' | \'boundary\' | \'preparing\' | \'running\' | \'waiting\' | \'stopping\' | \'completed\' | \'failed\' | \'cancelled\';\n    readonly binding: {\n        readonly id: string;\n        readonly revision: string;\n        readonly epoch: number;\n    };\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly startedTasks: number;\n    readonly results: TaskResult[];\n    readonly pendingSwitch?: number;\n    readonly error?: string;\n    readonly verification?: VerificationReport;\n    readonly review?: ReviewReport;\n    readonly usage?: ObservedUsage & {\n        readonly unknownChildren: number;\n    };\n    readonly execution?: {\n        readonly revision: string;\n        readonly provider: string;\n        readonly model?: string;\n        readonly modelProvider?: string;\n        readonly permissionAuthority: \'dsh\' | \'external-or-mixed\';\n        readonly maxTasks: number;\n        readonly maxResultBytes: number;\n        readonly allowedPresets: readonly string[];\n        readonly allowedExecutors: readonly string[];\n    };\n}',
+    declaration: 'export interface TaskRunView {\n    readonly phase: \'queued\' | \'boundary\' | \'preparing\' | \'running\' | \'waiting\' | \'stopping\' | \'completed\' | \'failed\' | \'cancelled\';\n    readonly binding: {\n        readonly id: string;\n        readonly revision: string;\n        readonly epoch: number;\n    };\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly startedTasks: number;\n    readonly results: TaskResult[];\n    readonly activeMembers?: readonly TaskMemberView[];\n    readonly pendingSwitch?: number;\n    readonly error?: string;\n    readonly verification?: VerificationReport;\n    readonly review?: ReviewReport;\n    readonly usage?: ObservedUsage & {\n        readonly unknownChildren: number;\n    };\n    readonly execution?: {\n        readonly revision: string;\n        readonly provider: string;\n        readonly model?: string;\n        readonly modelProvider?: string;\n        readonly permissionAuthority: \'dsh\' | \'external-or-mixed\';\n        readonly maxTasks: number;\n        readonly maxResultBytes: number;\n        readonly allowedPresets: readonly string[];\n        readonly allowedExecutors: readonly string[];\n    };\n}',
   },
   {
     name: 'TaskSelection',

@@ -14,7 +14,8 @@ import { renderToolsSdk, renderToolsSdkPy } from '@deepseek-ai/dsh-tools'
  */
 export function mountEntryBoundary(ctx: Context, parent: Agent, prefix: string, enabled: () => boolean): void {
   const controls = new Set(['job_list', 'job_output', 'job_kill', 'ask_user_question',
-    `${prefix}_list`, `${prefix}_plan`, `${prefix}_status`, `${prefix}_cancel`, `${prefix}_switch`, `${prefix}_resume`, `${prefix}_propose`])
+    `${prefix}_list`, `${prefix}_plan`, `${prefix}_inspect`, `${prefix}_message`,
+    `${prefix}_status`, `${prefix}_cancel`, `${prefix}_switch`, `${prefix}_resume`, `${prefix}_propose`])
   const applies = (agent?: Agent) => enabled() && agent?.id === parent.id && agent.session.header.origin !== 'subagent'
   ctx.effect(() => parent.ctx.tools.guard(exec => applies(exec.agent) && !controls.has(exec.name) && exec.name !== 'run_code'
     ? 'Task strategy entry owns execution. Dispatch occurs automatically from original user input; use the owned task controls.' : undefined))
