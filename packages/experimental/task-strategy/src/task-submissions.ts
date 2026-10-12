@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import { symbols } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobId, JobRegistry } from '@deepseek-ai/dsh-jobs'
-import type { TaskReceipt, TaskSubmission, TaskRunView } from './runtime-types.ts'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { TaskMemberView, TaskReceipt, TaskSubmission, TaskRunView } from './runtime-types.ts'
 import type { TaskRun } from './task-run.ts'
 import type { TaskIntakeRequest } from './selection-types.ts'
 import { validateTask } from './task-input.ts'
@@ -11,7 +12,13 @@ import type { EntryRecord } from './entry-coordinator.ts'
 
 interface OwnerRuns {
   readonly entries: Map<string, EntryRecord>
-  readonly runs: Map<JobId, { readonly task: string; readonly run: TaskRun; readonly execution?: TaskRunView['execution'] }>
+  readonly runs: Map<JobId, {
+    readonly task: string
+    readonly run: TaskRun
+    readonly execution?: TaskRunView['execution']
+    readonly activeMembers: Map<SessionId, TaskMemberView>
+    readonly maxMessageBytes: number
+  }>
   readonly requests: Map<string, { readonly digest: string; readonly receipt: Promise<TaskReceipt> }>
 }
 

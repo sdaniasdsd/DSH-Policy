@@ -1,5 +1,6 @@
 /** Static strategy bindings, task state and host admission interfaces. */
 import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { StagePolicy } from './policy-types.ts'
 import type { VerificationReport } from './verification-types.ts'
 import type { ReviewReport } from './workflow-types.ts'
@@ -16,6 +17,12 @@ export interface CapturedStrategy {
   readonly next?: StagePolicy
 }
 
+/** One currently executing local child admitted by this task. */
+export interface TaskMemberView {
+  readonly sessionId: SessionId
+  readonly label: string
+}
+
 /** Task state belongs to the run and survives replacement of its strategy cursor. */
 export interface TaskRunView {
   readonly phase: 'queued' | 'boundary' | 'preparing' | 'running' | 'waiting' | 'stopping' | 'completed' | 'failed' | 'cancelled'
@@ -24,6 +31,8 @@ export interface TaskRunView {
   readonly completedStages: number
   readonly startedTasks: number
   readonly results: TaskResult[]
+  /** Runtime inspection supplies active local members; pure policy views may omit them. */
+  readonly activeMembers?: readonly TaskMemberView[]
   readonly pendingSwitch?: number
   readonly error?: string
   /** Latest artifact check findings, independent of execution completion. */

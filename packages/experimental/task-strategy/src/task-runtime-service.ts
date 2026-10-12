@@ -2,6 +2,7 @@
 import { Context, Service, symbols } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobId, JobOutcome } from '@deepseek-ai/dsh-jobs'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -17,7 +18,7 @@ import { createHash } from 'node:crypto'
 import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
 import type { ExecutionPlan, TaskExecutor } from './types.ts'
 import type { TaskExecutorProvider } from './executor-types.ts'
-import type { CapturedStrategy, TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
+import type { CapturedStrategy, TaskMemberView, TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { taskRuns: TaskRuns }
@@ -108,6 +109,7 @@ export default class TaskRuns extends Service {
     const executors = this.executors
     const { prepare, checkChild } = createAdmission(config, subagents, this.ctx.agentPresets, this.ctx.tools, executors)
     const store = ownerRuns(jobs, parent)
+    const activeMembers = new Map<SessionId, TaskMemberView>()
     const runConfig = Object.freeze({
       provider: config.provider,
       maxConcurrent: config.maxConcurrent,
@@ -129,7 +131,10 @@ export default class TaskRuns extends Service {
       return executeDshChild(this.ctx, parent, runConfig.provider, { ...step,
         ...step.model !== undefined || modelRoute.model === undefined ? {} : { model: modelRoute.model },
         ...step.provider !== undefined || modelRoute.provider === undefined ? {} : { provider: modelRoute.provider },
-      }, prompt, childSignal, config.maxResultBytes)
+      }, prompt, childSignal, config.maxResultBytes, (id) => {
+        activeMembers.set(id, { sessionId: id, label: step.label })
+        return () => { activeMembers.delete(id) }
+      })
     }
     let runtime!: TaskRun
     const jobId = jobs.start({
@@ -153,7 +158,7 @@ export default class TaskRuns extends Service {
         return { cancel: (reason) => { runtime.cancel(new Error(reason ?? 'strategy job cancelled')) }, done }
       },
     })
-    store.runs.set(jobId, { task, run: runtime, execution })
+    store.runs.set(jobId, { task, run: runtime, execution, activeMembers, maxMessageBytes: config.maxPlanBytes })
     return jobId
   }
 
@@ -165,7 +170,8 @@ export default class TaskRuns extends Service {
    */
   inspect(parent: Agent, jobId: JobId): TaskRunView {
     const owned = this.ownedRun(parent, jobId)
-    return { ...owned.run.inspect(), ...owned.execution === undefined ? {} : { execution: structuredClone(owned.execution) } }
+    return { ...owned.run.inspect(), activeMembers: structuredClone([...owned.activeMembers.values()]),
+      ...owned.execution === undefined ? {} : { execution: structuredClone(owned.execution) } }
   }
 
   /**

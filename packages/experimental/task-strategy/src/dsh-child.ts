@@ -24,10 +24,11 @@ function readPath(value: unknown): string | undefined {
  * @param prompt - task and prior results already admitted by the runtime.
  * @param signal - original task cancellation.
  * @param maxEvidenceBytes - cumulative evidence memory bound.
+ * @param onActive - optional task-owned registration, released after child cleanup even when cleanup fails.
  * @returns settled child result after temporary listeners, timer and child have been released.
  */
 export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subagents: Pick<Context['subagents'], 'startActivation'> }, parent: Agent, provider: string, step: TaskStep,
-  prompt: string, signal: AbortSignal, maxEvidenceBytes: number): Promise<ChildResult> {
+  prompt: string, signal: AbortSignal, maxEvidenceBytes: number, onActive?: (id: SessionId) => () => void): Promise<ChildResult> {
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
   const timer = step.timeoutMs === undefined ? undefined
@@ -100,7 +101,9 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
       ...step.workflowOutput === true ? { outputSchema: workflowOutputSchema }
         : step.reviewOutput === true ? { outputSchema: reviewOutputSchema } : {},
     } })
+    let releaseMember: (() => void) | undefined
     try {
+      releaseMember = onActive?.(run.childId)
       const result = await run.result
       return { sessionId: run.childId, stopReason: result.stopReason,
         usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
@@ -115,6 +118,6 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
           verification: verifyArtifacts(step.artifactChecks,
             overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
       }
-    } finally { await run.dispose() }
+    } finally { try { await run.dispose() } finally { releaseMember?.() } }
   } finally { if (timer !== undefined) clearTimeout(timer); release() }
 }
