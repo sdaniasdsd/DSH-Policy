@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for 2026-10-13-dsh-coordination-part-4.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-13-dsh-coordination-part-4.md
+/dsh-coordination-part-4-implementation-plan:
+  en: b3a44d9601f0c546
+  zh: 64107753a148cc30
+/dsh-coordination-part-4-implementation-plan/policy-configuration:
+  en: 22e6931eb24771b0
+  zh: b5f569b792f58442
+/dsh-coordination-part-4-implementation-plan/files-and-interfaces:
+  en: 35bbd4442a4eff39
+  zh: 9348e6216caa9539
+/dsh-coordination-part-4-implementation-plan/completion-review:
+  en: 2b6a074001362749
+  zh: b6fbbd0fce925074
