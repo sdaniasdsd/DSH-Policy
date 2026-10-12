@@ -27,12 +27,12 @@ Existing four-argument adapters continue to run. An adapter creates local member
 
 | Commit | Change |
 | --- | --- |
-| `81a02c7388` | Exact continuation receipt and original-session admission |
-| `30c65bb148` | Retained task-owned member sessions and actual outcomes |
-| `a766e9726e` | Optional executor context and cumulative turn admission |
-| `2c9ae6e7e9` | Real Loader, persistence and lifecycle verification |
-| `26098420ca` | Test backend dependency placement |
-| `5476265979` | Continued controls, shared concurrency and strict fixture verification |
+| `continued-turn receipt` | Exact continuation receipt and original-session admission |
+| `retained member session` | Retained task-owned member sessions and actual outcomes |
+| `executor context` | Optional executor context and cumulative turn admission |
+| `Loader lifecycle verification` | Real Loader, persistence and lifecycle verification |
+| `test dependency correction` | Test backend dependency placement |
+| `continuation and concurrency validation` | Continued controls, shared concurrency and strict fixture verification |
 
 The repair commit preserves continuation controls and enforces shared task concurrency.
 

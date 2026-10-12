@@ -12,7 +12,7 @@ See the [package documentation](../../packages/experimental/task-strategy/README
 
 `AuthorStrategy.decide` and `StrategyRegistry.decide` synchronously produce detached plan data; asynchronous work belongs to the executor. The carrier's `ctx.taskStrategies.decide` remains asynchronous because it also performs admission. The package documentation defines author requirements.
 
-Host callers can submit a named strategy with a per-owner `requestId`, inspect its retained task state and request a replacement at a drained stage boundary. The JobId remains stable across replacements. Replacement preserves results and cumulative child limits; failed replacement waits for an explicit resume or another switch. Host controls and process-local state are defined in [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts); root model tools expose submit, list, plan, run, inspect and message.
+Host callers can submit a named strategy with a per-owner `requestId`, inspect its retained task state and request a replacement at a drained stage boundary. The JobId remains stable across replacements. Replacement preserves results and cumulative child limits; failed replacement waits for an explicit resume or another switch. Host controls and process-local state are defined in [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts); root model tools expose submit, list, plan, run, inspect, message and generic record operations.
 
 | Type | Host responsibility |
 |---|---|
@@ -24,10 +24,15 @@ Host callers can submit a named strategy with a per-owner `requestId`, inspect i
 | `TaskMemberView` | Session identity and label of one active local child |
 | `TaskMessageRequest` | Active child identity and nonempty adjustment text |
 | `TaskMessageReceipt` | Accepted message identity; not processing or adoption |
+| `TaskSharedRecord` | Caller-defined JSON value with a task-scoped key, revision and writer |
+| `TaskRecordWaitResult` | New record or bounded timeout result |
+| `TaskCoordination` | Generic records and sender-preserving member messages exposed to an executor |
 
 Task coordination uses the original Job owner and Subagents message channel. `inspect(parent, jobId)` includes detached `activeMembers` entries with `{ sessionId, label }`; `sendMessage(parent, jobId, { childId, text }, signal)` on either `ctx.taskRuns` or `ctx.taskStrategies` returns only `{ messageId }` after inbox acceptance. The member must belong to that task and still be executing. Foreign owners, stopped tasks, idle or ended children and native executor targets reject without waking a session or changing backends. Nonempty text and the UTF-8 size of the complete serialized request are checked against the accepted task's captured `maxPlanBytes`; caller or task cancellation stops unaccepted delivery. Acceptance does not prove processing or decision adoption, and accepted messages are not retried automatically.
 
-Root model tools `task_strategy_inspect(jobId)` and `task_strategy_message(jobId, childId, text)` expose the same ownership checks, with names following `toolPrefix`. They remain available when automatic root entry is enabled and disappear when the carrier unloads; execution children retain their original tools. Inspect is a current snapshot and may become stale before a send. Complete identities are never sliced to meet `maxOutputBytes`; when a complete inspection is oversized, the tool retains binding, progress and active members, adds `completedTasks` and `detailsOmitted: true`, and omits detailed results and reports. The Host view remains complete. Only an oversized coordination identity set refuses presentation and requires a larger output limit. If a message receipt exceeds that limit, the error retains its full accepted identity and says not to resend. These interfaces supply coordination primitives; risk grading, meetings and blackboard decision adoption belong to author strategies.
+Root model tools `task_strategy_inspect(jobId)`, `task_strategy_message(jobId, childId, text)` and `task_strategy_record_{read,list,write,wait}` use the same ownership checks, with names following `toolPrefix`. Records are scoped to the original Job; `write` uses `expectedRevision` compare-and-set, and `wait` observes a revision change or timeout. Callers define the meaning of record keys and JSON values. The tools are available when automatic root entry is enabled and disappear when the carrier unloads; execution children retain their original tools. DSH supplies generic capabilities and one common LLM tool entry. It adds no plugin-specific adapters and does not decide strategy command formats or business workflows.
+
+`ctx.taskRuns` and `ctx.taskStrategies` expose `recordRead`, `recordList`, `recordWrite` and `recordWait` for host callers. Executor callbacks may use the same operations through `TaskExecutorContext.coordination`. A record write persists the next version before returning; stale `expectedRevision` values fail with a conflict. Records survive carrier remounts as owner-session plugin records, but their runtime APIs require the original Job to remain active.
 
 Carrier remount with the same module and Jobs service retains live runs; process restart does not. Captured deployment rules remain fixed for each accepted run, while provider and preset availability are checked at admission. See the package's [limitations](../../packages/experimental/task-strategy/README.md#known-limitations-and-deferred-work) for execution recovery restrictions.
 
@@ -39,7 +44,7 @@ Switch and resume commands require the `binding.epoch` observed by the caller. T
 
 Catalogue entries include explainable child-token costs. The registry estimates declared plans at registration; an original task and preferences refine the estimate without evaluating the author. Optional scenario assumptions price expected calls, extra context and output transfer. The selector receives the task-specific catalogue and the Plugins page shows baseline costs and uncertainty. Unknown cost is not zero; parent and selector usage are excluded. See the [estimation contract](../../packages/experimental/task-strategy/README.md#token-estimates) and [migration](../upgrade-guide/v0.2.0-rc.2/task-strategy-cost-catalog/guide.md).
 
-An executor can opt into the fifth `context?: TaskExecutorContext` argument. Its `members` facade opens allowed local DSH presets, observes actual turn results, and explicitly continues an owned session while the original Job remains open. The exact original task owner sends continuation input. Only executing turns appear in active-member inspection. Each controller step and attempted member admission consumes the captured cumulative task budget; member concurrency, complete requests and outcomes retain deployment bounds. Executor settlement closes admission and drains its members. A missing captured result returns `unobserved` with the accepted identity, without automatic replay. Failure, cancellation and non-completion retain their original stopReason. Native adapters create no local members unless their author explicitly uses this context; this adds no native session continuation, blackboard, meetings or Superpowers recovery policy. All local child turns share one task-wide concurrency allowance, including ordinary children and members opened by different executors. Continued members retain their captured token ceiling and structured submission schema.
+An executor can opt into the fifth `context?: TaskExecutorContext` argument. Its `members` facade opens allowed local DSH presets, observes actual turn results, and explicitly continues an owned session while the original Job remains open. `coordination` supplies generic shared-record and member-message APIs. The exact original task owner sends continuation input. Only executing turns appear in active-member inspection. Each controller step and attempted member admission consumes the captured cumulative task budget; local turns share the current stage's concurrency capacity, which an explicit stage setting may raise above the carrier default. Complete requests and outcomes retain deployment bounds. Executor settlement closes admission and drains its members. A missing captured result returns `unobserved` with the accepted identity, without automatic replay. Failure, cancellation and non-completion retain their original stopReason. Continued members retain their captured token ceiling and structured submission schema. Strategy maintainers decide how these interfaces are used.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -118,6 +123,47 @@ inspect(parent: Agent, jobId: JobId): TaskRunView
  * @returns inbox acceptance identity, without claiming processing or adoption.
  */
 async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
+
+/**
+ * Read one task-scoped shared record under the exact owner and Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @returns detached latest record, or undefined when absent.
+ */
+recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined
+
+/**
+ * List task-scoped shared records under the exact owner and Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @returns detached latest records.
+ */
+recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]
+
+/**
+ * Compare-and-set one task-scoped shared record.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param value - JSON-serializable record value.
+ * @param expectedRevision - observed version, or zero when absent.
+ * @param signal - caller cancellation signal.
+ * @returns persisted record with the new revision.
+ */
+recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>
+
+/**
+ * Wait for a task-scoped shared record to advance.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param afterRevision - revision already observed by the caller.
+ * @param timeoutMs - bounded wait duration.
+ * @param signal - caller cancellation signal.
+ * @returns the newer record or a timeout result.
+ */
+recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>
 
 /**
  * Request cancellation through the original Jobs service after checking task ownership.
@@ -304,6 +350,47 @@ inspect(parent: Agent, jobId: JobId): TaskRunView
  * @returns inbox acceptance identity, not processing or adoption.
  */
 sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
+
+/**
+ * Read one generic record owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @returns detached latest record, or undefined when absent.
+ */
+recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined
+
+/**
+ * List generic records owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @returns detached latest records.
+ */
+recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]
+
+/**
+ * Compare-and-set a generic record owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param value - JSON-serializable record value.
+ * @param expectedRevision - observed version, or zero when absent.
+ * @param signal - caller cancellation signal.
+ * @returns persisted record with the new revision.
+ */
+recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>
+
+/**
+ * Wait for a generic record owned by the exact task Job to advance.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param afterRevision - revision already observed by the caller.
+ * @param timeoutMs - bounded wait duration.
+ * @param signal - caller cancellation signal.
+ * @returns the newer record or a timeout result.
+ */
+recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>
 
 /**
  * Reserve replacement by a current named strategy at the next stage barrier.

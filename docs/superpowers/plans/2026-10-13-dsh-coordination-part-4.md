@@ -1,5 +1,7 @@
 # DSH Coordination Part 4 Implementation Plan
 
+> **Superseded by the revised design:** The Superpowers-specific executor, blackboard schema, and meeting/risk workflow in this plan violated the latest responsibility boundary and have been withdrawn from the current source. DSH retains only generic coordination APIs and a common LLM tool entry; strategy maintainers own their protocols. See the [revised foundation design](../specs/2026-10-13-dsh-coordination-foundation-design.md). This file remains as a historical review record and is no longer an executable plan.
+
 English | [中文](2026-10-13-dsh-coordination-part-4.zh.md)
 
 > **For the implementation agent:** Continue in the selected checkout and commit this strategy-owned delivery separately.

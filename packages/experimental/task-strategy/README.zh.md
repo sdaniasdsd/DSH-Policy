@@ -72,7 +72,7 @@ ZCode 使用官方[开源 CLI](https://github.com/zai-org/ZCode)，传入 `--pro
 
 任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
 
-根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；完整查询过大时，工具保留绑定、进度和活跃成员，添加 `completedTasks` 与 `detailsOmitted: true`，省略详细结果及报告；宿主视图仍然完整。只有协调身份集合本身超过上限时才拒绝展示，并要求提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
+根模型工具 `task_strategy_inspect(jobId)`、`task_strategy_message(jobId, childId, text)` 和 `task_strategy_record_{read,list,write,wait}` 提供通用任务协作能力，名称跟随 `toolPrefix`。记录按原始 Job 隔离；`write` 通过 `expectedRevision` 做比较并交换，`wait` 等待记录版本变化或超时。记录 key 和 JSON value 的含义由调用者决定。自动根入口开启时这些工具仍可用，载体卸载时移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。DSH 只提供能力与统一的 LLM 工具入口，不决定议题格式、风险分类、会议、裁决或策略流程；策略作者自行决定是否及如何使用这些接口。
 
 ### 自动入口与可选选择
 
@@ -174,17 +174,17 @@ node --import tsx/esm apps/cli/lib/bin.js --profile web --patch packages/experim
 <a id="dsh-style-policies"></a>
 ## DSH 风格策略与阶段反馈
 
-新增插件入口 `plugins/codex-style`、`plugins/claude-style`、`plugins/zcode-style`、`plugins/superpowers-style` 分别注册独立的 `*-style` ID。它们借鉴编排方式，使用原版 DSH 预设、模型、作用域工具、权限、Jobs 与取消能力执行，不启动外部产品 CLI 或复用其认证。Superpowers 风格按“理解 → 规划 → 实施 → 验收 → 只读复核”推进，仅使用 DSH 子任务；不加载第三方 skill 文件，也不宣称是 Superpowers 官方集成。原有 `plugins/codex`、`plugins/claude`、`plugins/zcode` 及 `*-native` 标识保持历史含义，仍为独立可选接入。
+DSH 中的 `*-style` 策略和 `*-native` provider 入口保持各自现有行为。本次不新增任何插件专属适配器，也不把原生运行路由到 DSH 策略。新增的成员、消息和共享记录能力是通用基础设施；DSH 的根 LLM 入口以通用工具暴露任务查询、消息投递及记录读写等待。各策略可按自己的原生机制选择是否调用这些能力，其命令格式和流程由策略维护者决定。DSH 不定义 Superpowers 黑板或 Codex、Claude 的策略行为。
 
 作者可实现同步 `next(input, snapshot): StageDecision`，`decide` 提供准入预览。每次返回一个 `stage`、`finish` 或 `blocked`；异步规划是普通可取消子任务，不等待策略回调。`results` 是累计交接数据；`currentResults` 仅含当前已提交绑定的结果。替换为动态策略从阶段零开始。捕获的回调在卸载注册后仍可收尾，新接单必须通过当前注册检查。回调属于可信且有限的宿主代码，取消无法中断不返回的同步回调。旧静态作者无需改动。
 
-Codex 风格交替执行工作与只读检查；Claude 风格探索、执行并独立复核；ZCode 风格按已校验的有限依赖图执行里程碑。Superpowers 风格在编程任务中贯通目标理解、规划、实施、验收与最终复核。各风格插件通过自己的 `maxConcurrent`（默认 1）决定依赖已满足的工作节点并发数。策略作者负责可写模块协调及工作区隔离，DSH 不分配 Git worktree。缺失依赖、循环及重复 ID 都会拒绝。共用配方覆盖编程、论文调研、问题研究与方案规划。
+Codex、Claude、ZCode 和 Superpowers 风格策略沿用各自已有的流程。通用协作能力不会注入会议阈值、黑板字段、风险等级或采纳检查。策略作者负责可写模块协调及工作区隔离，DSH 不分配 Git worktree。共用配方覆盖编程、论文调研、问题研究与方案规划。
 
-策略阶段可以将 `maxConcurrent` 设为正安全整数，覆盖载体的默认并发数，实际并发最多为该阶段任务数。省略时保留载体默认；`serial: true` 指定一个工作者，并拒绝与大于一的并发数同时使用。阶段顺序、累计任务与结果限制、工具权限、取消及子任务清理继续生效。
+策略阶段可以将 `maxConcurrent` 设为正安全整数，覆盖载体的默认并发数，实际并发最多为该阶段任务数。省略时保留载体默认；`serial: true` 指定一个工作者，并拒绝与大于一的并发数同时使用。执行器成员轮次共用当前阶段并发额度，因此显式阶段覆盖也作用于执行器打开的成员。阶段顺序、累计任务与结果限制、工具权限、取消及子任务清理继续生效。
 
 档位描述任务范围和复核密度，与并发数独立。低档适合局部修改，中档适合需要上下文与验收的功能，高档适合跨文件或多里程碑改动，极端高档适合需要多个复核角度的跨模块或长开发任务。输入框为已经确认的档位显示对应风格的场景说明。这些说明描述适用方向，不代表实测能力。
 
-各风格插件配置包括 `tier`（默认 `medium`）、`maxNodes`（6）、`maxRepairs`（2）、`maxTokens`（每次模型调用 4096）、`timeoutMs`（每个子任务 300000）、`preset`、`readTools` 与 `tokenCost`。低档最多一节点、零修订，中档最多三节点、一次修订，高档沿用现有配置上限。新增“极端高”档默认 12 节点、4 次修订、每次子任务调用 8192 Token、超时 600000 毫秒；场景假设为每子任务 8 次调用 × 每次 8192 上下文 Token × 每次 4096 输出 Token。在 `extremeHigh` 下配置，schema 仍限制最多 16 节点、4 次修订。可选工作流补丁将载体 `maxTasks` 调至 40，以容纳 Codex 风格 12 节点复核加 4 次修订的完整情景。估算是情景，不代表供应方实际用量、账单或 Token 硬限制。输入框选择的档位在新接单时捕获，不修改已接任务，也不增加权限。累计子任务和结果字节上限继续生效。只对登记检查失败或有子任务读取证据的模型问题进行有限修订，再重新复核和验收；执行错误、拒绝、结果未知的副作用不自动重放。
+已有风格配置和工作流档位保持当前行为。可选工作流补丁中的任务数和成本数值是场景假设，不代表供应方实际用量、账单或 Token 硬限制。输入框选择的档位在新接单时捕获，不修改已接任务，也不增加权限。累计子任务和结果字节上限继续生效。各风格的复核与修订规则仍由已有策略代码定义。
 
 `workflowOutput` 通过原版结构化输出取得校验后的 `WorkflowProposal`。`artifactChecks` 在执行前固定文件要求，`contains` 是原样文件正文，不能填要求说明或字节/编码断言。宿主将原生/PTC `read` 观测关联到准确的子任务，以继承工作区解析相对路径，逐会话限制证据内存。助手声明、路径标题回显、拒绝/缺失读取、合成截断提示不能证明内容。局部读取可以证明实际看见的文字，不能证明未见文字不存在；按行读取无法证明尾随换行/编码。零检查意味着未验收，通过仅覆盖这些登记条件。
 

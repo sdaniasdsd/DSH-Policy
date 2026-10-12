@@ -1,5 +1,7 @@
 # DSH 协作基础能力第 4 份实施计划
 
+> **已被后续设计取代：** 本计划中的 Superpowers 专属执行器、黑板 schema 和会议/风险流程违反了最新职责边界，已从当前源码撤回。DSH 只保留通用协作 API 和统一 LLM 工具入口；策略协议由各策略维护者决定。请参阅[修订后的基础能力设计](../specs/2026-10-13-dsh-coordination-foundation-design.zh.md)。本文件作为历史审阅记录，不再是可执行计划。
+
 [English](2026-10-13-dsh-coordination-part-4.md) | 中文
 
 > **给实施 agent：** 在已选定的源码目录继续，并将这份策略实现单独提交。

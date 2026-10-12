@@ -23,11 +23,11 @@ The model receives inspection and message tools, including custom-prefix support
 
 | Commit | Change |
 | --- | --- |
-| `5e0f0e1cad` | Core active-only message admission |
-| `bc7c63e642` | Task-owned active member registry |
-| `e35510e3fe` | Exact-owner message service and lifetime cancellation |
-| `4d48683cf1` | Model tools, documentation and API/persistence projections |
-| `e137ebd4c2` | Preserve member discovery when retained results exceed tool output |
+| `active inbox API` | Core active-only message admission |
+| `owner-scoped member registry` | Task-owned active member registry |
+| `owner-scoped message service` | Exact-owner message service and lifetime cancellation |
+| `LLM tools and documentation` | Model tools, documentation and API/persistence projections |
+| `Part 1 delivery` | Preserve member discovery when retained results exceed tool output |
 
 The optional active-member presentation field extends the experimental persisted entry view. The paired persistence acknowledgement records its schema change; this field grants no authority to resume a session.
 

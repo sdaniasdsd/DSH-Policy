@@ -10,7 +10,7 @@ English | [中文](2026-10-13-dsh-coordination-part-2.zh.md)
 
 **Tech Stack:** TypeScript, Cordis, original Jobs/Subagents, JSONL session persistence, Session Query and Vitest Loader fixtures.
 
-**Spec:** [coordination foundation](../specs/2026-10-13-dsh-coordination-foundation-design.md). Depends on part 1 through e137ebd4c2.
+**Spec:** [coordination foundation](../specs/2026-10-13-dsh-coordination-foundation-design.md). Depends on part 1 through Part 1 delivery.
 
 ## Global constraints
 

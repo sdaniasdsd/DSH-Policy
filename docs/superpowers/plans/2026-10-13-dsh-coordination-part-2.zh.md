@@ -10,7 +10,7 @@
 
 **技术：** TypeScript、Cordis、原版 Jobs/Subagents、JSONL 会话持久化、Session Query 和 Vitest Loader 夹具。
 
-**设计：** [协调基础能力](../specs/2026-10-13-dsh-coordination-foundation-design.zh.md)。依赖第 1 份，截至 e137ebd4c2。
+**设计：** [协调基础能力](../specs/2026-10-13-dsh-coordination-foundation-design.zh.md)。依赖第 1 份，截至 Part 1 delivery。
 
 ## 全局要求
 

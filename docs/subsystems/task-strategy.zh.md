@@ -12,7 +12,7 @@
 
 `AuthorStrategy.decide` 和 `StrategyRegistry.decide` 同步生成独立的计划数据，异步工作归执行层管理。载体的 `ctx.taskStrategies.decide` 还执行准入，因此仍为异步。作者要求见包文档。
 
-宿主调用方可以用所属 Agent 范围内的 `requestId` 提交命名策略，读取任务保留的状态，并在阶段排空后的边界请求替换。替换期间 JobId 保持固定，已有结果和累计子任务额度继续保留；替换失败时等待明确恢复或再次切换。宿主控制及进程内状态定义见 [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts)，根模型工具提供提交、列出、计划、执行、查询和发送消息。
+宿主调用方可以用所属 Agent 范围内的 `requestId` 提交命名策略，读取任务保留的状态，并在阶段排空后的边界请求替换。替换期间 JobId 保持固定，已有结果和累计子任务额度继续保留；替换失败时等待明确恢复或再次切换。宿主控制及进程内状态定义见 [runtime-types.ts](../../packages/experimental/task-strategy/src/runtime-types.ts)，根模型工具提供提交、列出、计划、执行、查询、发送消息及通用记录操作。
 
 | 类型 | 宿主职责 |
 |---|---|
@@ -24,10 +24,15 @@
 | `TaskMemberView` | 一个活跃本地子任务的会话身份与标签 |
 | `TaskMessageRequest` | 活跃子任务身份与非空调整文本 |
 | `TaskMessageReceipt` | 已接收消息身份；不表示已处理或已采纳 |
+| `TaskSharedRecord` | 调用方定义的 JSON 值及任务范围 key、版本和写入者 |
+| `TaskRecordWaitResult` | 新记录或有界超时结果 |
+| `TaskCoordination` | 向执行器提供的通用记录与保留发送者身份的成员消息 |
 
 任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
 
-根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；完整查询过大时，工具保留绑定、进度和活跃成员，添加 `completedTasks` 与 `detailsOmitted: true`，省略详细结果及报告；宿主视图仍然完整。只有协调身份集合本身超过上限时才拒绝展示，并要求提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
+根模型工具 `task_strategy_inspect(jobId)`、`task_strategy_message(jobId, childId, text)` 和 `task_strategy_record_{read,list,write,wait}` 使用同一套归属检查，名称跟随 `toolPrefix`。记录由原始 Job 隔离；`write` 按 `expectedRevision` 比较并交换，`wait` 等待版本变化或超时。记录 key 和 JSON value 的语义由调用方定义。自动根入口开启时工具可用，载体卸载时移除；执行子任务保留原有工具。DSH 只提供通用基础能力与统一 LLM 工具入口，不新增插件专属适配，不决定策略命令格式或业务流程。
+
+宿主调用方可通过 `ctx.taskRuns` 与 `ctx.taskStrategies` 的 `recordRead`、`recordList`、`recordWrite` 和 `recordWait` 操作记录；执行器回调可通过 `TaskExecutorContext.coordination` 使用同一组能力。记录写入在返回前持久化新版本；旧 `expectedRevision` 会因版本冲突失败。记录作为 owner Session 插件记录跨载体重挂保留，但运行时 API 要求原 Job 仍处于活动期。
 
 在保留同一模块和 Jobs 服务时重新挂载载体会保留活跃任务，进程重启不会。已接收任务的部署规则保持固定，提供方和预设的可用性则在准入时检查。执行恢复限制见包文档的[限制说明](../../packages/experimental/task-strategy/README.zh.md#known-limitations-and-deferred-work)。
 
@@ -39,7 +44,7 @@
 
 目录条目包含可解释的子任务 Token 成本。注册表在注册时估算声明式计划，原任务与偏好可细化估算而不执行作者函数。可选场景假设估算预期调用、额外上下文和输出传递。选择器接收任务目录，插件页展示基线成本与未知项。未知成本不是零，不计入父任务与选择器用量。参见[估算契约](../../packages/experimental/task-strategy/README.zh.md#token-estimates)与[迁移说明](../upgrade-guide/v0.2.0-rc.2/task-strategy-cost-catalog/guide.zh.md)。
 
-执行器可选择使用第五个 `context?: TaskExecutorContext` 参数。其 `members` 接口打开允许的本地 DSH 预设，观察真实轮次结果，并在原 Job 内显式继续所属会话。继续输入由原任务的精确 owner 发送。活跃成员查询只列出正在执行的轮次。控制步骤及已尝试的成员准入消耗捕获的累计任务额度；成员并发、完整请求及结果受部署上限约束。执行器结算时关闭准入并排空成员。未捕获到结果时返回携带已接收身份的 `unobserved`，不自动重放。失败、取消及未完成保留原始 stopReason。原生适配器只有作者明确使用该上下文时才创建本地成员；本份未增加原生会话继续、黑板、会议或 Superpowers 恢复策略。 所有本地子级轮次共用任务的并发额度，包括普通子级及不同执行器启动的成员。继续成员会话时保留已捕获的 token 上限与结构化提交 schema。
+执行器可选择使用第五个 `context?: TaskExecutorContext` 参数。其 `members` 接口打开允许的本地 DSH 预设，观察真实轮次结果，并在原 Job 内显式继续所属会话。`coordination` 提供通用共享记录与成员消息接口。继续输入由原任务的精确 owner 发送。活跃成员查询只列出正在执行的轮次。控制步骤及已尝试的成员准入消耗捕获的累计任务额度；本地轮次共用当前阶段的并发额度，阶段显式设置可将额度提高到载体默认值以上。完整请求及结果仍受部署上限约束。执行器结算时关闭准入并排空成员。未捕获到结果时返回携带已接收身份的 `unobserved`，不自动重放。失败、取消及未完成保留原始 stopReason。继续成员会话时保留已捕获的 token 上限与结构化提交 schema。具体策略如何使用这些接口由其维护者决定。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -118,6 +123,47 @@ inspect(parent: Agent, jobId: JobId): TaskRunView
  * @returns inbox acceptance identity, without claiming processing or adoption.
  */
 async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
+
+/**
+ * Read one task-scoped shared record under the exact owner and Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @returns detached latest record, or undefined when absent.
+ */
+recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined
+
+/**
+ * List task-scoped shared records under the exact owner and Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @returns detached latest records.
+ */
+recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]
+
+/**
+ * Compare-and-set one task-scoped shared record.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param value - JSON-serializable record value.
+ * @param expectedRevision - observed version, or zero when absent.
+ * @param signal - caller cancellation signal.
+ * @returns persisted record with the new revision.
+ */
+recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>
+
+/**
+ * Wait for a task-scoped shared record to advance.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param afterRevision - revision already observed by the caller.
+ * @param timeoutMs - bounded wait duration.
+ * @param signal - caller cancellation signal.
+ * @returns the newer record or a timeout result.
+ */
+recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>
 
 /**
  * Request cancellation through the original Jobs service after checking task ownership.
@@ -304,6 +350,47 @@ inspect(parent: Agent, jobId: JobId): TaskRunView
  * @returns inbox acceptance identity, not processing or adoption.
  */
 sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt>
+
+/**
+ * Read one generic record owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @returns detached latest record, or undefined when absent.
+ */
+recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined
+
+/**
+ * List generic records owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @returns detached latest records.
+ */
+recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]
+
+/**
+ * Compare-and-set a generic record owned by the exact task Job.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param value - JSON-serializable record value.
+ * @param expectedRevision - observed version, or zero when absent.
+ * @param signal - caller cancellation signal.
+ * @returns persisted record with the new revision.
+ */
+recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>
+
+/**
+ * Wait for a generic record owned by the exact task Job to advance.
+ * @param parent - exact live owner Agent.
+ * @param jobId - original task Job identity.
+ * @param key - caller-defined nonempty record key.
+ * @param afterRevision - revision already observed by the caller.
+ * @param timeoutMs - bounded wait duration.
+ * @param signal - caller cancellation signal.
+ * @returns the newer record or a timeout result.
+ */
+recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>
 
 /**
  * Reserve replacement by a current named strategy at the next stage barrier.

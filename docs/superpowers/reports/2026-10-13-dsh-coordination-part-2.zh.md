@@ -27,12 +27,12 @@
 
 | 提交 | 改动 |
 | --- | --- |
-| `81a02c7388` | 确切继续回执及原会话接收 |
-| `30c65bb148` | 保留任务所属成员会话及真实结果 |
-| `a766e9726e` | 可选执行器上下文及累计轮次接收 |
-| `2c9ae6e7e9` | 真实 Loader、持久化及生命周期验证 |
-| `26098420ca` | 测试后端依赖位置修正 |
-| `5476265979` | 继续执行参数、共享并发及严格测试声明验证 |
+| `continued-turn receipt` | 确切继续回执及原会话接收 |
+| `retained member session` | 保留任务所属成员会话及真实结果 |
+| `executor context` | 可选执行器上下文及累计轮次接收 |
+| `Loader lifecycle verification` | 真实 Loader、持久化及生命周期验证 |
+| `test dependency correction` | 测试后端依赖位置修正 |
+| `continuation and concurrency validation` | 继续执行参数、共享并发及严格测试声明验证 |
 
 修复提交保留继续执行参数，并实施任务共享并发限制。
 

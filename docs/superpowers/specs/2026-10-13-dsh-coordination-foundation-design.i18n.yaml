@@ -2,39 +2,24 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-13-dsh-coordination-foundation-design.md
-/dsh-coordination-foundation-and-strategy-responsibilities:
-  en: d94b7713a56e3953
-  zh: ef86208d6b73d8ca
-/dsh-coordination-foundation-and-strategy-responsibilities/summary:
-  en: e7cf381d708cb4ab
-  zh: b2c96200153a9813
-/dsh-coordination-foundation-and-strategy-responsibilities/table-of-contents:
-  en: 8e1f5e6a5d3ac846
-  zh: ff24970e00fd83a7
-/dsh-coordination-foundation-and-strategy-responsibilities/responsibilities:
-  en: d95cff055ff50c2f
-  zh: 5720300980f6c784
-/dsh-coordination-foundation-and-strategy-responsibilities/approach:
-  en: 4094208df7e48a70
-  zh: b64c0b4f468c6f05
-/dsh-coordination-foundation-and-strategy-responsibilities/foundation-capabilities:
-  en: 95c79abba1bcc6be
-  zh: e11a2bc8680fe687
-/dsh-coordination-foundation-and-strategy-responsibilities/current-source-and-integration-gaps:
-  en: 5ec24f3b381487ff
-  zh: 815c5e6d3a8de8cb
-/dsh-coordination-foundation-and-strategy-responsibilities/preserving-existing-workflows:
-  en: 5abfafe4c8bbadec
-  zh: b5be8e8767ebcab2
-/dsh-coordination-foundation-and-strategy-responsibilities/superpowers-blackboard-workflow:
-  en: a4ab2e9755d5097f
-  zh: 2f965b1e841f260b
-/dsh-coordination-foundation-and-strategy-responsibilities/unexpected-problems-and-recovery:
-  en: 1266b5086d5514af
-  zh: 89277ccc405acfa0
-/dsh-coordination-foundation-and-strategy-responsibilities/validation-goals-and-scope:
-  en: e9b1aef0b1fd684a
-  zh: cde6b01b10f2ab6f
-/dsh-coordination-foundation-and-strategy-responsibilities/dev-note:
-  en: 3e3f39b4c9a0ca8f
-  zh: 28067ff26c05c94f
+/dsh-generic-task-coordination-capabilities:
+  en: 70ede67cee288185
+  zh: 8bef81feb903092c
+/dsh-generic-task-coordination-capabilities/goal:
+  en: fcf90a1a5a9b2832
+  zh: 752270684bf3370b
+/dsh-generic-task-coordination-capabilities/responsibility-boundary:
+  en: 4738a306e78a2d20
+  zh: 22a0709b672782ea
+/dsh-generic-task-coordination-capabilities/generic-llm-tool-protocol:
+  en: c288abac1fe8dc9a
+  zh: fc9c06d0fd66ed25
+/dsh-generic-task-coordination-capabilities/preserve-existing-paths:
+  en: 70234ce4598b8d33
+  zh: e272c2919f27a6d5
+/dsh-generic-task-coordination-capabilities/validation-goals:
+  en: 91d234755edeeba1
+  zh: 7502e8e7a4bc889b
+/dsh-generic-task-coordination-capabilities/scope:
+  en: 7f174c6cc45cce75
+  zh: 71d6670dcc0730ae

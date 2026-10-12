@@ -111,7 +111,7 @@ job_kill(jobId)                                     # 取消
 <a id="workflow-library"></a>
 ## 6. 可配置工作流与 Token 估算
 
-当前 bundle 还启用 `codex-style`、`claude-style`、`zcode-style`、`superpowers-style`，均由 DSH 执行，增加同步阶段反馈、已校验规划依赖图、只读模型复核、工具产物验收与有限修订。Superpowers 风格按“理解/规划/串行实施/验收/复核”推进，不加载外部 skill 文件，也不宣称官方集成。输入框为这些风格提供接单时捕获的低/中/高/极端高档位；原有 12 条配方仍只有三档。极端高默认 12 节点、4 次修订、每次子任务调用 8192 Token、超时 600000 毫秒，成本场景假设为每子任务 8 次调用 × 8192 上下文 × 4096 输出 Token。补丁把载体 `maxTasks` 设为 40，以容纳 Codex 风格的配置最大子任务情景。各插件入口可配置 `tier`、`maxNodes`、`maxRepairs`、`maxTokens`、`timeoutMs`、`tokenCost`、`extremeHigh`。这些是估算，不是实际供应方用量或账单。插件策略目录展示基线与配置允许的最大修订场景；任务卡区分执行结束、登记检查与已观测子任务用量。详见[风格策略契约](../packages/experimental/task-strategy/README.zh.md#dsh-style-policies)。
+当前 bundle 中各策略条目沿用已有配置。独立的 `*-native` 入口继续调用原版 provider，保留原生规划与权限；本次没有新增插件专属适配器。DSH 提供通用成员会话、任务消息、共享记录，以及根 LLM 入口中的查询、投递和记录读写等待工具。策略维护者自行决定如何使用这些能力、采用何种命令格式和协作流程；这些通用接口不会为 Superpowers 增加黑板、会议或风险规则，也不会改变 Codex、Claude、ZCode 的原有链路。其他工作流档位、配方与成本场景见[风格策略契约](../packages/experimental/task-strategy/README.zh.md#dsh-style-policies)。
 
 本 bundle 中原生插件保持禁用，但保留其入口与 `*-native` 标识。已有 profile 更新需显式启用新风格入口，不能重新解释历史原生任务。下列 12 条配方 ID 继续可用。
 [workflows.patch.yml](workflows.patch.yml) 提供 12 条策略，适用于已提供 preset 注册表与 `standard` 的 Web profile。SDK/headless 组合需显式提供这些原版服务。如果已有载体，将新增 `strategies` 合并到唯一的 `config.strategies` 列表，保留已有策略与 variants；不要追加第二个载体或重复 id。源码工作区沿用既有 profile 中载体的规范构建文件 URL。

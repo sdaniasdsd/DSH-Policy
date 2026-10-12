@@ -1,5 +1,7 @@
 # DSH Coordination Delivery 4
 
+> **Delivery status correction:** The Superpowers-specific blackboard executor described here was withdrawn from the current source after the responsibility boundary was clarified. The current delivery contains only generic task coordination APIs and LLM tools; it includes no strategy-specific adapter or workflow.
+
 English | [中文](2026-10-13-dsh-coordination-part-4.zh.md)
 
 ## Summary

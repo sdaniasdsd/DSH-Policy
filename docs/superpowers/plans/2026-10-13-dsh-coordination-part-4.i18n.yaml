@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-13-dsh-coordination-part-4.md
 /dsh-coordination-part-4-implementation-plan:
-  en: b3a44d9601f0c546
-  zh: 64107753a148cc30
+  en: 6a4d3098a58a8bdf
+  zh: 1c691a54e20775d6
 /dsh-coordination-part-4-implementation-plan/policy-configuration:
   en: 22e6931eb24771b0
   zh: b5f569b792f58442
