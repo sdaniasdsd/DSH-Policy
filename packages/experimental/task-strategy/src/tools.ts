@@ -5,6 +5,7 @@ import type TaskStrategies from './cordis.ts'
 import { boundText, parsePlan, parsePreferences } from './schema.ts'
 import { JobId } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { inspectionText } from './task-inspection.ts'
 
 function receiptText(receipt: { jobId: string; name: string }, maxBytes: number): string {
   const text = JSON.stringify(receipt)
@@ -33,16 +34,13 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
     defineTool({
       name: `${prefix}_inspect`,
       description: 'Inspect an owned task, including its currently active DSH child session identities. '
-        + 'Membership is a snapshot; a child may finish before a later message. Use job_output for full task results.',
+        + 'Membership is a snapshot; a child may finish before a later message. '
+        + 'Large views omit details and return detailsOmitted with completedTasks. Use job_output for recorded task output.',
       parameters: { jobId: { type: 'string', required: true } }, output,
       execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Task inspection requires a calling agent')
         const view = service.inspect(exec.agent, JobId(args.jobId))
-        const text = JSON.stringify(view)
-        if (Buffer.byteLength(text, 'utf8') > maxBytes) {
-          throw new Error('Task inspection exceeds the output byte limit; use job_output or increase the output limit')
-        }
-        return Promise.resolve(text)
+        return Promise.resolve(inspectionText(view, maxBytes))
       },
     }),
     defineTool({

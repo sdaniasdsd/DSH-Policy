@@ -70,7 +70,7 @@ ZCode 使用官方[开源 CLI](https://github.com/zai-org/ZCode)，传入 `--pro
 
 任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
 
-根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；查询过大时明确拒绝展示，并提示使用 `job_output` 或提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
+根模型工具 `task_strategy_inspect(jobId)` 和 `task_strategy_message(jobId, childId, text)` 使用同一套归属检查，名称跟随 `toolPrefix`。自动根入口开启时仍可使用，载体卸载时会移除；执行子任务保留原有工具。查询是当前快照，发送前可能已过期。不会为满足 `maxOutputBytes` 而截断完整身份；完整查询过大时，工具保留绑定、进度和活跃成员，添加 `completedTasks` 与 `detailsOmitted: true`，省略详细结果及报告；宿主视图仍然完整。只有协调身份集合本身超过上限时才拒绝展示，并要求提高输出上限。如果消息回执超过上限，错误仍保留完整的已接收身份并提示不要重发。这些接口提供协调基础能力；风险分级、开会和黑板决策吸收由作者策略负责。
 
 ### 自动入口与可选选择
 
