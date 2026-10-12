@@ -3,6 +3,9 @@ import type { SelectionConfig } from './selection-types.ts'
 import type { PolicySnapshot, StageDecision } from './policy-types.ts'
 import type { ArtifactCheck, VerificationReport } from './verification-types.ts'
 import type { WorkflowProposal, ReviewReport } from './workflow-types.ts'
+
+/** Supported style orchestration intensity. */
+export type StyleTier = 'low' | 'medium' | 'high' | 'extreme-high'
 export type { EntryView } from './entry-types.ts'
 export type { TaskSwitch } from './runtime-types.ts'
 
@@ -149,12 +152,21 @@ export interface ExecutionResult {
   readonly error?: string
 }
 
+/** One preference-selected alternative and its optional scenario assumptions. */
+export interface StrategyVariant {
+  readonly preference: string
+  readonly equals: string
+  readonly plan: ExecutionPlan
+  readonly maximumPlan?: ExecutionPlan
+  readonly assumptions?: TokenCostAssumptions
+}
+
 /** Declarative author policy with optional preference-selected alternatives. */
 export interface StrategyDefinition {
   readonly id: string
   readonly description: string
   readonly plan: ExecutionPlan
-  readonly variants?: { readonly preference: string; readonly equals: string; readonly plan: ExecutionPlan; readonly maximumPlan?: ExecutionPlan }[]
+  readonly variants?: readonly StrategyVariant[]
   /** Optional scenario assumptions; no hidden output or turn defaults. */
   readonly tokenCost?: TokenCostAssumptions
 }

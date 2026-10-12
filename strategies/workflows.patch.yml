@@ -10,7 +10,7 @@
         allowedPresets:
           - standard
         allowedExecutors: []
-        maxTasks: 24
+        maxTasks: 40
         maxConcurrent: 1
         maxResultBytes: 262144
         maxOutputBytes: 49152
@@ -416,6 +416,8 @@
       name: '@deepseek-ai/dsh-experimental-task-strategy/plugins/claude-style'
     - id: strategy-zcode-style
       name: '@deepseek-ai/dsh-experimental-task-strategy/plugins/zcode-style'
+    - id: strategy-superpowers-style
+      name: '@deepseek-ai/dsh-experimental-task-strategy/plugins/superpowers-style'
     - id: orchestration-codex
       name: '@deepseek-ai/dsh-experimental-task-strategy/plugins/codex'
       disabled: true

@@ -13,10 +13,18 @@ import type { ConversationNodeContext } from '@deepseek-ai/dsh-client-ui-convers
 afterEach(cleanup)
 const base: EntryView = { sessionId: SessionId('owner'), messageId: MessageId('message'), requestId: 'request', state: 'selecting' }
 describe('task entry chat card', () => {
+  it.each([
+    ['en', 'Extreme high'], ['zh', '极端高'],
+  ])('shows the captured extreme-high tier in %s receipts', (language, label) => {
+    render(<TaskEntryPanel view={{ ...base, state: 'running', receipt: { jobId: JobId('job'), name: 'Work', strategy: 'superpowers-style',
+      selection: { kind: 'auto', tier: 'extreme-high', reason: 'Broad verification requested.' } } }} language={language} connected={true} strategies={[]}
+    cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText(new RegExp(label))).toBeTruthy()
+  })
   it('shows the initial Agent choice and explanation without claiming verification', () => {
     render(<TaskEntryPanel view={{ ...base, state: 'running', receipt: { jobId: JobId('job'), name: 'Work', strategy: 'codex-style',
       selection: { kind: 'auto', tier: 'high', reason: '涉及多个模块，需要复核。' } } }} language="zh" connected={true} strategies={[]}
-      cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
     expect(screen.getByText(/Agent 自主选择.*高/)).toBeTruthy()
     expect(screen.getByText(/涉及多个模块，需要复核/)).toBeTruthy()
     expect(screen.queryByText(/已登记检查通过/)).toBeNull()

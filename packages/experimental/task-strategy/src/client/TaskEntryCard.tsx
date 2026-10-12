@@ -54,7 +54,7 @@ export function TaskEntryPanel(props: {
     {view.receipt ? <p><code>{view.run?.binding.id ?? view.receipt.strategy}</code> · <code>{view.receipt.jobId}</code></p> : null}
     {view.receipt?.selection ? <div>
       <p>{view.receipt.selection.kind === 'fallback' ? copy.fallbackChoice : copy.automaticChoice}
-        {view.receipt.selection.tier ? ` · ${copy.initialTier}: ${view.receipt.selection.tier === 'low' ? copy.tierLow : view.receipt.selection.tier === 'medium' ? copy.tierMedium : copy.tierHigh}` : ''}</p>
+        {view.receipt.selection.tier ? ` · ${copy.initialTier}: ${view.receipt.selection.tier === 'low' ? copy.tierLow : view.receipt.selection.tier === 'medium' ? copy.tierMedium : view.receipt.selection.tier === 'high' ? copy.tierHigh : copy.tierExtremeHigh}` : ''}</p>
       <p>{view.receipt.selection.kind === 'auto' ? `${copy.choiceReason}: ` : ''}{view.receipt.selection.reason}</p>
     </div> : null}
     {view.progress ? <p>{view.progress}</p> : null}

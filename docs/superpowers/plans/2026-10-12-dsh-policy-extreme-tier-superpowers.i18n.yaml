@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-12-dsh-policy-extreme-tier-superpowers.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-12-dsh-policy-extreme-tier-superpowers.md
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan:
+  en: 639a9e8307fef91e
+  zh: 8f55711743ec88dd
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/global-constraints:
+  en: 37d362ff45cb1349
+  zh: d9a09f5e5b60dec4
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus:
+  en: 8a44fde6c4b08829
+  zh: a24f235e4fa93683
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus/task-1-add-the-extreme-high-tier-contract-and-bounded-configuration:
+  en: 514d44d16a6b17af
+  zh: 51c9fdfd2b39def8
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus/task-2-add-the-removable-superpowers-style-policy:
+  en: ef86500813269451
+  zh: 3c43f7074babc451
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus/task-3-expose-the-new-mode-and-tier-in-the-composer:
+  en: a40bfc6dbf251f6f
+  zh: f760085225714a02
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus/task-4-publish-the-entry-compose-it-opt-in-and-verify-the-real-loader-path:
+  en: a8ca4fa4ee6da17c
+  zh: 29d6506dc07cbdf2
+/dsh-policy-extreme-high-tiers-and-superpowers-style-plugin-implementation-plan/review-focus/task-5-run-the-maximum-path-regression-and-final-verification:
+  en: ed96ce5f8858b616
+  zh: 5d90800cb7aba328

@@ -38,13 +38,19 @@ describe('bounded selector operation', () => {
       b.subagents, 'spawn', new AbortController().signal)).resolves.toEqual({ strategy: 'auto', tier: 'low', reason: '任务范围明确。' })
     expect(b.dispose).toHaveBeenCalledOnce()
   })
+  it('accepts extreme-high only when the captured strategy declares it', async () => {
+    const b = bench({ stopReason: 'completed', output: [], structured: { strategy: 'auto', tier: 'extreme-high', reason: 'Requires broad verification.' } })
+    await expect(selectWorkflow(parent, [{ ...candidates[0]!, tiers: [{ tier: 'extreme-high' }] }], { task: 'task' }, options,
+      b.subagents, 'spawn', new AbortController().signal)).resolves.toEqual({ strategy: 'auto', tier: 'extreme-high', reason: 'Requires broad verification.' })
+    expect(b.start.mock.calls[0]![0].request.outputSchema).toMatchObject({ properties: { tier: { enum: ['low', 'medium', 'high', 'extreme-high', 'default'] } } })
+  })
   it.each([
     { strategy: 'auto', tier: 'high', reason: 'unsupported' },
     { strategy: 'missing', tier: 'low', reason: 'unknown' },
     { strategy: 'auto', tier: 'low', reason: '' },
     { strategy: 'auto', tier: 'low', reason: 'x'.repeat(241) },
     { strategy: 'auto', tier: 'low', reason: 'valid', extra: true },
-  ])('rejects an unregistered strategy, unsupported tier or invalid explanation: %j', async structured => {
+  ])('rejects an unregistered strategy, unsupported tier or invalid explanation: %j', async (structured) => {
     const b = bench({ stopReason: 'completed', output: [], structured })
     await expect(selectWorkflow(parent, [{ ...candidates[0]!, tiers: [{ tier: 'low' }] }], { task: 'task' }, options,
       b.subagents, 'spawn', new AbortController().signal)).rejects.toThrow()

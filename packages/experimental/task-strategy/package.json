@@ -64,6 +64,10 @@
       "types": "./lib/types/plugin-zcode-style.d.ts",
       "default": "./lib/plugin-zcode-style.js"
     },
+    "./plugins/superpowers-style": {
+      "types": "./lib/types/plugin-superpowers-style.d.ts",
+      "default": "./lib/plugin-superpowers-style.js"
+    },
     "./plugins/zcode": {
       "types": "./lib/types/plugin-zcode.d.ts",
       "default": "./lib/plugin-zcode.js"

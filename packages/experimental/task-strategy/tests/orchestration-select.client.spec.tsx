@@ -95,6 +95,18 @@ describe('composer orchestration choice', () => {
     fireEvent.click(toggle)
     await vi.waitFor(() => { expect(screen.queryByRole('combobox')).toBeNull() })
   })
+  it('offers Superpowers-style and the extreme-high tier', async () => {
+    const value: OrchestrationState = { selected: 'superpowers-style', tier: 'extreme-high', options: [
+      { id: 'dsh', label: 'DSH', available: true }, { id: 'superpowers-style', label: 'Superpowers', available: true },
+    ] }
+    render(<OrchestrationSelect read={async () => value} select={async () => value} selectTier={async () => value}
+      onReset={() => () => {}} t={t} />)
+    const mode = await screen.findByRole('combobox', { name: '编排模式' })
+    expect(screen.getByRole('option', { name: 'Superpowers 风格' })).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: '预算档位' })).toHaveProperty('value', 'extreme-high')
+    expect(screen.getByRole('option', { name: '极端高' })).toBeTruthy()
+    expect(mode).toHaveProperty('value', 'superpowers-style')
+  })
   it('keeps automatic state when the Host rejects a manual mode', async () => {
     render(<OrchestrationSelect read={async () => ({ ...initial, selected: 'dsh' })}
       select={async () => { throw new Error('unloaded') }} onReset={() => () => {}} t={t} />)

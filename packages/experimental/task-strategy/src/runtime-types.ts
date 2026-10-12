@@ -3,7 +3,7 @@ import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type { StagePolicy } from './policy-types.ts'
 import type { VerificationReport } from './verification-types.ts'
 import type { ReviewReport } from './workflow-types.ts'
-import type { ObservedUsage } from './types.ts'
+import type { ObservedUsage, StyleTier } from './types.ts'
 import type { AdapterConfig, ExecutionEvent, ExecutionOptions, ExecutionPlan, StrategyInput, TaskResult } from './types.ts'
 
 /** Detached plan data; revision identifies the captured plan contents. */
@@ -73,7 +73,7 @@ export interface TaskReceipt {
   readonly name: string
   readonly strategy: string
   /** Initial autonomous choice; remains unchanged when later stages switch strategies. */
-  readonly selection?: { readonly kind: 'auto' | 'fallback'; readonly tier?: 'low' | 'medium' | 'high'; readonly reason: string }
+  readonly selection?: { readonly kind: 'auto' | 'fallback'; readonly tier?: StyleTier; readonly reason: string }
 }
 
 /** Switch to a newly captured named plan at the next drained stage boundary. */

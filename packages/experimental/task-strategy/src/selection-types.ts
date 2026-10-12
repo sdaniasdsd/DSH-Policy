@@ -1,5 +1,5 @@
 /** Intake choices and bounds, shared by the host contract and configuration. */
-import type { StrategyInput, StrategyTokenCost } from './types.ts'
+import type { StrategyInput, StrategyTokenCost, StyleTier } from './types.ts'
 
 /** Automatic choice uses one bounded model call; named choice bypasses it. */
 export type TaskSelection = { readonly kind: 'auto'; readonly workflow?: boolean } | { readonly kind: 'named'; readonly strategy: string }
@@ -9,13 +9,13 @@ export interface WorkflowCandidate {
   readonly id: string
   readonly description: string
   readonly cost?: StrategyTokenCost
-  readonly tiers?: readonly { readonly tier: 'low' | 'medium' | 'high'; readonly cost?: StrategyTokenCost | undefined }[]
+  readonly tiers?: readonly { readonly tier: StyleTier; readonly cost?: StrategyTokenCost | undefined }[]
 }
 
 /** One bounded Agent decision, retained in the task receipt. */
 export interface WorkflowDecision {
   readonly strategy: string
-  readonly tier?: 'low' | 'medium' | 'high'
+  readonly tier?: StyleTier
   readonly reason: string
 }
 

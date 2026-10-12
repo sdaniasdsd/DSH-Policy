@@ -7,7 +7,7 @@ import type { TokenCostUnknown } from '../types.ts'
 export type TaskStrategyLocaleKey =
   | 'entryLanguage' | 'entryEnabled' | 'orchestration' | 'modeUnconfigured' | 'modeScope' | 'modeLoadFailed'
   | 'automation' | 'fullyAutomatic' | 'chooseManually' | 'automaticHint'
-  | 'codexStyle' | 'claudeStyle' | 'zcodeStyle' | 'costMaximum' | 'tier' | 'tierLow' | 'tierMedium' | 'tierHigh'
+  | 'codexStyle' | 'claudeStyle' | 'zcodeStyle' | 'superpowersStyle' | 'costMaximum' | 'tier' | 'tierLow' | 'tierMedium' | 'tierHigh' | 'tierExtremeHigh'
   | 'title' | 'description' | 'mode' | 'auto' | 'named' | 'noReply' | 'strategy' | 'unknown'
   | 'model' | 'provider' | 'inherit' | 'timeout' | 'timeoutHint' | 'catalog' | 'loading' | 'catalogError' | 'empty' | 'retry'
   | 'overridden' | 'reset' | 'readOnly' | 'unavailable' | 'save' | 'saving' | 'saveFailed' | 'invalid'
@@ -26,10 +26,10 @@ export const costUnknownKeys: Record<TokenCostUnknown, TaskStrategyLocaleKey> = 
 export const en: Record<TaskStrategyLocaleKey, string> = {
   automation: 'Fully automatic / Choose manually', fullyAutomatic: 'Fully automatic', chooseManually: 'Choose manually',
   automaticHint: 'Describe your task. The Agent chooses a registered strategy and its budget tier; no selection reply is needed.',
-  tier: 'Budget tier', tierLow: 'Low', tierMedium: 'Medium', tierHigh: 'High',
+  tier: 'Budget tier', tierLow: 'Low', tierMedium: 'Medium', tierHigh: 'High', tierExtremeHigh: 'Extreme high',
   orchestration: 'Orchestration mode', modeUnconfigured: 'Plugin/backend not enabled', modeLoadFailed: 'Mode unavailable',
   modeScope: 'Style modes use DSH models, tools and permissions. Applies to new tasks in this session; resets on restart.',
-  codexStyle: 'Codex style', claudeStyle: 'Claude style', zcodeStyle: 'ZCode style', costMaximum: 'Maximum configured repair scenario (not a token limit)',
+  codexStyle: 'Codex style', claudeStyle: 'Claude style', zcodeStyle: 'ZCode style', superpowersStyle: 'Superpowers style', costMaximum: 'Maximum configured repair scenario (not a token limit)',
   entryLanguage: 'en', entryEnabled: 'Route new tasks through strategies automatically',
   title: 'Task strategies', description: 'Choose how each task is planned and executed.',
   mode: 'Default choice', auto: 'Automatic', named: 'Use a strategy', noReply: 'Automatic choice can continue without a user reply. Each task can override this default.',
@@ -53,10 +53,10 @@ export const en: Record<TaskStrategyLocaleKey, string> = {
 export const zh: Record<TaskStrategyLocaleKey, string> = {
   automation: '全自动／自己选', fullyAutomatic: '全自动', chooseManually: '自己选',
   automaticHint: '说清要做什么，Agent 自主决定策略和档位，无需回复策略选择。',
-  tier: '预算档位', tierLow: '低', tierMedium: '中', tierHigh: '高',
+  tier: '预算档位', tierLow: '低', tierMedium: '中', tierHigh: '高', tierExtremeHigh: '极端高',
   orchestration: '编排模式', modeUnconfigured: '插件或后端未启用', modeLoadFailed: '模式暂不可用',
   modeScope: '风格模式借鉴对应编排方式，使用 DSH 模型、工具和权限。作用于本会话后续新任务；重启恢复自动。',
-  codexStyle: 'Codex 风格', claudeStyle: 'Claude 风格', zcodeStyle: 'ZCode 风格', costMaximum: '配置允许的最大修订场景（不是 Token 上限）',
+  codexStyle: 'Codex 风格', claudeStyle: 'Claude 风格', zcodeStyle: 'ZCode 风格', superpowersStyle: 'Superpowers 风格', costMaximum: '配置允许的最大修订场景（不是 Token 上限）',
   entryLanguage: 'zh', entryEnabled: '新任务自动进入策略层',
   title: '任务策略', description: '选择每个任务的规划与执行方式。',
   mode: '默认选择方式', auto: '自动选择', named: '指定策略', noReply: '自动选择无需等待用户答复。每个任务仍可单独指定策略。',
@@ -98,7 +98,7 @@ export const entryCopy = {
   en: {
     progressLabel: 'Task strategy progress',
     automaticChoice: 'Agent choice', fallbackChoice: 'Configured fallback (automatic choice failed)',
-    choiceReason: 'Selection reason (model judgment)', initialTier: 'Initial tier', tierLow: 'Low', tierMedium: 'Medium', tierHigh: 'High',
+    choiceReason: 'Selection reason (model judgment)', initialTier: 'Initial tier', tierLow: 'Low', tierMedium: 'Medium', tierHigh: 'High', tierExtremeHigh: 'Extreme high',
     acceptProposal: 'Accept this proposal',
     completedCounts: 'Completed stages / tasks',
     verification: 'Registered checks', passed: 'Registered checks passed', failed: 'Registered checks failed', unverified: 'Unverified',
@@ -123,7 +123,7 @@ export const entryCopy = {
   zh: {
     progressLabel: '任务策略进度',
     automaticChoice: 'Agent 自主选择', fallbackChoice: '已使用配置兜底（自动选择失败）',
-    choiceReason: '选择理由（模型判断）', initialTier: '初始档位', tierLow: '低', tierMedium: '中', tierHigh: '高',
+    choiceReason: '选择理由（模型判断）', initialTier: '初始档位', tierLow: '低', tierMedium: '中', tierHigh: '高', tierExtremeHigh: '极端高',
     acceptProposal: '接受这份提议',
     completedCounts: '已完成阶段 / 子任务',
     verification: '已登记验收项', passed: '已登记检查通过', failed: '已登记检查失败', unverified: '未验收',

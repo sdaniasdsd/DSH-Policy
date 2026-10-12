@@ -59,7 +59,7 @@ export function OrchestrationSelect({ read, select, selectTier, onReset, t }:
     })
   }
   const options = [...state?.options ?? [{ id: 'dsh', label: 'DSH', available: false }]]
-  for (const [id, label] of [['claude-style', t('claudeStyle')], ['codex-style', t('codexStyle')], ['zcode-style', t('zcodeStyle')]]) {
+  for (const [id, label] of [['claude-style', t('claudeStyle')], ['codex-style', t('codexStyle')], ['zcode-style', t('zcodeStyle')], ['superpowers-style', t('superpowersStyle')]]) {
     if (id !== undefined && label !== undefined && !options.some(row => row.id === id)) {
       options.push({ id, label, available: false, reason: t('modeUnconfigured') })
     }
@@ -90,12 +90,13 @@ export function OrchestrationSelect({ read, select, selectTier, onReset, t }:
       onFocus={() => { reload() }} onChange={(event) => { choose(event.target.value) }}>
       {options.filter(row => row.id !== 'dsh').map(row => <option key={row.id} value={row.id} disabled={!row.available}>
         {row.id === 'dsh' ? t('auto') : row.id === 'claude-style' ? t('claudeStyle') : row.id === 'codex-style' ? t('codexStyle')
-          : row.id === 'zcode-style' ? t('zcodeStyle') : row.label}{row.available ? '' : ` · ${row.reason ?? t('modeUnconfigured')}`}
+          : row.id === 'zcode-style' ? t('zcodeStyle') : row.id === 'superpowers-style' ? t('superpowersStyle') : row.label}{row.available ? '' : ` · ${row.reason ?? t('modeUnconfigured')}`}
       </option>)}
     </select> : null}
     {!automatic && state.tier !== undefined && selectTier !== undefined ? <select className={css.select} aria-label={t('tier')}
       value={state.tier} disabled={busy} onChange={(event) => { choose(event.target.value, true) }}>
       <option value="low">{t('tierLow')}</option><option value="medium">{t('tierMedium')}</option><option value="high">{t('tierHigh')}</option>
+      <option value="extreme-high">{t('tierExtremeHigh')}</option>
     </select> : null}
     {error ? <span role="alert" className={css.error} title={error}>{t('modeLoadFailed')}</span> : null}
   </div>

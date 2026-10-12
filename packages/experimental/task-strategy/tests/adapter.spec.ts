@@ -32,6 +32,7 @@ import Adapter from '../src/cordis.ts'
 import TaskRuns from '../src/task-runtime-service.ts'
 import * as CodexOrchestrator from '../src/plugin-codex.ts'
 import * as ClaudeOrchestrator from '../src/plugin-claude.ts'
+import * as SuperpowersStyle from '../src/plugin-superpowers-style.ts'
 import { createStyleStrategy, styleSchema } from '../src/style-policy.ts'
 import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -101,6 +102,36 @@ async function boot(
 }
 
 describe('Loader-composed strategy adapter', () => {
+  it('loads Superpowers-style as an opt-in DSH preset plugin and removes it on disposal', async () => {
+    const proposal = { summary: 'one bounded change', domain: 'coding', nodes: [{ id: 'a', instruction: 'work', dependencies: [] }], artifacts: [] }
+    const respond = (options: Parameters<MockAdapter['stream']>[0]) => {
+      const prompt = JSON.stringify(options.messages)
+      if (prompt.includes('生成有限的工作计划')) return toolCallResponse('plan', 'structured_output', proposal)
+      if (prompt.includes('以 structured_output 提交 status=passed/issues/unverified')) return toolCallResponse('review', 'structured_output', { status: 'passed', issues: [] })
+      return textResponse('done')
+    }
+    const { ctx, parent } = await boot(Array.from({ length: 12 }, () => respond), undefined, { entry: { enabled: true } })
+    ctx.loader.builtins['strategy-superpowers-style'] = SuperpowersStyle
+    await ctx.loader.create({ name: 'cordis:strategy-superpowers-style',
+      config: SuperpowersStyle.Config({ preset: 'coding', tier: 'low', readTools: [] }) })
+    await ctx.loader.await()
+    ctx.tools.register({ name: 'read', description: 'read-only test fixture',
+      parameters: { type: 'object', properties: { file_path: { type: 'string' } }, required: ['file_path'] },
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+      execute: async () => 'fixture',
+    })
+    expect(ctx.taskStrategies.catalog().strategies.map(row => row.id)).toContain('superpowers-style')
+    const mode = ctx.taskStrategies.orchestration({ sessionId: parent.id }).options.find(row => row.id === 'superpowers-style')
+    expect(mode).toMatchObject({ available: true })
+    const receipt = await ctx.taskStrategies.submit(parent, { requestId: 'superpowers-style', task: 'make one bounded change', strategy: 'superpowers-style' }, new AbortController().signal)
+    const job = await ctx.jobs.wait(receipt.jobId, 5000, parent.id)
+    expect(job.status, job.detail).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review'])
+    const entry = [...ctx.loader.entries()].find(row => row.options.name === 'cordis:strategy-superpowers-style')
+    await entry?.fiber?.dispose()
+    expect(ctx.taskStrategies.catalog().strategies.map(row => row.id)).not.toContain('superpowers-style')
+    expect(ctx.taskStrategies.orchestration({ sessionId: parent.id }).options.find(row => row.id === 'superpowers-style')).toBeUndefined()
+  })
   it('rejects reuse of a request id with different autonomous selection semantics', async () => {
     const { ctx, parent } = await boot([toolCallResponse('choose', 'structured_output', { strategy: 'review-first' }), textResponse('read'), textResponse('done')])
     const request = { requestId: 'selection-identity', task: 'work', selection: { kind: 'auto' as const } }
@@ -140,6 +171,20 @@ describe('Loader-composed strategy adapter', () => {
       selection: { kind: 'auto', workflow: true } }, new AbortController().signal)
     expect(receipt).toMatchObject({ strategy: 'automatic-policy', name: 'Selected high',
       selection: { kind: 'auto', tier: 'high', reason: 'Multiple components need review.' } })
+    expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
+  })
+  it('offers and retains extreme-high for an explicitly tiered style policy', async () => {
+    const { ctx, parent } = await boot([
+      toolCallResponse('pick-workflow', 'structured_output', { strategy: 'automatic-policy', tier: 'extreme-high', reason: 'The task needs maximum bounded review.' }),
+      textResponse('done'),
+    ], undefined, { entry: { enabled: true } })
+    ctx.taskStrategies.register({ id: 'automatic-policy', description: 'Finite style policy',
+      decide: input => ({ name: `Selected ${input.preferences?.tier}`, stages: [{ name: 'work', tasks: [{ label: 'work', preset: 'coding', instruction: 'work' }] }] }) })
+    ctx.taskStrategies.registerOrchestration({ id: 'automatic-mode', label: 'Automatic mode', strategy: 'automatic-policy', defaultTier: 'medium' })
+    const receipt = await ctx.taskStrategies.submitTask(parent, { requestId: 'auto-extreme-tier', task: 'Large task with broad verification',
+      selection: { kind: 'auto', workflow: true } }, new AbortController().signal)
+    expect(receipt.selection).toEqual({ kind: 'auto', tier: 'extreme-high', reason: 'The task needs maximum bounded review.' })
+    expect(receipt.name).toBe('Selected extreme-high')
     expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
   })
   it('uses only a configured balanced fallback after a failed automatic choice', async () => {
@@ -212,7 +257,7 @@ describe('Loader-composed strategy adapter', () => {
         ? toolCallResponse('choose', 'structured_output', { strategy: 'review-first' }) : maxTokensResponse('reasoning budget exhausted')
       return textResponse('executed')
     }
-    const { ctx, parent, model } = await boot(Array.from({ length: 12 }, () => respond), adapter => {
+    const { ctx, parent, model } = await boot(Array.from({ length: 12 }, () => respond), (adapter) => {
       vi.spyOn(adapter, 'resolveModel').mockImplementation(async (provider, id) => ({ provider, id, name: id,
         reasoning: { efforts: [{ id: ReasoningEffortId('off'), name: 'Off' }, { id: ReasoningEffortId('high'), name: 'High' }], defaultEffort: ReasoningEffortId('high') } }))
     }, { entry: { enabled: true } })
@@ -222,7 +267,9 @@ describe('Loader-composed strategy adapter', () => {
     expect(entry?.receipt, JSON.stringify(entry)).toBeDefined()
     if (!entry?.receipt) throw new Error(JSON.stringify(entry))
     expect((await ctx.jobs.wait(entry.receipt.jobId, 5000, parent.id)).status).toBe('completed')
-    const decisions = model.requests.filter(request => /Route the original user input|Choose exactly one registered strategy/.test(JSON.stringify(request.messages)))
+    const decisions = model.requests.filter(request =>
+      /Route the original user input|Choose exactly one registered strategy/.test(JSON.stringify(request.messages)),
+    )
     expect(decisions).toHaveLength(2)
     expect(decisions.every(request => request.reasoningEffort === 'off' && request.maxTokens === 512)).toBe(true)
     expect(model.requests.filter(request => !decisions.includes(request)).every(request => request.reasoningEffort === 'high')).toBe(true)
@@ -324,7 +371,9 @@ describe('Loader-composed strategy adapter', () => {
     expect(ctx.taskRuns.listExecutors().some(row => row.id === providerName)).toBe(false)
   })
   const orchestratorFields = { providerName: 'codex', executorId: 'codex', strategyId: 'codex-native', description: 'codex', instruction: 'instruction' }
-  const nativeCapabilities = { agentPreset: false, toolFilter: false, agentOptions: false, outputSchema: false, depthLimit: false, persona: false }
+  const nativeCapabilities = {
+    agentPreset: false, toolFilter: false, agentOptions: false, outputSchema: false, depthLimit: false, persona: false,
+  }
   it.each([
     ['codex', 'codex-native', CodexOrchestrator],
     ['claude-code', 'claude-native', ClaudeOrchestrator],
@@ -1607,8 +1656,8 @@ describe('Loader-composed strategy adapter', () => {
     const job = await ctx.taskStrategies.start(parent, 'task', plan, new AbortController().signal)
     expect((await ctx.jobs.wait(job, 5000, parent.id)).status).toBe('completed')
     expect(model.requests.map(request => request.tools?.map(tool => tool.name) ?? [])).toEqual([['reviewing_only'], []])
-    })
   })
+})
 
 interface CodexRecording {
   fingerprint: string
