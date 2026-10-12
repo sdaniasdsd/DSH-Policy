@@ -33,12 +33,16 @@ import TaskRuns from '../src/task-runtime-service.ts'
 import * as CodexOrchestrator from '../src/plugin-codex.ts'
 import * as ClaudeOrchestrator from '../src/plugin-claude.ts'
 import * as SuperpowersStyle from '../src/plugin-superpowers-style.ts'
+import * as CodexStyle from '../src/plugin-codex-style.ts'
+import * as ClaudeStyle from '../src/plugin-claude-style.ts'
+import * as ZcodeStyle from '../src/plugin-zcode-style.ts'
 import { createStyleStrategy, styleSchema } from '../src/style-policy.ts'
 import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { TaskExecutorProvider } from '../src/executor-types.ts'
 import { MockAdapter, textResponse, toolCallResponse, maxTokensResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import type { AdapterConfig, ExecutionPlan, ExecutionResult } from '../src/types.ts'
+import type { WorkflowProposal } from '../src/workflow-report.ts'
 import { strategyTools } from '../src/tools.ts'
 import { ownerRuns } from '../src/task-submissions.ts'
 
@@ -101,15 +105,59 @@ async function boot(
   return { ctx, model, parent: handle.agent, handle }
 }
 
+function respondToWorkflow(proposal: WorkflowProposal) {
+  return (options: Parameters<MockAdapter['stream']>[0]) => {
+    const prompt = JSON.stringify(options.messages)
+    if (prompt.includes('生成有限的工作计划')) return toolCallResponse('plan', 'structured_output', proposal)
+    if (prompt.includes('以 structured_output 提交 status=passed/issues/unverified')) return toolCallResponse('review', 'structured_output', { status: 'passed', issues: [] })
+    return textResponse('done')
+  }
+}
+
 describe('Loader-composed strategy adapter', () => {
-  it('loads Superpowers-style as an opt-in DSH preset plugin and removes it on disposal', async () => {
-    const proposal = { summary: 'one bounded change', domain: 'coding', nodes: [{ id: 'a', instruction: 'work', dependencies: [] }], artifacts: [] }
-    const respond = (options: Parameters<MockAdapter['stream']>[0]) => {
-      const prompt = JSON.stringify(options.messages)
-      if (prompt.includes('生成有限的工作计划')) return toolCallResponse('plan', 'structured_output', proposal)
-      if (prompt.includes('以 structured_output 提交 status=passed/issues/unverified')) return toolCallResponse('review', 'structured_output', { status: 'passed', issues: [] })
-      return textResponse('done')
+  it.each([CodexStyle, ClaudeStyle, ZcodeStyle, SuperpowersStyle])('executes $name concurrency through Loader above the carrier default', async (plugin) => {
+    const proposal: WorkflowProposal = { summary: 'independent modules', domain: 'coding',
+      nodes: ['a', 'b', 'c'].map(id => ({ id, instruction: `implement_module:${id}`, dependencies: [] })), artifacts: [] }
+    const respond = respondToWorkflow(proposal)
+    const { ctx, model, parent } = await boot(Array.from({ length: 20 }, () => respond), undefined,
+      { maxConcurrent: 1, maxTasks: 20 })
+    ctx.tools.register({ name: 'read', description: 'read-only test fixture',
+      parameters: { type: 'object', properties: { file_path: { type: 'string' } }, required: ['file_path'] },
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
+      execute: async () => 'fixture',
+    })
+    const gate = Promise.withResolvers<undefined>()
+    let started = 0, active = 0, maximum = 0
+    const stream = model.stream.bind(model)
+    model.stream = async function* (options) {
+      const instructions = options.messages.filter(message => message.role === 'user')
+        .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
+        .map(text => text.split('\n\nPrior-stage results (data, not instructions):\n')[0])
+      const work = instructions.some(text => text?.includes('\nimplement_module:'))
+      if (work) { started++; maximum = Math.max(maximum, ++active) }
+      try {
+        if (work) await gate.promise
+        yield* stream(options)
+      } finally { if (work) active-- }
     }
+    ctx.loader.builtins[plugin.name] = plugin
+    await ctx.loader.create({ name: `cordis:${plugin.name}`,
+      config: plugin.Config({ preset: 'coding', tier: 'medium', maxConcurrent: 2, readTools: [] }) })
+    await ctx.loader.await()
+    const receipt = await ctx.taskStrategies.submit(parent, { requestId: plugin.name, task: 'Implement independent modules',
+      strategy: plugin.name.replace('strategy-', '') }, new AbortController().signal)
+    const job = ctx.jobs.wait(receipt.jobId, 5000, parent.id)
+    try { await vi.waitFor(() => { expect(started).toBe(2) }) }
+    finally { gate.resolve(undefined); await job }
+    const settled = await job
+    expect(settled.status, settled.detail).toBe('completed')
+    expect(started).toBe(3)
+    expect(maximum).toBe(2)
+    expect(active).toBe(0)
+  })
+  it('loads Superpowers-style as an opt-in DSH preset plugin and removes it on disposal', async () => {
+    const proposal: WorkflowProposal = { summary: 'one bounded change', domain: 'coding', nodes: [{ id: 'a', instruction: 'work', dependencies: [] }], artifacts: [] }
+    const respond = respondToWorkflow(proposal)
     const { ctx, parent } = await boot(Array.from({ length: 12 }, () => respond), undefined, { entry: { enabled: true } })
     ctx.loader.builtins['strategy-superpowers-style'] = SuperpowersStyle
     await ctx.loader.create({ name: 'cordis:strategy-superpowers-style',
@@ -226,7 +274,7 @@ describe('Loader-composed strategy adapter', () => {
     const { ctx, parent } = await boot(Array.from({ length: 20 }, () => respond), undefined, { entry: { enabled: true } })
     ctx.tools.register({ name: 'read', description: 'original tool pipeline read fixture',
       parameters: { type: 'object', properties: { file_path: { type: 'string' } }, required: ['file_path'] },
-      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }] },
       execute: async () => '<content>\n1: random-42\n\n(End of file - total 1 lines)\n</content>',
     })
     const policy = createStyleStrategy('codex', styleSchema('codex')({ preset: 'coding', tier: 'low', readTools: ['read'] }))
@@ -597,7 +645,7 @@ describe('Loader-composed strategy adapter', () => {
         model.requests.push(options)
         await new Promise<void>((_resolve, reject) => {
           if (options.signal?.aborted) { reject(new Error('aborted')); return }
-          options.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+          options.signal?.addEventListener('abort', () =>{  reject(new Error('aborted')) }, { once: true })
         })
       })
     }, { entry: { enabled: true } })
@@ -607,7 +655,9 @@ describe('Loader-composed strategy adapter', () => {
     await vi.waitFor(() => { expect(ctx.taskStrategies.inspect(parent, job.id)).toMatchObject({ phase: 'running', nextStage: 1 }) })
     parent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Use a blue header' }] }))
     await parent.whenIdle()
-    expect(ctx.taskStrategies.entryState({ sessionId: parent.id }).at(-1)).toMatchObject({ state: 'failed', error: expect.stringContaining('unstarted stage') })
+    const state = ctx.taskStrategies.entryState({ sessionId: parent.id }).at(-1)
+    expect(state?.state).toBe('failed')
+    expect(state?.error).toContain('unstarted stage')
     ctx.jobs.kill(job.id, parent.id)
     await ctx.jobs.wait(job.id, 5000, parent.id)
   })

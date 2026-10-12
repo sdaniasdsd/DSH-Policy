@@ -1,6 +1,6 @@
 # Opt-in workflow library. Merge strategies when a carrier already exists.
 # tokenCost values are editable scenario assumptions, not measurements or hard limits.
-# All stages are sequential to avoid shared browser or writer collisions.
+# Unspecified stages use the carrier default; style plugins choose their own concurrency.
 - insert:
     - id: experimental-task-strategy
       name: "@deepseek-ai/dsh-experimental-task-strategy/cordis"

@@ -27,6 +27,8 @@ export interface StyleConfig {
   readonly preset: string
   readonly tier: StyleTier
   readonly maxNodes: number
+  /** Strategy-owned concurrency for dependency-ready work nodes. */
+  readonly maxConcurrent: number
   readonly maxRepairs: number
   readonly maxTokens: number
   readonly timeoutMs: number
@@ -46,6 +48,7 @@ export function styleSchema(pattern: StylePattern): z<Partial<StyleConfig>, Styl
     description: z.string().default(`${pattern} 风格 / DSH 执行：阶段反馈、真实工具验收与有限修订；成本为配置场景估算。`),
     preset: z.string().default('standard'), tier: z.union(['low', 'medium', 'high', 'extreme-high'].map(value => z.const(value))).default('medium'),
     maxNodes: z.natural().min(1).max(16).default(6), maxRepairs: z.natural().max(4).default(2),
+    maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
     maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(4096),
     timeoutMs: z.natural().min(1).max(2147483647).default(300000),
     readTools: z.array(z.string()).default(['read', 'glob', 'grep']),
@@ -105,15 +108,15 @@ function workflowStages(pattern: StylePattern, config: StyleConfig, proposal: Wo
   while (done.size < proposal.nodes.length) {
     const ready = proposal.nodes.filter(node => !done.has(node.id) && node.dependencies.every(id => done.has(id)))
     if (ready.length === 0) throw new Error('Workflow cannot make progress')
-    const batch = pattern === 'zcode' ? ready : ready.slice(0, 1)
+    const batch = pattern === 'zcode' ? ready : ready.slice(0, config.maxConcurrent)
     const first = batch[0]
     if (first === undefined) throw new Error('Workflow produced an empty milestone')
-    stages.push({ name: pattern === 'zcode' ? `milestone:${stages.length + 1}` : `work:${first.id}`, serial: true,
+    stages.push({ name: pattern === 'zcode' ? `milestone:${stages.length + 1}` : `work:${first.id}`, maxConcurrent: config.maxConcurrent,
       tasks: batch.map(node => task(config, `work:${node.id}`, recipes[proposal.domain] + '\n' + node.instruction)) })
     for (const node of batch) {
       done.add(node.id)
       if (pattern === 'codex' && config.tier !== 'low') stages.push(review(config, `check:${node.id}`,
-        '只读检查刚完成的改动，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。'))
+        `复核节点 ${node.id}：${node.instruction}\n只读检查对应节点的改动，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。`))
     }
   }
   if (pattern === 'claude' && config.tier !== 'low') {

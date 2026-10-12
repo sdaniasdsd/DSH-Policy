@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createStyleStrategy, styleSchema } from '../src/style-policy.ts'
 import { StrategyRegistry, TaskRun } from '../src/index.ts'
 import { parseWorkflowProposal } from '../src/workflow-report.ts'
@@ -9,6 +9,45 @@ const proposal = { summary: 'fixture', domain: 'coding' as const, artifacts: [{ 
 const options = { maxConcurrent: 1, maxTasks: 16, maxResultBytes: 65536, prepare: async () => {} }
 
 describe('DSH style policy plugins', () => {
+  it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('lets the %s plugin choose parallel work above the carrier default', async (pattern) => {
+    const policy = createStyleStrategy(pattern, styleSchema(pattern)({ maxConcurrent: 2 }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const gate = Promise.withResolvers<undefined>()
+    const nodes = Array.from({ length: 3 }, (_, index) => ({ id: `module${index}`, instruction: 'Implement assigned module', dependencies: [] }))
+    let started = 0, active = 0, maximum = 0
+    const run = new TaskRun('implement three independent modules', registry.capture(policy.id, { task: 'implement three independent modules' }), async (step) => {
+      if (step.label.startsWith('work:')) {
+        started++; maximum = Math.max(maximum, ++active)
+        try { await gate.promise } finally { active-- }
+      }
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    const running = run.start()
+    try { await vi.waitFor(() => { expect(started).toBe(2) }) }
+    finally { gate.resolve(undefined); await running }
+    expect(run.inspect().phase).toBe('completed')
+    expect(maximum).toBe(2)
+    expect(active).toBe(0)
+  })
+  it('assigns each Codex check its target after a concurrent work batch', async () => {
+    const policy = createStyleStrategy('codex', styleSchema('codex')({ maxConcurrent: 2 }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const checks = new Map<string, string>()
+    const nodes = [{ id: 'api', instruction: 'Update API module', dependencies: [] },
+      { id: 'ui', instruction: 'Update UI module', dependencies: [] }]
+    const run = new TaskRun('update independent modules', registry.capture(policy.id, { task: 'update independent modules' }), async (step) => {
+      if (step.label.startsWith('check:')) checks.set(step.label, step.instruction)
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    expect((await run.start()).status).toBe('completed')
+    expect(checks.get('check:api')).toContain('复核节点 api：Update API module')
+    expect(checks.get('check:ui')).toContain('复核节点 ui：Update UI module')
+    expect([...checks]).toMatchSnapshot('Codex node review assignments')
+  })
   it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('accepts extreme-high for %s within package bounds', (pattern) => {
     const schema = styleSchema(pattern)
     const defaults = schema({})
