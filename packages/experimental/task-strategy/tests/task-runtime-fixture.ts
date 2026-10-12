@@ -26,6 +26,7 @@ import Preset from '@deepseek-ai/dsh-agent-preset'
 import Adapter from '../src/cordis.ts'
 import TaskRuns from '../src/task-runtime-service.ts'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionQuerySqlite from '@deepseek-ai/dsh-session-query-sqlite'
 import type { AdapterConfig, ExecutionPlan } from '../src/types.ts'
 import type { TaskRuntimeRules } from '../src/runtime-types.ts'
 
@@ -77,6 +78,7 @@ export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partia
     tools: Tools, agents: Agents, 'agent-loop': AgentLoop, subagents: Subagents, spawn: Spawn,
     jobs: Jobs, 'tool-jobs': ToolJobs, presets: Presets, preset: Preset, 'strategy-adapter': Adapter,
     'task-runtime': TaskRuns, 'token-meter': TokenMeter, 'fs-local': FsLocal, 'working-directory': WorkingDirectory,
+    'session-query': SessionQuerySqlite,
   })
   await ctx.loader.create({ name: 'cordis:include', config: { path: './cordis.yml' } })
   await ctx.loader.await()
@@ -87,7 +89,11 @@ export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partia
     await entry.init()
     await ctx.loader.await()
   }
-  if (persistence) await ctx.plugin(JsonlSessionPersistence, { root: join(directory, 'sessions') })
+  if (persistence) {
+    await ctx.plugin(JsonlSessionPersistence, { root: join(directory, 'sessions') })
+    await ctx.loader.create({ name: 'cordis:session-query', config: { path: ':memory:', openAt: 'never' } })
+    await ctx.loader.await()
+  }
   const model = new TaskModel(entries)
   ctx.llm.registerAdapter(['mock'], model)
   const handle = await ctx.agents.create({ sessionId: SessionId('task-owner'),

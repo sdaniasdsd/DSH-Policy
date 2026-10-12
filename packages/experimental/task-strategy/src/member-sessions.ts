@@ -25,6 +25,7 @@ interface MemberSessionOptions {
   }
   readonly parent: Agent
   readonly rules: TaskRuntimeRules
+  readonly route?: Pick<TaskStep, 'model' | 'provider'>
   readonly signal: AbortSignal
   readonly assertOwner: () => void
   readonly checkChild: (step: TaskStep, signal: AbortSignal) => Promise<void>
@@ -36,6 +37,7 @@ interface MemberSessionOptions {
 export function createMemberSessions(options: MemberSessionOptions): TaskMemberSessions {
   const { ctx, parent, assertOwner, checkChild, admitTurn, onActive } = options
   const rules = structuredClone(options.rules)
+  const route = { ...options.route }
   const controller = new AbortController()
   const members = new Map<SessionId, Member>()
   const operations = new Set<Promise<TaskMemberTurnOutcome>>()
@@ -105,7 +107,11 @@ export function createMemberSessions(options: MemberSessionOptions): TaskMemberS
 
   return {
     async open(step, prompt, signal) {
-      return run({ id: SessionId(randomUUID()), step: structuredClone(step), phase: 'settled' }, prompt, signal, true)
+      const captured = structuredClone({ ...step,
+        ...step.model !== undefined || route.model === undefined ? {} : { model: route.model },
+        ...step.provider !== undefined || route.provider === undefined ? {} : { provider: route.provider },
+      })
+      return run({ id: SessionId(randomUUID()), step: captured, phase: 'settled' }, prompt, signal, true)
     },
     async continue(sessionId, text, signal) {
       const member = members.get(sessionId)

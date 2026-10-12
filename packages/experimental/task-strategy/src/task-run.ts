@@ -120,6 +120,14 @@ export class TaskRun {
     })
   }
 
+  /** Reserve an executing member turn against the original cumulative task budget. */
+  admitMemberTurn(): void {
+    this.controller.signal.throwIfAborted()
+    if (this.phase !== 'running') throw new Error('Task is not executing; member admission is closed')
+    if (this.startedTasks >= this.options.maxTasks) throw new Error(`Task exceeds cumulative task limit ${this.options.maxTasks}`)
+    this.startedTasks++
+  }
+
   private limits(): Pick<TaskRunOptions, 'maxConcurrent' | 'maxTasks' | 'maxResultBytes'> {
     const { maxConcurrent, maxTasks, maxResultBytes } = this.options
     return { maxConcurrent, maxTasks, maxResultBytes }
@@ -252,7 +260,7 @@ export class TaskRun {
         const additionalContext = this.options.additionalContext?.() ?? ''
         const result = await executeStage(plan.stages[0], this.task, this.results, (step, prompt, signal) => {
           signal.throwIfAborted()
-          this.startedTasks++
+          this.admitMemberTurn()
           return this.execute(step, prompt + additionalContext, signal)
         }, {
           ...this.limits(), signal: this.controller.signal,

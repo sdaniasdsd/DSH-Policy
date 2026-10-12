@@ -14,6 +14,7 @@ import { ownerRuns } from './task-submissions.ts'
 import { boundText } from './schema.ts'
 import { ExecutorRegistry } from './executor-registry.ts'
 import { executeDshChild } from './dsh-child.ts'
+import { createMemberSessions } from './member-sessions.ts'
 import { createHash } from 'node:crypto'
 import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
 import type { ExecutionPlan, TaskExecutor } from './types.ts'
@@ -127,7 +128,17 @@ export default class TaskRuns extends Service {
       await checkChild(step, childSignal)
       childSignal.throwIfAborted()
       if (step.executor !== undefined) {
-        return executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal)
+        const members = createMemberSessions({ ctx: this.ctx, parent, rules: config,
+          route: modelRoute, signal: AbortSignal.any([childSignal, lifetime.signal]), checkChild,
+          assertOwner: () => { this.assertOpen(); this.assertLiveOwner(parent) },
+          admitTurn: () => { runtime.admitMemberTurn() },
+          onActive: (id, label) => {
+            activeMembers.set(id, { sessionId: id, label })
+            return () => { activeMembers.delete(id) }
+          },
+        })
+        try { return await executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal, { members }) }
+        finally { await members.close() }
       }
       return executeDshChild(this.ctx, parent, runConfig.provider, { ...step,
         ...step.model !== undefined || modelRoute.model === undefined ? {} : { model: modelRoute.model },

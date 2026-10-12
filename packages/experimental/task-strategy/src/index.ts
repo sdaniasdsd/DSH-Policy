@@ -121,3 +121,5 @@ export class StrategyRegistry {
 }
 
 export type * from './executor-types.ts'
+
+export type * from './member-session-types.ts'
