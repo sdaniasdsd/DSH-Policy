@@ -217,7 +217,7 @@ export function createSuperpowersBlackboard(config: SuperpowersBlackboardConfig)
             const continuation = await members.continue(sessionId,
               `黑板最新内容与裁决：${JSON.stringify({ records: coordination.records.list(), issueKey: row.key,
                 decisionRevision: decisionRecord.revision, decision })}\n请将与自己后续工作相关的内容纳入工作；不相关时如实说明。只输出 {"adopted":true|false,"summary":"...","nextAction":"..."}。`, signal)
-            const adopted = parseAdoption(settled(continuation, `Adoption for ${row.key}`), 'Superpowers member adoption report')
+            const adopted = parseAdoption(settled(continuation, `Adoption for ${row.key}`))
             await write(`superpowers/adoption/${row.key.split('/').at(-1)}/${memberNumber}`,
               { issueKey: row.key, sessionId, decisionRevision: decisionRecord.revision, ...adopted })
             adoption.push({ issueKey: row.key, sessionId, adopted: adopted.adopted, summary: adopted.summary })
