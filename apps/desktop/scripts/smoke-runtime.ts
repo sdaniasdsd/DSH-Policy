@@ -222,12 +222,13 @@ export function apply(ctx) {
       }
       const expected = ['coding', 'paper-research', 'problem-research', 'solution-planning']
         .flatMap(domain => ['low', 'medium', 'high'].map(tier => `${domain}-${tier}`))
-        .concat(['codex-style', 'claude-style', 'zcode-style'])
-      if (!client || !entryEnabled || strategies.length !== 15 || expected.some(id => !strategies.some(strategy => strategy.id === id
-        && strategy.cost?.kind === 'estimated' && strategy.cost.basis === 'task'))) {
-        throw new Error('desktop runtime: policy edition did not load all 15 workflows with task token estimates')
+        .concat(['codex-style', 'claude-style', 'zcode-style', 'superpowers-style'])
+      const missing = expected.filter(id => !strategies.some(strategy => strategy.id === id
+        && strategy.cost?.kind === 'estimated' && strategy.cost.basis === 'task'))
+      if (!client || !entryEnabled || strategies.length !== 16 || missing.length > 0) {
+        throw new Error(`desktop runtime: policy workflow smoke failed: ${JSON.stringify({ client, entryEnabled, count: strategies.length, missing })}`)
       }
-      console.log('desktop runtime: strategy client, 15 policy workflows and task token estimates passed')
+      console.log('desktop runtime: strategy client, 16 policy workflows and task token estimates passed')
       const intake = await fetch(new URL('/desktop-smoke-entry', ready.url), { headers: { cookie }, signal: AbortSignal.timeout(30000) })
       if (!intake.ok) throw new Error(`desktop runtime: automatic intake failed: ${await intake.text()}`)
       const result = await intake.json() as { jobs: number; state: string; strategy: string }
