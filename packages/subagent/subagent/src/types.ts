@@ -58,6 +58,17 @@ export interface SubagentActivation {
   dispose(): Promise<void>
 }
 
+/** Explicit continuation admission; reconstruction settings require an absent local child. */
+export interface SubagentContinuationOptions {
+  /** Cancellation before acceptance. */
+  readonly signal: AbortSignal
+  /** Captured non-durable controls restored only during cold reconstruction; resident targets reject these overrides. */
+  readonly resume?: {
+    readonly maxTokens?: number
+    readonly outputSchema?: ObjectJsonSchema
+  }
+}
+
 /**
  * Authority under which one interrupt request is admitted. `user` carries the
  * durable direct-parent address a human client presented; `ancestor` carries

@@ -29,7 +29,7 @@ it('keeps the original Job open through failed-turn feedback and explicit same-m
   expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
   expect(ctx.taskRuns.inspect(parent, id)).toMatchObject({ phase: 'completed', startedTasks: 3, activeMembers: [] })
   expect(model.requests).toHaveLength(2)
-  expect(retained?.inspect()[0].phase).toBe('closed')
+  expect(retained?.inspect()[0]?.phase).toBe('closed')
 })
 
 it('lets an executor report observed failure without automatically continuing', async () => {
@@ -73,7 +73,9 @@ it('closes retained members on task cancellation while the executor awaits a dec
       await members.open(memberStep, 'initial', childSignal)
       waiting.resolve(undefined)
       await new Promise<void>((resolve) => { childSignal.addEventListener('abort', () => { resolve() }, { once: true }); if (childSignal.aborted) resolve() })
-      await expect(members.continue(members.inspect()[0].sessionId, 'late', signal)).rejects.toThrow()
+      const member = members.inspect()[0]
+      if (member === undefined) throw new Error('Missing retained member')
+      await expect(members.continue(member.sessionId, 'late', signal)).rejects.toThrow()
       return { stopReason: 'cancelled', output: '' }
     } })
   const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
@@ -81,7 +83,7 @@ it('closes retained members on task cancellation while the executor awaits a dec
   await waiting.promise
   ctx.taskRuns.cancel(parent, id)
   expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('killed')
-  expect(members?.inspect()[0].phase).toBe('closed')
+  expect(members?.inspect()[0]?.phase).toBe('closed')
   expect(model.requests).toHaveLength(1)
 })
 

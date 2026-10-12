@@ -112,6 +112,12 @@ export default class TaskRuns extends Service {
     const { prepare, checkChild } = createAdmission(config, subagents, this.ctx.agentPresets, this.ctx.tools, executors)
     const store = ownerRuns(jobs, parent)
     const activeMembers = new Map<SessionId, TaskMemberView>()
+    let localTurns = 0
+    const reserveLocalTurn = () => {
+      if (localTurns >= config.maxConcurrent) throw new Error('Local child turns exceed captured maxConcurrent')
+      localTurns++
+      return () => { localTurns-- }
+    }
     const runConfig = Object.freeze({
       provider: config.provider,
       maxConcurrent: config.maxConcurrent,
@@ -131,7 +137,12 @@ export default class TaskRuns extends Service {
         const members = createMemberSessions({ ctx: this.ctx, parent, rules: config,
           route: modelRoute, signal: AbortSignal.any([childSignal, lifetime.signal]), checkChild,
           assertOwner: () => { this.assertOpen(); this.assertLiveOwner(parent) },
-          admitTurn: () => { runtime.admitMemberTurn() },
+          admitTurn: () => {
+            const release = reserveLocalTurn()
+            try { runtime.admitMemberTurn() }
+            catch (error) { release(); throw error }
+            return release
+          },
           onActive: (id, label) => {
             activeMembers.set(id, { sessionId: id, label })
             return () => { activeMembers.delete(id) }
@@ -140,13 +151,14 @@ export default class TaskRuns extends Service {
         try { return await executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal, { members }) }
         finally { await members.close() }
       }
-      return executeDshChild(this.ctx, parent, runConfig.provider, { ...step,
+      const releaseTurn = reserveLocalTurn()
+      try { return await executeDshChild(this.ctx, parent, runConfig.provider, { ...step,
         ...step.model !== undefined || modelRoute.model === undefined ? {} : { model: modelRoute.model },
         ...step.provider !== undefined || modelRoute.provider === undefined ? {} : { provider: modelRoute.provider },
       }, prompt, childSignal, config.maxResultBytes, (id) => {
         activeMembers.set(id, { sessionId: id, label: step.label })
         return () => { activeMembers.delete(id) }
-      })
+      }) } finally { releaseTurn() }
     }
     let runtime!: TaskRun
     const lifetime = new AbortController()

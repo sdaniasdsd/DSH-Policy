@@ -13,7 +13,9 @@ async function runningTask() {
   ])
   const jobId = await runtime.ctx.taskRuns.start(runtime.parent, 'work', workPlan, taskRules, signal())
   await vi.waitFor(() => { expect(runtime.model.requests).toHaveLength(1) })
-  return { ...runtime, jobId, childId: runtime.model.requests[0]!.sessionId, gate }
+  const childId = runtime.model.requests[0]?.sessionId
+  if (childId === undefined) throw new Error('Model request has no session identity')
+  return { ...runtime, jobId, childId, gate }
 }
 
 describe('task-owner messages', () => {

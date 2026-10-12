@@ -183,6 +183,9 @@ describe('explicit continuation activation receipts', () => {
     const nested = await ctx.subagents.startActivation({ ...startSpec(child), delivery: 'caller' })
     try {
       await vi.waitFor(() => { expect(adapter.requests).toHaveLength(2); expect(child.status).toBe('idle') })
+      await expect(ctx.subagents.continueActivation(parent, first.childId, message('unsupported override'),
+        { signal: testSignal, resume: { maxTokens: 17 } })).rejects.toMatchObject({ code: 'NOT_RESUMABLE' })
+      expect(adapter.requests).toHaveLength(2)
       const continued = await ctx.subagents.continueActivation(parent, first.childId, message('idle follow'), { signal: testSignal })
       expect(continued.result).toBe(first.result)
       await vi.waitFor(() => { expect(adapter.requests).toHaveLength(3) })
@@ -234,8 +237,8 @@ describe('explicit continuation activation receipts', () => {
   it('rejects an external activation without dispatching another backend', async () => {
     const { ctx, parent } = await setup([])
     const pending = Promise.withResolvers<import('../src/types.ts').SubagentResult>()
-    const start = vi.fn(async () => ({ childId: SessionId('native-external'), result: pending.promise,
-      dispose: async () => { pending.resolve({ output: [], stopReason: 'cancelled' }) } }))
+    const start = vi.fn(async () => ({ id: SessionId('native-external'), childId: SessionId('native-external'), result: pending.promise,
+      dispose: async () => { pending.resolve({ output: [], stopReason: 'aborted' }) } }))
     ctx.subagents.registerProvider({ name: 'native-external', inheritsParentContext: false,
       capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false }, start })
     const native = await ctx.subagents.startActivation({ ...startSpec(parent, 'native-external'), delivery: 'caller' })

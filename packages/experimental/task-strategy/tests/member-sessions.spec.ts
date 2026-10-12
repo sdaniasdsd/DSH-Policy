@@ -18,7 +18,7 @@ async function fixture(results: Promise<SubagentResult>[] = [Promise.resolve({ o
   const startActivation = vi.fn(async (spec: SubagentActivationSpec) => activation(spec.childId!))
   const continueActivation = vi.fn(async (_parent, id: SessionId) => activation(id))
   const active = new Set<SessionId>()
-  const admitTurn = vi.fn()
+  const admitTurn = vi.fn(() => () => {})
   const checkChild = vi.fn(async (candidate) => {
     if (candidate.preset !== 'coding' || candidate.executor !== undefined) throw new Error('preset is not allowed')
   })
@@ -28,7 +28,7 @@ async function fixture(results: Promise<SubagentResult>[] = [Promise.resolve({ o
   return { options, startActivation, continueActivation, active, dispose, admitTurn, checkChild }
 }
 
-it.each(['completed', 'failed', 'cancelled'] as const)('retains identity and actual %s feedback for explicit continuation', async (stopReason) => {
+it.each(['completed', 'error', 'aborted'] as const)('retains identity and actual %s feedback for explicit continuation', async (stopReason) => {
   const f = await fixture([Promise.resolve({ output: [{ type: 'text', text: 'blocked' }], stopReason, diagnostic: 'actual' }),
     Promise.resolve({ output: [{ type: 'text', text: 'recovered' }], stopReason: 'completed' })])
   const members = createMemberSessions(f.options)
@@ -42,7 +42,7 @@ it.each(['completed', 'failed', 'cancelled'] as const)('retains identity and act
   expect(f.active.size).toBe(0)
   expect(f.admitTurn).toHaveBeenCalledTimes(2)
   await members.close()
-  expect(members.inspect()[0].phase).toBe('closed')
+  expect(members.inspect()[0]?.phase).toBe('closed')
 })
 
 it('reports capture failure as unobserved without automatic replay', async () => {
@@ -53,7 +53,7 @@ it('reports capture failure as unobserved without automatic replay', async () =>
   await vi.waitFor(() => { expect(f.active.size).toBe(1) })
   broken.reject(new Error('capture unavailable'))
   expect(await pending).toMatchObject({ kind: 'unobserved', error: expect.stringContaining('capture unavailable') })
-  expect(members.inspect()[0].phase).toBe('unobserved')
+  expect(members.inspect()[0]?.phase).toBe('unobserved')
   expect(f.continueActivation).not.toHaveBeenCalled()
   expect(f.active.size).toBe(0)
   await members.close()
@@ -77,8 +77,9 @@ it('returns detached views and rejects a second turn while the first is pending'
   const opening = members.open(step, 'initial', signal)
   await vi.waitFor(() => { expect(f.active.size).toBe(1) })
   const view = members.inspect()
+  if (view[0] === undefined) throw new Error('Missing retained member')
   Object.assign(view[0], { phase: 'closed', label: 'tampered' })
-  expect(members.inspect()[0].phase).toBe('running')
+  expect(members.inspect()[0]?.phase).toBe('running')
   await expect(members.continue(view[0].sessionId, 'duplicate', signal)).rejects.toThrow(/executing/)
   pending.resolve({ output: [], stopReason: 'completed' })
   await opening
@@ -110,7 +111,7 @@ it('close aborts and adopts an activation published after cancellation, then dra
   const publish = Promise.withResolvers<undefined>()
   const entered = Promise.withResolvers<undefined>()
   const f = await fixture([result.promise])
-  f.dispose.mockImplementation(async () => { result.resolve({ output: [], stopReason: 'cancelled' }) })
+  f.dispose.mockImplementation(async () => { result.resolve({ output: [], stopReason: 'aborted' }) })
   const original = f.startActivation.getMockImplementation()!
   f.startActivation.mockImplementation(async (spec) => { entered.resolve(undefined); await publish.promise; return original(spec) })
   const members = createMemberSessions(f.options)
@@ -121,7 +122,7 @@ it('close aborts and adopts an activation published after cancellation, then dra
   void closing.then(closed)
   expect(closed).not.toHaveBeenCalled()
   publish.resolve(undefined)
-  expect(await opening).toMatchObject({ kind: 'settled', result: { stopReason: 'cancelled' } })
+  expect(await opening).toMatchObject({ kind: 'settled', result: { stopReason: 'aborted' } })
   await closing
   expect(f.dispose).toHaveBeenCalled()
   expect(f.active.size).toBe(0)

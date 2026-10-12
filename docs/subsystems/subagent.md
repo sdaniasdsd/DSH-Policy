@@ -193,7 +193,7 @@ sendMessage authorizes the exact live sender and permits only adjacent local age
 
 Host callers can set `activeOnly: true` on `sendMessage` to accept input only while the target is executing. Idle, absent, and closing targets reject with `TARGET_NOT_RUNNING`; this mode never wakes or cold-resumes them. The check runs at inbox acceptance, so a target ending after inspection cannot be restarted by a late message. Omitting the option retains ordinary continuation behavior. Acceptance returns a message id and does not confirm model processing.
 
-Host executors can use `continueActivation(parent, childId, content, { signal })` for an idle or absent direct local child. It returns the accepted message id and the exact activation result/disposer, preserving the session and persisted history. Running or pending-input targets reject with `TARGET_RUNNING`; unavailable continuation retains its capability error. Disposing an older receipt cannot close a later same-session activation.
+Host executors can use `continueActivation(parent, childId, content, { signal })` for an idle or absent direct local child. It returns the accepted message id and the exact activation result/disposer, preserving the session and persisted history. Running or pending-input targets reject with `TARGET_RUNNING`; unavailable continuation retains its capability error. Disposing an older receipt cannot close a later same-session activation. Optional `resume` controls restore `maxTokens` and `outputSchema` during cold reconstruction; a resident target rejects these overrides with `NOT_RESUMABLE`.
 
 ```ts type-equiv
 /** Durable attribution for one model-authored message between Agents. */
@@ -497,10 +497,10 @@ async sendMessage( sender: Agent, targetId: SessionId, content: ContentBlock[], 
  * @param parent - exact live direct parent authorizing and originating the input.
  * @param childId - durable child session identity; running targets reject.
  * @param content - input for the next execution.
- * @param options - cancellation before acceptance.
+ * @param options - cancellation and optional cold reconstruction controls; resident targets reject overrides.
  * @returns accepted message identity and result/disposer bound to its exact activation.
  */
-continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[], options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }>
+continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[], options: SubagentContinuationOptions): Promise<SubagentActivation & { readonly messageId: MessageId }>
 
 /**
  * Interrupt one live child's current execution under a human parent

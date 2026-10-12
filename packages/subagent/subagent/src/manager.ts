@@ -36,6 +36,7 @@ import type {
   ContinuableCreateRequest, ContinuableCreateSpec, SubagentInterruptAuthority,
   SubagentActivationSpec, SubagentActivation, SubagentStartRequest, SubagentRun,
   SubagentSendMessageOptions, SubagentResult, ResolvedSubagentStartRequest,
+  SubagentContinuationOptions,
 } from './types.ts'
 import { attachStructuredRuntime } from './structured.ts'
 import type { StructuredAttachment } from './structured.ts'
@@ -55,6 +56,7 @@ type ChildDeliveryOptions =
     readonly signal: AbortSignal
     readonly activeOnly?: boolean
     readonly continueOnly?: boolean
+    readonly resume?: SubagentContinuationOptions['resume']
   }
   | { readonly delivery: 'queue'; readonly source: MessageSource; readonly signal: AbortSignal; readonly activeOnly?: boolean }
 
@@ -583,8 +585,8 @@ export class SubagentManager {
 
   /** Explicit continuation returns the accepted activation, never a subsequent lookup. */
   async continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[],
-    options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }> {
-    return this.deliverToChild(parent, childId, content, { signal: options.signal, delivery: 'steer', continueOnly: true })
+    options: SubagentContinuationOptions): Promise<SubagentActivation & { readonly messageId: MessageId }> {
+    return this.deliverToChild(parent, childId, content, { ...options, delivery: 'steer', continueOnly: true })
   }
 
   /**
@@ -1281,6 +1283,9 @@ export class SubagentManager {
         if (disposal !== undefined) {
           return disposal.then(() => undefined, () => undefined)
         }
+        if (options.delivery === 'steer' && options.resume !== undefined) {
+          throw new SubagentError('Reconstruction controls require an absent local child', 'NOT_RESUMABLE')
+        }
         if (contentHasImage(content)) {
           await this.assertImageCapable(requireLocalActivation(activation).handle.agent, options.signal)
           if (options.activeOnly === true) this.assertExecutingTarget(activation)
@@ -1392,7 +1397,9 @@ export class SubagentManager {
           ...descriptor.agentReasoningEffort !== undefined
             ? { reasoningEffort: ReasoningEffortId(descriptor.agentReasoningEffort) }
             : {},
+          ...options.delivery === 'steer' && options.resume?.maxTokens !== undefined ? { maxTokens: options.resume.maxTokens } : {},
         },
+        ...options.delivery === 'steer' && options.resume?.outputSchema !== undefined ? { outputSchema: options.resume.outputSchema } : {},
         preset: source.header.agentPreset,
         composition: { persona: descriptor.persona, toolFilter: descriptor.toolFilter },
         signal: options.signal,

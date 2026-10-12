@@ -29,7 +29,7 @@ interface MemberSessionOptions {
   readonly signal: AbortSignal
   readonly assertOwner: () => void
   readonly checkChild: (step: TaskStep, signal: AbortSignal) => Promise<void>
-  readonly admitTurn: () => void
+  readonly admitTurn: () => () => void
   readonly onActive: (id: SessionId, label: string) => () => void
 }
 
@@ -54,7 +54,7 @@ export function createMemberSessions(options: MemberSessionOptions): TaskMemberS
       throw new Error('Member request exceeds captured maxPlanBytes')
     }
     if (member.step.executor !== undefined) throw new Error('Member sessions require a local preset; executor-backed steps are unsupported')
-    admitTurn()
+    const releaseTurn = admitTurn()
     const prior = member.phase
     member.phase = 'running'
     members.set(member.id, member)
@@ -68,7 +68,11 @@ export function createMemberSessions(options: MemberSessionOptions): TaskMemberS
           id => onActive(id, member.step.label), async (spec) => {
             const receipt = initial
               ? await ctx.subagents.startActivation({ ...spec, childId: member.id })
-              : await ctx.subagents.continueActivation(parent, member.id, [{ type: 'text', text }], { signal: spec.signal })
+              : await ctx.subagents.continueActivation(parent, member.id, [{ type: 'text', text }], { signal: spec.signal,
+                resume: {
+                  ...spec.request.agentOptions?.maxTokens === undefined ? {} : { maxTokens: spec.request.agentOptions.maxTokens },
+                  ...spec.request.outputSchema === undefined ? {} : { outputSchema: spec.request.outputSchema },
+                } })
             accepted = ownActivation(receipt, spec.signal)
             return accepted
           })
@@ -96,6 +100,7 @@ export function createMemberSessions(options: MemberSessionOptions): TaskMemberS
         }
         return outcome
       } finally {
+        releaseTurn()
         if (controller.signal.aborted && members.has(member.id)) member.phase = 'closed'
       }
     }

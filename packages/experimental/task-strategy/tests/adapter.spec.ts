@@ -598,7 +598,23 @@ describe('Loader-composed strategy adapter', () => {
     expect(ctx.taskRuns.inspect(parent, jobId).phase).toBe('cancelled')
   })
   it('transfers cancellation to a Job accepted before receipt delivery', async () => {
-    const { ctx, parent } = await boot([toolCallResponse('route', 'structured_output', { kind: 'new-task', strategy: 'review-first' }), 'hang', textResponse('cancelled')], undefined, { entry: { enabled: true } })
+    const { ctx, parent } = await boot([
+      toolCallResponse('route', 'structured_output', { kind: 'new-task', strategy: 'review-first' }), textResponse('cancelled'),
+    ], (model) => {
+      const stream = model.stream.bind(model)
+      vi.spyOn(model, 'stream').mockImplementation(async function* (options) {
+        if (model.requests.length === 0 || options.sessionId === SessionId('strategy-parent')) {
+          yield* stream(options)
+          return
+        }
+        model.requests.push(options)
+        await new Promise<void>((_resolve, reject) => {
+          const abort = () => { reject(options.signal?.reason ?? new Error('aborted')) }
+          options.signal?.addEventListener('abort', abort, { once: true })
+          if (options.signal?.aborted) abort()
+        })
+      })
+    }, { entry: { enabled: true } })
     const release = Promise.withResolvers<undefined>()
     const original = ctx.taskStrategies.submitTask.bind(ctx.taskStrategies)
     vi.spyOn(ctx.taskStrategies, 'submitTask').mockImplementation(async (...args) => {
@@ -1839,6 +1855,7 @@ describe('Loader-composed task messaging', () => {
     try {
       await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
       const childId = model.requests[0]!.sessionId
+      if (childId === undefined) throw new Error('Model request has no session identity')
       const assembly = await parent.ctx.systemPrompt.assemble({ scope: parent, agent: parent })
       expect(assembly.tools.map(tool => tool.name)).toContain('coord_inspect')
       expect(assembly.tools.map(tool => tool.name)).toContain('coord_message')
@@ -1864,6 +1881,7 @@ describe('Loader-composed task messaging', () => {
     try {
       await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
       const childId = model.requests[0]!.sessionId
+      if (childId === undefined) throw new Error('Model request has no session identity')
       const result = await ctx.tools.execute({ callId: ToolCallId('tiny-message'), name: 'tiny_message',
         arguments: { jobId, childId, text: 'adjust' }, agent: parent, signal: new AbortController().signal })
       expect(result.isError).toBe(true)

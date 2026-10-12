@@ -62,6 +62,7 @@ import type {
   SubagentRunEndInfo,
   SubagentRunInfo,
   SubagentSendMessageOptions,
+  SubagentContinuationOptions,
   SubagentStartRequest,
 } from './types.ts'
 import { SubagentError } from './error.ts'
@@ -126,6 +127,7 @@ export type { AgentMessageSource, SubagentSettledMessageSource } from './continu
 export type * from './control-types.ts'
 export type { SubagentDescendantListEntry } from './list-children.ts'
 export type { SubagentRunEndInfo, SubagentRunInfo } from './types.ts'
+export type { SubagentContinuationOptions } from './types.ts'
 export type { SubagentCatalogEntry, SubagentIdentityProjection, SubagentTimingProjection } from './projection-types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -321,11 +323,12 @@ export class SubagentRuntime extends TypertRemoteService {
    * @param parent - exact live direct parent authorizing and originating the input.
    * @param childId - durable child session identity; running targets reject.
    * @param content - input for the next execution.
-   * @param options - cancellation before acceptance.
+   * @param options - cancellation and optional cold reconstruction controls; resident targets reject overrides.
    * @returns accepted message identity and result/disposer bound to its exact activation.
    */
   continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[],
-    options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }> {
+    options: SubagentContinuationOptions): Promise<SubagentActivation & { readonly messageId: MessageId }> {
+    if (options.resume?.outputSchema !== undefined) assertObjectJsonSchema(options.resume.outputSchema)
     return this.requireManager().continueActivation(parent, childId, content, options)
   }
 

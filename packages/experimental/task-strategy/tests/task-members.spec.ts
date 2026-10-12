@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { executeDshChild } from '../src/dsh-child.ts'
 import { liveParent } from './live-parent.ts'
@@ -14,7 +15,9 @@ describe('active task members', () => {
       await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
       const view = ctx.taskRuns.inspect(parent, jobId)
       expect(view.activeMembers).toEqual([{ sessionId: model.requests[0]!.sessionId, label: 'worker' }])
-      if (view.activeMembers !== undefined) (view.activeMembers as { label: string }[])[0]!.label = 'mutated'
+      const member = view.activeMembers?.[0]
+      if (member === undefined) throw new Error('Missing active member')
+      Object.assign(member, { label: 'mutated' })
       expect(ctx.taskRuns.inspect(parent, jobId).activeMembers?.[0]?.label).toBe('worker')
     } finally { gate.resolve(undefined) }
     await ctx.jobs.wait(jobId, 5000, parent.id)
@@ -27,7 +30,7 @@ describe('active task members', () => {
     const members = new Set<SessionId>()
     const childId = SessionId('member')
     const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: {
-      startActivation: async () => ({ childId, result: result.promise,
+      startActivation: async () => ({ childId, messageId: MessageId('accepted'), result: result.promise,
         dispose: async () => { if (outcome === 'cleanup failure') throw new Error('cleanup failed') },
       }),
     } }

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { bootTaskRuntime, taskRules } from './task-runtime-fixture.ts'
-import { maxTokensResponse, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { bootTaskRuntime, taskRules, type TaskModel } from './task-runtime-fixture.ts'
+import { maxTokensResponse, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { loadStoredSession } from '../../../subagent/subagent/tests/persistence-helpers.ts'
 import * as activationResults from '../../../subagent/subagent/src/activation.ts'
 import type { TaskMemberTurnOutcome } from '../src/member-session-types.ts'
@@ -12,6 +12,102 @@ const plan: ExecutionPlan = { name: 'conversation', stages: [{ name: 'work', tas
   { label: 'lead', executor: 'conversation', instruction: 'coordinate' },
 ] }] }
 const rules = { ...taskRules, allowedExecutors: ['conversation'] }
+
+it('retains the admitted token ceiling across same-session continuation', async () => {
+  const { ctx, parent, model } = await bootTaskRuntime([{ chunks: maxTokensResponse('first') },
+    { chunks: textResponse('next') }], undefined, true)
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'limits', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing member context')
+      const first = await context.members.open({ ...step, maxTokens: 17 }, 'first', childSignal)
+      const next = await context.members.continue(first.sessionId, 'next', childSignal)
+      if (next.kind !== 'settled') throw new Error(next.error)
+      return next.result
+    } })
+  const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+  expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+  expect(model.requests.map(request => request.maxTokens)).toEqual([17, 17])
+})
+
+it('retains structured submission and captures its actual continued result', async () => {
+  const proposal = { summary: 'continued workflow', domain: 'coding', nodes: [
+    { id: 'work', instruction: 'implement', dependencies: [] },
+  ], artifacts: [] }
+  const { ctx, parent, model } = await bootTaskRuntime([{ chunks: maxTokensResponse('incomplete') },
+    { chunks: toolCallResponse('submit', 'structured_output', proposal) }], undefined, true)
+  let next: TaskMemberTurnOutcome | undefined
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'workflow', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing member context')
+      const first = await context.members.open({ ...step, workflowOutput: true }, 'first', childSignal)
+      next = await context.members.continue(first.sessionId, 'submit workflow', childSignal)
+      if (next.kind !== 'settled') throw new Error(next.error)
+      return next.result
+    } })
+  const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+  expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+  expect(model.requests.map(request => request.tools?.some(tool => tool.name === 'structured_output'))).toEqual([true, true])
+  expect(next).toMatchObject({ kind: 'settled', result: { stopReason: 'completed', workflow: proposal } })
+})
+
+it('shares synchronous member reservations across parallel executors and releases them after cleanup', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const ready = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('one'), gate: gate.promise }, { chunks: textResponse('two'), gate: gate.promise },
+    { chunks: textResponse('after cleanup') },
+  ], undefined, true)
+  let rejected = 0
+  let opened = 0
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'parallel', check: () => {},
+    execute: async (_parent, outer, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing member context')
+      const first = context.members.open(step, 'first', childSignal)
+      if (++opened === 2) ready.resolve(undefined)
+      await ready.promise
+      const extra = context.members.open(step, 'over limit', childSignal)
+      await expect(extra).rejects.toThrow(/maxConcurrent/)
+      rejected++
+      if (rejected === 2) gate.resolve(undefined)
+      const result = await first
+      if (outer.label === 'one') await context.members.continue(result.sessionId, 'after cleanup', childSignal)
+      return { stopReason: 'completed', output: 'bounded' }
+    } })
+  const parallel: ExecutionPlan = { name: 'parallel', stages: [{ name: 'work', tasks: [
+    { label: 'one', executor: 'conversation', instruction: 'work' }, { label: 'two', executor: 'conversation', instruction: 'work' },
+  ] }] }
+  const id = await ctx.taskRuns.start(parent, 'work', parallel, rules, signal)
+  try {
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+    expect(rejected).toBe(2)
+    expect(model.requests).toHaveLength(3)
+  } finally { gate.resolve(undefined) }
+})
+
+it('shares task concurrency between ordinary children and executor members', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('ordinary'), gate: gate.promise }, { chunks: textResponse('member'), gate: gate.promise },
+  ])
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'mixed', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing member context')
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const first = context.members.open(step, 'first member', childSignal)
+      try { await expect(context.members.open(step, 'over limit', childSignal)).rejects.toThrow(/maxConcurrent/) }
+      finally { gate.resolve(undefined) }
+      await first
+      return { stopReason: 'completed', output: 'bounded' }
+    } })
+  const mixed: ExecutionPlan = { name: 'mixed', stages: [{ name: 'work', tasks: [
+    step, { label: 'lead', executor: 'conversation', instruction: 'coordinate' },
+  ] }] }
+  const id = await ctx.taskRuns.start(parent, 'work', mixed, rules, signal)
+  try {
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+    expect(model.requests).toHaveLength(2)
+  } finally { gate.resolve(undefined) }
+})
 
 it('logs exact accepted identities and sender, retains history, and waits inside the original Job for an explicit decision', async () => {
   const { ctx, parent, model } = await bootTaskRuntime([{ chunks: maxTokensResponse('blocked evidence') },
@@ -41,8 +137,8 @@ it('logs exact accepted identities and sender, retains history, and waits inside
   expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
   expect(second?.sessionId).toBe(first.sessionId)
   expect(model.requests.map(request => request.sessionId)).toEqual([first.sessionId, first.sessionId])
-  expect(JSON.stringify(model.requests[1].messages)).toContain('blocked evidence')
-  expect(JSON.stringify(model.requests[1].messages)).toContain('chosen repair')
+  expect(JSON.stringify(model.requests[1]?.messages)).toContain('blocked evidence')
+  expect(JSON.stringify(model.requests[1]?.messages)).toContain('chosen repair')
   const stored = await loadStoredSession(ctx.sessionPersistence, first.sessionId)
   const inputs = stored.events.filter(event => event.type === 'user/message')
   expect(inputs).toContainEqual(expect.objectContaining({ data: expect.objectContaining({ id: first.messageId }) }))
@@ -70,7 +166,7 @@ it('cancels a continued activation and drains it without a post-cancel wake', as
   expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('killed')
   expect(followup).toMatchObject({ kind: 'settled', result: { stopReason: 'aborted' } })
   expect(ctx.taskRuns.inspect(parent, id).activeMembers).toEqual([])
-  expect(ctx.agents.get(model.requests[0].sessionId)).toBeUndefined()
+  expect(ctx.agents.get(firstModelSession(model))).toBeUndefined()
   gate.resolve(undefined)
   expect(model.requests).toHaveLength(2)
 })
@@ -125,6 +221,12 @@ it('drains a member still executing when its owning executor returns', async () 
   expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
   expect(await pending).toMatchObject({ kind: 'settled', result: { stopReason: 'aborted' } })
   expect(ctx.taskRuns.inspect(parent, id).activeMembers).toEqual([])
-  expect(ctx.agents.get(model.requests[0].sessionId)).toBeUndefined()
+  expect(ctx.agents.get(firstModelSession(model))).toBeUndefined()
   gate.resolve(undefined)
 })
+
+function firstModelSession(model: TaskModel) {
+  const id = model.requests[0]?.sessionId
+  if (id === undefined) throw new Error('Model request has no session identity')
+  return id
+}
