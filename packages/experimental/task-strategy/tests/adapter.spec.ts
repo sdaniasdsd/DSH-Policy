@@ -57,6 +57,14 @@ class EntryPtcRuntime extends PtcRuntime {
   }
 }
 const directories: string[] = []
+function isActiveMemberView(value: unknown): value is { readonly activeMembers: readonly { readonly sessionId: SessionId }[] } {
+  if (typeof value !== 'object' || value === null || !('activeMembers' in value) || !Array.isArray(value.activeMembers)) return false
+  return value.activeMembers.every((member: unknown) => typeof member === 'object' && member !== null
+    && 'sessionId' in member && typeof member.sessionId === 'string')
+}
+function isMessageReceipt(value: unknown): value is { readonly messageId: string } {
+  return typeof value === 'object' && value !== null && 'messageId' in value && typeof value.messageId === 'string'
+}
 afterEach(async () => {
   for (const ctx of contexts.splice(0).reverse()) await ctx.fiber.dispose()
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
@@ -609,7 +617,10 @@ describe('Loader-composed strategy adapter', () => {
         }
         model.requests.push(options)
         await new Promise<void>((_resolve, reject) => {
-          const abort = () => { reject(options.signal?.reason ?? new Error('aborted')) }
+          const abort = () => {
+            const reason: unknown = options.signal?.reason
+            reject(reason instanceof Error ? reason : new Error(reason === undefined ? 'aborted' : JSON.stringify(reason) ?? 'aborted'))
+          }
           options.signal?.addEventListener('abort', abort, { once: true })
           if (options.signal?.aborted) abort()
         })
@@ -1788,16 +1799,18 @@ describe('Loader-composed task messaging', () => {
       const inspection = await ctx.tools.execute({ callId: ToolCallId('inspect-members'), name: 'task_strategy_inspect',
         arguments: { jobId }, agent: parent, signal: new AbortController().signal })
       expect(inspection.isError).toBe(false)
-      const view = JSON.parse(inspection.content.filter(block => block.type === 'text').map(block => block.text).join(''))
-      childId = view.activeMembers[0].sessionId
-      expect(childId).toBe(model.requests[0]!.sessionId)
+      const parsedView: unknown = JSON.parse(inspection.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+      if (!isActiveMemberView(parsedView) || parsedView.activeMembers[0] === undefined) throw new Error('Missing active member')
+      childId = parsedView.activeMembers[0].sessionId
+      expect(childId).toBe(model.requests[0]?.sessionId)
       const receipt = await ctx.tools.execute({ callId: ToolCallId('send-adjustment'), name: 'task_strategy_message',
         arguments: { jobId, childId, text: 'adjustment_746: keep the public API' }, agent: parent,
         signal: new AbortController().signal })
       expect(receipt.isError).toBe(false)
-      const value = JSON.parse(receipt.content.filter(block => block.type === 'text').map(block => block.text).join(''))
-      expect(Object.keys(value)).toEqual(['messageId'])
-      messageId = value.messageId
+      const parsedReceipt: unknown = JSON.parse(receipt.content.filter(block => block.type === 'text').map(block => block.text).join(''))
+      if (!isMessageReceipt(parsedReceipt)) throw new Error('Missing message receipt identity')
+      expect(Object.keys(parsedReceipt)).toEqual(['messageId'])
+      messageId = parsedReceipt.messageId
       expect(model.requests).toHaveLength(1)
       expect(ctx.tools.get('task_strategy_message', parent)?.description).toContain('Inbox acceptance')
       expect(ctx.tools.get('task_strategy_inspect', parent)?.description).toContain('active')
