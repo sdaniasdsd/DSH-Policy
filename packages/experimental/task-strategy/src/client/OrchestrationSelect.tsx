@@ -4,6 +4,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { OrchestrationState } from '../entry-types.ts'
 import css from './OrchestrationSelect.module.css'
 import { glassLensMap } from './glass-lens-map.ts'
+import { tierHintKeys } from './locales.ts'
 
 /** Session-bound Host adapters injected through the original composer extension seat. */
 export interface OrchestrationFace {
@@ -68,6 +69,7 @@ export function OrchestrationSelect({ read, select, selectTier, onReset, t }:
     options.push({ id: state.selected, label: state.selected, available: false, reason: t('modeUnconfigured') })
   }
   const automatic = state === undefined || state.selected === 'dsh'
+  const scopeKey = state?.tier === undefined ? undefined : tierHintKeys[state.selected]?.[state.tier]
   const availableManual = options.filter(row => row.id !== 'dsh' && row.available)
   const manual = availableManual.find(row => row.id === manualMode.current)
     ?? availableManual.find(row => row.id === 'codex-style') ?? availableManual[0]
@@ -94,6 +96,7 @@ export function OrchestrationSelect({ read, select, selectTier, onReset, t }:
       </option>)}
     </select> : null}
     {!automatic && state.tier !== undefined && selectTier !== undefined ? <select className={css.select} aria-label={t('tier')}
+      title={scopeKey === undefined ? undefined : t(scopeKey)}
       value={state.tier} disabled={busy} onChange={(event) => { choose(event.target.value, true) }}>
       <option value="low">{t('tierLow')}</option><option value="medium">{t('tierMedium')}</option><option value="high">{t('tierHigh')}</option>
       <option value="extreme-high">{t('tierExtremeHigh')}</option>

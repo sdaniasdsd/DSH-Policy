@@ -95,16 +95,33 @@ describe('composer orchestration choice', () => {
     fireEvent.click(toggle)
     await vi.waitFor(() => { expect(screen.queryByRole('combobox')).toBeNull() })
   })
-  it('offers Superpowers-style and the extreme-high tier', async () => {
-    const value: OrchestrationState = { selected: 'superpowers-style', tier: 'extreme-high', options: [
-      { id: 'dsh', label: 'DSH', available: true }, { id: 'superpowers-style', label: 'Superpowers', available: true },
+  it('updates the scenario guidance only after the Host accepts a mode and tier change', async () => {
+    let value: OrchestrationState = { selected: 'codex-style', tier: 'low', options: [
+      { id: 'dsh', label: 'DSH', available: true }, { id: 'codex-style', label: 'Codex', available: true },
+      { id: 'superpowers-style', label: 'Superpowers', available: true },
     ] }
-    render(<OrchestrationSelect read={async () => value} select={async () => value} selectTier={async () => value}
+    const pending = Promise.withResolvers<OrchestrationState>()
+    const select = vi.fn(async (mode: string) => (value = { ...value, selected: mode }))
+    const selectTier = vi.fn(() => pending.promise)
+    render(<OrchestrationSelect read={async () => value} select={select} selectTier={selectTier}
       onReset={() => () => {}} t={t} />)
     const mode = await screen.findByRole('combobox', { name: '编排模式' })
-    expect(screen.getByRole('option', { name: 'Superpowers 风格' })).toBeTruthy()
-    expect(screen.getByRole('combobox', { name: '预算档位' })).toHaveProperty('value', 'extreme-high')
-    expect(screen.getByRole('option', { name: '极端高' })).toBeTruthy()
+    await vi.waitFor(() => { expect(mode).toHaveProperty('disabled', false) })
+    const tier = screen.getByRole('combobox', { name: '预算档位' })
+    expect(tier.title).toContain('一处范围明确的小修改')
+    fireEvent.change(mode, { target: { value: 'superpowers-style' } })
+    await vi.waitFor(() => { expect(mode).toHaveProperty('disabled', false) })
+    expect(select).toHaveBeenCalledWith('superpowers-style')
+    expect(tier.title).toContain('小编程任务')
+    fireEvent.change(tier, { target: { value: 'extreme-high' } })
+    expect(selectTier).toHaveBeenCalledWith('extreme-high')
+    expect(tier).toHaveProperty('value', 'low')
+    expect(tier.title).toContain('小编程任务')
+    expect(tier).toHaveProperty('disabled', true)
+    value = { ...value, tier: 'extreme-high' }
+    pending.resolve(value)
+    await vi.waitFor(() => { expect(tier).toHaveProperty('value', 'extreme-high') })
+    expect(tier.title).toContain('长开发任务')
     expect(mode).toHaveProperty('value', 'superpowers-style')
   })
   it('keeps automatic state when the Host rejects a manual mode', async () => {

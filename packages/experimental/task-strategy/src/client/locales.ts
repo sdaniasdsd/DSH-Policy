@@ -1,7 +1,7 @@
 /** Locale-owned copy for the task strategy plugin page. */
 import type { SettingsFormLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EntryView } from '../entry-types.ts'
-import type { TokenCostUnknown } from '../types.ts'
+import type { StyleTier, TokenCostUnknown } from '../types.ts'
 
 /** Copy rendered by this page. */
 export type TaskStrategyLocaleKey =
@@ -14,6 +14,18 @@ export type TaskStrategyLocaleKey =
   | 'costKnown' | 'costTotal' | 'costTasks' | 'costUnknown' | 'costNote' | 'costAssumptions'
   | 'costDynamic' | 'costUnavailable' | 'costUnknowns' | 'costTaskBody' | 'costSystemTools' | 'costTurns'
   | 'costOutputs' | 'costToolVariance' | 'costReasoning' | 'costTokenizerCache' | 'costParent' | 'costMetadata'
+  | 'codexLowScope' | 'codexMediumScope' | 'codexHighScope' | 'codexExtremeHighScope'
+  | 'claudeLowScope' | 'claudeMediumScope' | 'claudeHighScope' | 'claudeExtremeHighScope'
+  | 'zcodeLowScope' | 'zcodeMediumScope' | 'zcodeHighScope' | 'zcodeExtremeHighScope'
+  | 'superpowersLowScope' | 'superpowersMediumScope' | 'superpowersHighScope' | 'superpowersExtremeHighScope'
+
+/** Scenario guidance for each registered style and acknowledged tier. */
+export const tierHintKeys: Readonly<Record<string, Readonly<Record<StyleTier, TaskStrategyLocaleKey>> | undefined>> = {
+  'codex-style': { low: 'codexLowScope', medium: 'codexMediumScope', high: 'codexHighScope', 'extreme-high': 'codexExtremeHighScope' },
+  'claude-style': { low: 'claudeLowScope', medium: 'claudeMediumScope', high: 'claudeHighScope', 'extreme-high': 'claudeExtremeHighScope' },
+  'zcode-style': { low: 'zcodeLowScope', medium: 'zcodeMediumScope', high: 'zcodeHighScope', 'extreme-high': 'zcodeExtremeHighScope' },
+  'superpowers-style': { low: 'superpowersLowScope', medium: 'superpowersMediumScope', high: 'superpowersHighScope', 'extreme-high': 'superpowersExtremeHighScope' },
+}
 
 /** Localized uncertainty labels keyed by the Host discriminants. */
 export const costUnknownKeys: Record<TokenCostUnknown, TaskStrategyLocaleKey> = {
@@ -27,6 +39,22 @@ export const en: Record<TaskStrategyLocaleKey, string> = {
   automation: 'Fully automatic / Choose manually', fullyAutomatic: 'Fully automatic', chooseManually: 'Choose manually',
   automaticHint: 'Describe your task. The Agent chooses a registered strategy and its budget tier; no selection reply is needed.',
   tier: 'Budget tier', tierLow: 'Low', tierMedium: 'Medium', tierHigh: 'High', tierExtremeHigh: 'Extreme high',
+  codexLowScope: 'One localized change with direct evidence.',
+  codexMediumScope: 'One feature implemented and checked step by step.',
+  codexHighScope: 'Changes across files with checks of callers and regression risks.',
+  codexExtremeHighScope: 'Changes across modules with detailed compatibility, edge-case and integration review.',
+  claudeLowScope: 'A change with a known target and location.',
+  claudeMediumScope: 'A local issue or feature requiring context gathering.',
+  claudeHighScope: 'Changes involving multiple modules, constraints and unknowns, with overall review.',
+  claudeExtremeHighScope: 'Complex dependencies or designs requiring deeper investigation and multiple review perspectives.',
+  zcodeLowScope: 'One work item with a clear outcome.',
+  zcodeMediumScope: 'A feature organized into a few dependent milestones.',
+  zcodeHighScope: 'Development or migration across multiple milestones and handoffs.',
+  zcodeExtremeHighScope: 'Changes across modules and milestones with detailed dependencies and integration checks.',
+  superpowersLowScope: 'A small coding task with brief understanding, planning and acceptance checks.',
+  superpowersMediumScope: 'One feature following the complete development process.',
+  superpowersHighScope: 'Refactoring or complex features requiring detailed planning and acceptance criteria.',
+  superpowersExtremeHighScope: 'Long development work with detailed task breakdown, handoffs and multiple review perspectives.',
   orchestration: 'Orchestration mode', modeUnconfigured: 'Plugin/backend not enabled', modeLoadFailed: 'Mode unavailable',
   modeScope: 'Style modes use DSH models, tools and permissions. Applies to new tasks in this session; resets on restart.',
   codexStyle: 'Codex style', claudeStyle: 'Claude style', zcodeStyle: 'ZCode style', superpowersStyle: 'Superpowers style', costMaximum: 'Maximum configured repair scenario (not a token limit)',
@@ -54,6 +82,22 @@ export const zh: Record<TaskStrategyLocaleKey, string> = {
   automation: '全自动／自己选', fullyAutomatic: '全自动', chooseManually: '自己选',
   automaticHint: '说清要做什么，Agent 自主决定策略和档位，无需回复策略选择。',
   tier: '预算档位', tierLow: '低', tierMedium: '中', tierHigh: '高', tierExtremeHigh: '极端高',
+  codexLowScope: '一处范围明确的小修改，保留直接证据。',
+  codexMediumScope: '一个局部功能，逐步实施并检查结果。',
+  codexHighScope: '跨文件改动，逐步检查调用者和回归影响。',
+  codexExtremeHighScope: '跨模块改动，细查接口兼容、边界条件与集成影响。',
+  claudeLowScope: '目标和位置明确的修改。',
+  claudeMediumScope: '需要先读上下文的局部问题或功能。',
+  claudeHighScope: '涉及多个模块、约束和未知项的改动，进行整体复核。',
+  claudeExtremeHighScope: '复杂依赖或方案，深入调查并从多个角度整体复核。',
+  zcodeLowScope: '目标清楚的单个工作项。',
+  zcodeMediumScope: '一个功能，按几个有依赖的里程碑推进。',
+  zcodeHighScope: '多阶段开发或迁移，明确里程碑与交接。',
+  zcodeExtremeHighScope: '跨模块、多里程碑任务，细化依赖、交接与集成检查。',
+  superpowersLowScope: '小编程任务，简要理解、规划并验收。',
+  superpowersMediumScope: '一个功能的完整开发过程。',
+  superpowersHighScope: '重构或复杂功能，细化计划与验收条件。',
+  superpowersExtremeHighScope: '长开发任务，细化事务、交接与多个复核角度。',
   orchestration: '编排模式', modeUnconfigured: '插件或后端未启用', modeLoadFailed: '模式暂不可用',
   modeScope: '风格模式借鉴对应编排方式，使用 DSH 模型、工具和权限。作用于本会话后续新任务；重启恢复自动。',
   codexStyle: 'Codex 风格', claudeStyle: 'Claude 风格', zcodeStyle: 'ZCode 风格', superpowersStyle: 'Superpowers 风格', costMaximum: '配置允许的最大修订场景（不是 Token 上限）',
