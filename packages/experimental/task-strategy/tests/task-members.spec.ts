@@ -36,7 +36,7 @@ describe('active task members', () => {
     } }
     const execution = executeDshChild(services, parent, 'spawn', workPlan.stages[0]!.tasks[0]!,
       'work', new AbortController().signal, 8192, (id) => { members.add(id); return () => { members.delete(id) } })
-    const observed = execution.then(value => ({ value }), error => ({ error }))
+    const observed = execution.then(value => ({ value }), (error: unknown) => ({ error }))
     try { await vi.waitFor(() => { expect(members.has(childId)).toBe(true) }) }
     finally {
       if (outcome === 'result failure') result.reject(new Error('result failed'))

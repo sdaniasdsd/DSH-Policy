@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { MessageId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentActivationSpec, SubagentResult } from '@deepseek-ai/dsh-subagent'
+import type { TaskStep } from '../src/types.ts'
 import { createMemberSessions } from '../src/member-sessions.ts'
 import { taskRules } from './task-runtime-fixture.ts'
 import { liveParent } from './live-parent.ts'
@@ -19,7 +20,7 @@ async function fixture(results: Promise<SubagentResult>[] = [Promise.resolve({ o
   const continueActivation = vi.fn(async (_parent, id: SessionId) => activation(id))
   const active = new Set<SessionId>()
   const admitTurn = vi.fn(() => () => {})
-  const checkChild = vi.fn(async (candidate) => {
+  const checkChild = vi.fn(async (candidate: TaskStep) => {
     if (candidate.preset !== 'coding' || candidate.executor !== undefined) throw new Error('preset is not allowed')
   })
   const options = { ctx: { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: { startActivation, continueActivation } },
@@ -52,7 +53,9 @@ it('reports capture failure as unobserved without automatic replay', async () =>
   const pending = members.open(step, 'initial', signal)
   await vi.waitFor(() => { expect(f.active.size).toBe(1) })
   broken.reject(new Error('capture unavailable'))
-  expect(await pending).toMatchObject({ kind: 'unobserved', error: expect.stringContaining('capture unavailable') })
+  const outcome = await pending
+  expect(outcome.kind).toBe('unobserved')
+  if (outcome.kind === 'unobserved') expect(outcome.error).toContain('capture unavailable')
   expect(members.inspect()[0]?.phase).toBe('unobserved')
   expect(f.continueActivation).not.toHaveBeenCalled()
   expect(f.active.size).toBe(0)
@@ -89,7 +92,9 @@ it('returns detached views and rejects a second turn while the first is pending'
 it('bounds complete captured outcomes including metadata', async () => {
   const f = await fixture([Promise.resolve({ output: [{ type: 'text', text: '中'.repeat(3000) }], stopReason: 'completed' })])
   const members = createMemberSessions(f.options)
-  expect(await members.open(step, 'initial', signal)).toMatchObject({ kind: 'unobserved', error: expect.stringContaining('maxResultBytes') })
+  const outcome = await members.open(step, 'initial', signal)
+  expect(outcome.kind).toBe('unobserved')
+  if (outcome.kind === 'unobserved') expect(outcome.error).toContain('maxResultBytes')
   await members.close()
 })
 

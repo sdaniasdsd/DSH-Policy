@@ -31,6 +31,7 @@ import { selectStrategy, selectWorkflow } from './selector.ts'
 import { errorText } from './errors.ts'
 import { OrchestrationModes } from './orchestration.ts'
 import type { OrchestrationMode, OrchestrationState } from './entry-types.ts'
+import type { TaskRecordWaitResult, TaskSharedRecord } from './coordination-types.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap { strategy: 'strategy' }
@@ -405,6 +406,61 @@ export default class TaskStrategies extends TypertRemoteService {
   sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt> {
     this.assertOpen()
     return this.ctx.taskRuns.sendMessage(parent, jobId, request, signal)
+  }
+
+  /**
+   * Read one generic record owned by the exact task Job.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @returns detached latest record, or undefined when absent.
+   */
+  recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined {
+    this.assertOpen()
+    return this.ctx.taskRuns.recordRead(parent, jobId, key)
+  }
+
+  /**
+   * List generic records owned by the exact task Job.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @returns detached latest records.
+   */
+  recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[] {
+    this.assertOpen()
+    return this.ctx.taskRuns.recordList(parent, jobId)
+  }
+
+  /**
+   * Compare-and-set a generic record owned by the exact task Job.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @param value - JSON-serializable record value.
+   * @param expectedRevision - observed version, or zero when absent.
+   * @param signal - caller cancellation signal.
+   * @returns persisted record with the new revision.
+   */
+  recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number,
+    signal: AbortSignal): Promise<TaskSharedRecord> {
+    this.assertOpen()
+    return this.ctx.taskRuns.recordWrite(parent, jobId, key, value, expectedRevision, signal)
+  }
+
+  /**
+   * Wait for a generic record owned by the exact task Job to advance.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @param afterRevision - revision already observed by the caller.
+   * @param timeoutMs - bounded wait duration.
+   * @param signal - caller cancellation signal.
+   * @returns the newer record or a timeout result.
+   */
+  recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number,
+    signal: AbortSignal): Promise<TaskRecordWaitResult> {
+    this.assertOpen()
+    return this.ctx.taskRuns.recordWait(parent, jobId, key, afterRevision, timeoutMs, signal)
   }
 
   /**

@@ -26,9 +26,14 @@ export function ownActivation<T extends SubagentActivation>(activation: T, signa
     // The result finalizer and explicit disposal retain the rejected cleanup promise.
     void dispose().catch((error: unknown) => { void error })
   }
-  const result = activation.result.finally(async () => {
+  const result = activation.result.then(
+    value => ({ kind: 'resolved' as const, value }),
+    (error: unknown) => ({ kind: 'rejected' as const, error }),
+  ).then(async (settled) => {
     signal.removeEventListener('abort', abort)
     if (closing !== undefined) await closing
+    if (settled.kind === 'rejected') throw settled.error
+    return settled.value
   })
   signal.addEventListener('abort', abort, { once: true })
   if (signal.aborted) abort()

@@ -42,23 +42,14 @@ interface Waiter {
   readonly timer: ReturnType<typeof setTimeout>
 }
 
-function validRecord(value: unknown, jobId: JobId, ownerSessionId: SessionId): value is StoredRecord {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
-  const row = value as Partial<StoredRecord>
-  return row.version === 1 && row.jobId === jobId && typeof row.key === 'string' && row.key.trim().length > 0
-    && Number.isSafeInteger(row.revision) && Number(row.revision) > 0
-    && row.writer === ownerSessionId && typeof row.value !== 'undefined'
-}
-
 function copyValue(value: unknown, maxBytes: number): unknown {
-  let encoded: string | undefined
   let snapshot: unknown
-  try {
-    snapshot = structuredClone(value)
-    encoded = JSON.stringify(snapshot)
-  }
+  try { snapshot = structuredClone(value) }
   catch { throw new Error('Shared record value must be JSON serializable') }
-  if (encoded === undefined) throw new Error('Shared record value must be JSON serializable')
+  if (snapshot === undefined) throw new Error('Shared record value must be JSON serializable')
+  let encoded: string
+  try { encoded = JSON.stringify(snapshot) }
+  catch { throw new Error('Shared record value must be JSON serializable') }
   if (Buffer.byteLength(encoded, 'utf8') > maxBytes) throw new Error(`Shared record exceeds maxPlanBytes limit ${maxBytes}`)
   return snapshot
 }
@@ -77,36 +68,17 @@ export function createTaskCoordination(options: {
   const session = parent.session
   const waiters = new Set<Waiter>()
   const tails = new Map<string, Promise<void>>()
-  let closed = false
+  const records = new Map<string, TaskSharedRecord>()
 
   const current = (): void => {
     signal.throwIfAborted()
-    if (closed) throw new Error('Task coordination is closed')
     assertOwner()
     if (ctx.sessions.get(session.id) !== session) throw new Error('Task owner Session is no longer live')
   }
 
   const scan = (): Map<string, TaskSharedRecord> => {
     current()
-    const latest = new Map<string, TaskSharedRecord>()
-    for (const event of session.ownEvents()) {
-      const pluginRecord = pluginRecordOf(event)
-      if (pluginRecord?.type !== RECORD_TYPE) continue
-      const data = pluginRecord.data
-      if (typeof data !== 'object' || data === null || (data as { jobId?: unknown }).jobId !== jobId) continue
-      if (!validRecord(data, jobId, session.id)) throw new Error('Task shared record is malformed or belongs to another writer')
-      const row = data
-      const prior = latest.get(row.key)
-      if (prior !== undefined && row.revision <= prior.revision) {
-        throw new Error(`Shared record revision is invalid for ${row.key}`)
-      }
-      if (prior !== undefined && row.revision !== prior.revision + 1) {
-        throw new Error(`Shared record revision has a gap for ${row.key}`)
-      }
-      latest.set(row.key, { key: row.key, revision: row.revision, writer: row.writer,
-        value: structuredClone(row.value) })
-    }
-    return latest
+    return new Map([...records].map(([key, record]) => [key, structuredClone(record)]))
   }
 
   const wake = (record: TaskSharedRecord): void => {
@@ -121,7 +93,6 @@ export function createTaskCoordination(options: {
   }
 
   signal.addEventListener('abort', () => {
-    closed = true
     for (const waiter of [...waiters]) waiter.abort()
     waiters.clear()
   }, { once: true })
@@ -171,6 +142,7 @@ export function createTaskCoordination(options: {
             throw new Error('Task shared record could not be observed after persistence flush')
           }
           const result: TaskSharedRecord = { key, revision: row.revision, writer: row.writer, value: structuredClone(snapshot) }
+          records.set(key, result)
           wake(result)
           return structuredClone(result)
         } finally {
@@ -192,7 +164,9 @@ export function createTaskCoordination(options: {
           const abort = () => {
             waiters.delete(waiter)
             clearTimeout(waiter.timer)
-            reject(waitController.reason ?? new Error('Task record wait cancelled'))
+            const reason: unknown = waitController.reason
+            reject(reason instanceof Error ? reason : new Error(reason === undefined
+              ? 'Task record wait cancelled' : JSON.stringify(reason)))
           }
           const timer = setTimeout(() => {
             waiters.delete(waiter)

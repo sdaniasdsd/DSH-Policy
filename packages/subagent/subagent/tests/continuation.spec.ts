@@ -129,9 +129,9 @@ describe('explicit continuation activation receipts', () => {
     const stored = await loadStoredSession(ctx.sessionPersistence, first.childId)
     expect(userTexts(stored.events)).toEqual(['child task', `Agent ${parent.id} sent a message: `, 'follow up'])
     expect(hasAssistantText(stored.events, 'first')).toBe(true)
-    expect(stored.events).toContainEqual(expect.objectContaining({ type: 'user/message', data: expect.objectContaining({
-      id: second.messageId, source: { kind: 'agent-message', form: 'relay', senderSessionId: parent.id },
-    }) }))
+    expect(stored.events.some(event => event.type === 'user/message' && event.data.id === second.messageId
+      && event.data.source.kind === 'agent-message' && event.data.source.form === 'relay'
+      && event.data.source.senderSessionId === parent.id)).toBe(true)
     await second.dispose()
   })
 

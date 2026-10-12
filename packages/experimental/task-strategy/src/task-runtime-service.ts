@@ -21,6 +21,7 @@ import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
 import type { ExecutionPlan, TaskExecutor } from './types.ts'
 import type { TaskExecutorProvider } from './executor-types.ts'
 import type { TaskCoordination } from './coordination-types.ts'
+import type { TaskRecordWaitResult, TaskSharedRecord } from './coordination-types.ts'
 import type { CapturedStrategy, TaskMemberView, TaskMessageRequest, TaskMessageReceipt,
   TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
 
@@ -118,7 +119,8 @@ export default class TaskRuns extends Service {
     const coordinationRef: { current?: TaskCoordination } = {}
     let localTurns = 0
     const reserveLocalTurn = () => {
-      if (localTurns >= config.maxConcurrent) throw new Error('Local child turns exceed captured maxConcurrent')
+      const limit = runtime.concurrencyLimit
+      if (localTurns >= limit) throw new Error(`Local child turns exceed maxConcurrent ${limit} for the current stage`)
       localTurns++
       return () => { localTurns-- }
     }
@@ -195,10 +197,11 @@ export default class TaskRuns extends Service {
         }, done }
       },
     })
-    coordinationRef.current = createTaskCoordination({ ctx: this.ctx, parent, jobId, activeMembers,
+    const coordination = createTaskCoordination({ ctx: this.ctx, parent, jobId, activeMembers,
       maxRecordBytes: config.maxPlanBytes, signal: lifetime.signal,
       assertOwner: () => { this.assertOpen(); this.assertLiveOwner(parent) } })
-    store.runs.set(jobId, { task, run: runtime, execution, activeMembers,
+    coordinationRef.current = coordination
+    store.runs.set(jobId, { task, run: runtime, execution, activeMembers, coordination,
       maxMessageBytes: config.maxPlanBytes, lifetime: lifetime.signal })
     return jobId
   }
@@ -239,6 +242,57 @@ export default class TaskRuns extends Service {
       signal: deliverySignal, activeOnly: true,
     })
     return { messageId }
+  }
+
+  /**
+   * Read one task-scoped shared record under the exact owner and Job.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @returns detached latest record, or undefined when absent.
+   */
+  recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined {
+    return this.ownedRun(parent, jobId).coordination.records.read(key)
+  }
+
+  /**
+   * List task-scoped shared records under the exact owner and Job.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @returns detached latest records.
+   */
+  recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[] {
+    return this.ownedRun(parent, jobId).coordination.records.list()
+  }
+
+  /**
+   * Compare-and-set one task-scoped shared record.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @param value - JSON-serializable record value.
+   * @param expectedRevision - observed version, or zero when absent.
+   * @param signal - caller cancellation signal.
+   * @returns persisted record with the new revision.
+   */
+  recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number,
+    signal: AbortSignal): Promise<TaskSharedRecord> {
+    return this.ownedRun(parent, jobId).coordination.records.write(key, value, expectedRevision, signal)
+  }
+
+  /**
+   * Wait for a task-scoped shared record to advance.
+   * @param parent - exact live owner Agent.
+   * @param jobId - original task Job identity.
+   * @param key - caller-defined nonempty record key.
+   * @param afterRevision - revision already observed by the caller.
+   * @param timeoutMs - bounded wait duration.
+   * @param signal - caller cancellation signal.
+   * @returns the newer record or a timeout result.
+   */
+  recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number,
+    signal: AbortSignal): Promise<TaskRecordWaitResult> {
+    return this.ownedRun(parent, jobId).coordination.records.wait(key, afterRevision, timeoutMs, signal)
   }
 
   /**

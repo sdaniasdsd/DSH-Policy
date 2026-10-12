@@ -6,6 +6,30 @@ import { boundText, parsePlan, parsePreferences } from './schema.ts'
 import { JobId } from '@deepseek-ai/dsh-jobs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { inspectionText } from './task-inspection.ts'
+import type { TaskSharedRecord } from './coordination-types.ts'
+
+function recordText(record: TaskSharedRecord | undefined, maxBytes: number): string {
+  const full = JSON.stringify(record ?? null)
+  if (Buffer.byteLength(full, 'utf8') <= maxBytes) return full
+  if (record === undefined) return 'null'
+  const compact = JSON.stringify({ key: record.key, revision: record.revision, writer: record.writer, detailsOmitted: true })
+  if (Buffer.byteLength(compact, 'utf8') <= maxBytes) return compact
+  throw new Error('Shared record identity exceeds the output byte limit')
+}
+
+function recordReceiptText(record: TaskSharedRecord, maxBytes: number): string {
+  const receipt = JSON.stringify({ key: record.key, revision: record.revision, writer: record.writer })
+  if (Buffer.byteLength(receipt, 'utf8') > maxBytes) throw new Error('Shared record receipt exceeds the output byte limit')
+  return receipt
+}
+
+function recordsText(records: readonly TaskSharedRecord[], maxBytes: number): string {
+  const full = JSON.stringify(records)
+  if (Buffer.byteLength(full, 'utf8') <= maxBytes) return full
+  const compact = JSON.stringify(records.map(({ key, revision, writer }) => ({ key, revision, writer, detailsOmitted: true })))
+  if (Buffer.byteLength(compact, 'utf8') <= maxBytes) return compact
+  throw new Error('Shared record list exceeds the output byte limit; read records by key')
+}
 
 function receiptText(receipt: { jobId: string; name: string }, maxBytes: number): string {
   const text = JSON.stringify(receipt)
@@ -61,6 +85,56 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
           throw new Error(`Message ${receipt.messageId} is already accepted; receipt identity exceeds the output byte limit. Do not resend.`)
         }
         return text
+      },
+    }),
+    defineTool({
+      name: `${prefix}_record_read`,
+      description: 'Read the latest JSON value for a key in an owned task. Returns null when absent; oversized values return record identity with detailsOmitted.',
+      parameters: { jobId: { type: 'string', required: true }, key: { type: 'string', required: true } }, output,
+      execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task records require a calling agent')
+        return Promise.resolve(recordText(service.recordRead(exec.agent, JobId(args.jobId), args.key), maxBytes))
+      },
+    }),
+    defineTool({
+      name: `${prefix}_record_list`,
+      description: 'List latest record identities and values for an owned task. If values exceed the output limit, returns identities only.',
+      parameters: { jobId: { type: 'string', required: true } }, output,
+      execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task records require a calling agent')
+        return Promise.resolve(recordsText(service.recordList(exec.agent, JobId(args.jobId)), maxBytes))
+      },
+    }),
+    defineTool({
+      name: `${prefix}_record_write`,
+      description: 'Compare-and-set a JSON value in an owned task. Supply expectedRevision 0 for an absent key or the current revision; conflicts are returned as errors.',
+      parameters: { jobId: { type: 'string', required: true }, key: { type: 'string', required: true },
+        value: { type: 'json', required: true }, expectedRevision: { type: 'number', required: true } }, output,
+      async execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task records require a calling agent')
+        const record = await service.recordWrite(exec.agent, JobId(args.jobId), args.key, args.value,
+          args.expectedRevision, exec.signal)
+        return recordReceiptText(record, maxBytes)
+      },
+    }),
+    defineTool({
+      name: `${prefix}_record_wait`,
+      description: 'Wait until a task record advances beyond afterRevision or timeoutMs elapses. The owning task signal cancels the wait.',
+      parameters: { jobId: { type: 'string', required: true }, key: { type: 'string', required: true },
+        afterRevision: { type: 'number', required: true }, timeoutMs: { type: 'number', required: true } }, output,
+      async execute(args, exec) {
+        if (exec.agent === undefined) throw new Error('Task records require a calling agent')
+        const result = await service.recordWait(exec.agent, JobId(args.jobId), args.key,
+          args.afterRevision, args.timeoutMs, exec.signal)
+        const full = JSON.stringify(result)
+        if (Buffer.byteLength(full, 'utf8') <= maxBytes) return full
+        const compact = result.record === undefined
+          ? JSON.stringify({ timedOut: result.timedOut })
+          : JSON.stringify({ timedOut: result.timedOut, record: {
+            key: result.record.key, revision: result.record.revision, writer: result.record.writer, detailsOmitted: true,
+          } })
+        if (Buffer.byteLength(compact, 'utf8') > maxBytes) throw new Error('Shared record wait result exceeds the output byte limit')
+        return compact
       },
     }),
     defineTool({

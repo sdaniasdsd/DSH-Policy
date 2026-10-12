@@ -3155,6 +3155,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'inbox acceptance identity, without claiming processing or adoption.',
       },
       {
+        signature: 'recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined',
+        description: 'Read one task-scoped shared record under the exact owner and Job.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }],
+        returns: 'detached latest record, or undefined when absent.',
+      },
+      {
+        signature: 'recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]',
+        description: 'List task-scoped shared records under the exact owner and Job.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }],
+        returns: 'detached latest records.',
+      },
+      {
+        signature: 'recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>',
+        description: 'Compare-and-set one task-scoped shared record.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }, { name: 'value', description: 'JSON-serializable record value.' }, { name: 'expectedRevision', description: 'observed version, or zero when absent.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'persisted record with the new revision.',
+      },
+      {
+        signature: 'recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>',
+        description: 'Wait for a task-scoped shared record to advance.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }, { name: 'afterRevision', description: 'revision already observed by the caller.' }, { name: 'timeoutMs', description: 'bounded wait duration.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'the newer record or a timeout result.',
+      },
+      {
         signature: 'cancel(parent: Agent, jobId: JobId, reason?: string): \'requested\' | \'already-finished\'',
         description: 'Request cancellation through the original Jobs service after checking task ownership.',
         parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'reason', description: 'optional cancellation detail.' }],
@@ -3294,6 +3318,30 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Deliver an adjustment through the original task owner\'s Subagents channel.',
         parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity.' }, { name: 'request', description: 'currently active DSH member and bounded nonempty text.' }, { name: 'signal', description: 'cancellation of unaccepted delivery.' }],
         returns: 'inbox acceptance identity, not processing or adoption.',
+      },
+      {
+        signature: 'recordRead(parent: Agent, jobId: JobId, key: string): TaskSharedRecord | undefined',
+        description: 'Read one generic record owned by the exact task Job.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }],
+        returns: 'detached latest record, or undefined when absent.',
+      },
+      {
+        signature: 'recordList(parent: Agent, jobId: JobId): readonly TaskSharedRecord[]',
+        description: 'List generic records owned by the exact task Job.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }],
+        returns: 'detached latest records.',
+      },
+      {
+        signature: 'recordWrite(parent: Agent, jobId: JobId, key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>',
+        description: 'Compare-and-set a generic record owned by the exact task Job.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }, { name: 'value', description: 'JSON-serializable record value.' }, { name: 'expectedRevision', description: 'observed version, or zero when absent.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'persisted record with the new revision.',
+      },
+      {
+        signature: 'recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>',
+        description: 'Wait for a generic record owned by the exact task Job to advance.',
+        parameters: [{ name: 'parent', description: 'exact live owner Agent.' }, { name: 'jobId', description: 'original task Job identity.' }, { name: 'key', description: 'caller-defined nonempty record key.' }, { name: 'afterRevision', description: 'revision already observed by the caller.' }, { name: 'timeoutMs', description: 'bounded wait duration.' }, { name: 'signal', description: 'caller cancellation signal.' }],
+        returns: 'the newer record or a timeout result.',
       },
       {
         signature: 'requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number',
@@ -8035,8 +8083,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TaskCoordination',
+    declaration: 'export interface TaskCoordination {\n    readonly records: TaskSharedRecords;\n    readonly messages: TaskMemberMessageChannel;\n}',
+  },
+  {
     name: 'TaskExecutorContext',
-    declaration: 'export interface TaskExecutorContext {\n    readonly members: TaskMemberSessions;\n}',
+    declaration: 'export interface TaskExecutorContext {\n    readonly members: TaskMemberSessions;\n    readonly coordination: TaskCoordination;\n}',
   },
   {
     name: 'TaskExecutorProvider',
@@ -8045,6 +8097,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TaskIntakeRequest',
     declaration: 'export interface TaskIntakeRequest extends StrategyInput {\n    readonly requestId: string;\n    readonly selection?: TaskSelection;\n}',
+  },
+  {
+    name: 'TaskMemberMessageChannel',
+    declaration: 'export interface TaskMemberMessageChannel {\n    send(sessionId: SessionId, text: string, signal: AbortSignal): Promise<{\n        readonly messageId: MessageId;\n    }>;\n}',
   },
   {
     name: 'TaskMemberSessions',
@@ -8075,6 +8131,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TaskReceipt {\n    readonly jobId: JobId;\n    readonly name: string;\n    readonly strategy: string;\n    readonly selection?: {\n        readonly kind: \'auto\' | \'fallback\';\n        readonly tier?: StyleTier;\n        readonly reason: string;\n    };\n}',
   },
   {
+    name: 'TaskRecordWaitResult',
+    declaration: 'export interface TaskRecordWaitResult {\n    readonly timedOut: boolean;\n    readonly record?: TaskSharedRecord;\n}',
+  },
+  {
     name: 'TaskResult',
     declaration: 'export interface TaskResult extends ChildResult {\n    readonly stage: string;\n    readonly label: string;\n}',
   },
@@ -8089,6 +8149,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TaskSelection',
     declaration: 'export type TaskSelection = {\n    readonly kind: \'auto\';\n    readonly workflow?: boolean;\n} | {\n    readonly kind: \'named\';\n    readonly strategy: string;\n};',
+  },
+  {
+    name: 'TaskSharedRecord',
+    declaration: 'export interface TaskSharedRecord {\n    readonly key: string;\n    readonly revision: number;\n    readonly writer: SessionId;\n    readonly value: unknown;\n}',
+  },
+  {
+    name: 'TaskSharedRecords',
+    declaration: 'export interface TaskSharedRecords {\n    read(key: string): TaskSharedRecord | undefined;\n    list(): readonly TaskSharedRecord[];\n    write(key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>;\n    wait(key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>;\n}',
   },
   {
     name: 'TaskStep',

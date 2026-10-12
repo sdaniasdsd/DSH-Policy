@@ -1,7 +1,8 @@
 import { expect, it, vi } from 'vitest'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { bootTaskRuntime, taskRules } from './task-runtime-fixture.ts'
 import { maxTokensResponse, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import type { ExecutionPlan } from '../src/types.ts'
+import type { ExecutionPlan, TaskStep } from '../src/types.ts'
 import type { TaskMemberSessions } from '../src/member-session-types.ts'
 
 const signal = new AbortController().signal
@@ -89,7 +90,7 @@ it('closes retained members on task cancellation while the executor awaits a dec
 
 it('preserves a four-argument native executor and creates no local sessions implicitly', async () => {
   const { ctx, parent, model } = await bootTaskRuntime([])
-  const execute = vi.fn(async (_parent, _step, _prompt, childSignal) => {
+  const execute = vi.fn(async (_parent: Agent, _step: TaskStep, _prompt: string, childSignal: AbortSignal) => {
     childSignal.throwIfAborted()
     return { stopReason: 'completed', output: 'native result', sessionId: 'native-session' }
   })

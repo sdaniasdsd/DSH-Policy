@@ -30,6 +30,7 @@ export class TaskRun {
   private results: TaskResult[] = []
   private error: string | undefined
   private pending: PendingSwitch | undefined
+  private activeConcurrency: number
   private command = 0
   private wake: (() => void) | undefined
   private done: Promise<ExecutionResult> | undefined
@@ -43,6 +44,7 @@ export class TaskRun {
     validateTask(task)
     this.strategy = copyBinding(strategy)
     this.options = { ...options }
+    this.activeConcurrency = options.maxConcurrent
     validatePlan(this.strategy.plan, this.limits())
   }
 
@@ -127,6 +129,9 @@ export class TaskRun {
     if (this.startedTasks >= this.options.maxTasks) throw new Error(`Task exceeds cumulative task limit ${this.options.maxTasks}`)
     this.startedTasks++
   }
+
+  /** Current author's stage capacity, including an explicit stage override. */
+  get concurrencyLimit(): number { return this.activeConcurrency }
 
   private limits(): Pick<TaskRunOptions, 'maxConcurrent' | 'maxTasks' | 'maxResultBytes'> {
     const { maxConcurrent, maxTasks, maxResultBytes } = this.options
@@ -257,15 +262,21 @@ export class TaskRun {
         // A switch arriving during asynchronous preflight supersedes that unstarted stage.
         if (this.pending !== undefined) continue
         this.phase = 'running'
+        const activeStage = plan.stages[0]
+        this.activeConcurrency = Math.max(this.options.maxConcurrent,
+          activeStage.serial === true ? 1 : activeStage.maxConcurrent ?? this.options.maxConcurrent)
         const additionalContext = this.options.additionalContext?.() ?? ''
-        const result = await executeStage(plan.stages[0], this.task, this.results, (step, prompt, signal) => {
-          signal.throwIfAborted()
-          this.admitMemberTurn()
-          return this.execute(step, prompt + additionalContext, signal)
-        }, {
-          ...this.limits(), signal: this.controller.signal,
-          onEvent: (event) => { this.emit(event) },
-        })
+        let result: Awaited<ReturnType<typeof executeStage>>
+        try {
+          result = await executeStage(activeStage, this.task, this.results, (step, prompt, signal) => {
+            signal.throwIfAborted()
+            this.admitMemberTurn()
+            return this.execute(step, prompt + additionalContext, signal)
+          }, {
+            ...this.limits(), signal: this.controller.signal,
+            onEvent: (event) => { this.emit(event) },
+          })
+        } finally { this.activeConcurrency = this.options.maxConcurrent }
         this.results = result.results
         if (this.cancelled()) break
         if (result.status !== 'completed') return await this.settle(result.status, result.error)

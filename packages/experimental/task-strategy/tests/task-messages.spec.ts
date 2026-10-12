@@ -24,10 +24,9 @@ describe('task-owner messages', () => {
     try {
       const receipt = await ctx.taskRuns.sendMessage(parent, jobId, { childId, text: 'adjust work' }, signal())
       expect(Object.keys(receipt)).toEqual(['messageId'])
-      expect(ctx.agents.get(childId)?.inbox.nextStep).toContainEqual(expect.objectContaining({
-        id: receipt.messageId, content: expect.arrayContaining([{ type: 'text', text: 'adjust work' }]),
-        source: { kind: 'agent-message', form: 'relay', senderSessionId: parent.id },
-      }))
+      const delivered = ctx.agents.get(childId)?.inbox.nextStep.find(item => item.id === receipt.messageId)
+      expect(delivered?.content.some(block => block.type === 'text' && block.text === 'adjust work')).toBe(true)
+      expect(delivered?.source).toEqual({ kind: 'agent-message', form: 'relay', senderSessionId: parent.id })
       expect(model.requests).toHaveLength(1)
     } finally { gate.resolve(undefined) }
     expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
@@ -89,7 +88,10 @@ describe('task-owner messages', () => {
     const send = vi.spyOn(ctx.subagents, 'sendMessage').mockImplementation(async (_parent, _child, _content, options) => {
       entered.resolve(options.signal)
       await new Promise<never>((_resolve, reject) => {
-        const abort = () => { reject(options.signal.reason) }
+        const abort = () => {
+          const reason: unknown = options.signal.reason
+          reject(reason instanceof Error ? reason : new Error(reason === undefined ? 'aborted' : JSON.stringify(reason) ?? 'aborted'))
+        }
         options.signal.addEventListener('abort', abort, { once: true })
         if (options.signal.aborted) abort()
       })

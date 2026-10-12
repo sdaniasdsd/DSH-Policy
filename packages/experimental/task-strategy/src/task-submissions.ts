@@ -6,6 +6,7 @@ import type { JobId, JobRegistry } from '@deepseek-ai/dsh-jobs'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { TaskMemberView, TaskReceipt, TaskSubmission, TaskRunView } from './runtime-types.ts'
 import type { TaskRun } from './task-run.ts'
+import type { TaskCoordination } from './coordination-types.ts'
 import type { TaskIntakeRequest } from './selection-types.ts'
 import { validateTask } from './task-input.ts'
 import type { EntryRecord } from './entry-coordinator.ts'
@@ -19,6 +20,7 @@ interface OwnerRuns {
     readonly activeMembers: Map<SessionId, TaskMemberView>
     readonly maxMessageBytes: number
     readonly lifetime: AbortSignal
+    readonly coordination: TaskCoordination
   }>
   readonly requests: Map<string, { readonly digest: string; readonly receipt: Promise<TaskReceipt> }>
 }

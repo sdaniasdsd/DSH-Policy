@@ -2,8 +2,10 @@ import { expect, it, vi } from 'vitest'
 import { bootTaskRuntime, taskRules, type TaskModel } from './task-runtime-fixture.ts'
 import { maxTokensResponse, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { loadStoredSession } from '../../../subagent/subagent/tests/persistence-helpers.ts'
+import { pluginRecordOf } from '@deepseek-ai/dsh-session'
 import * as activationResults from '../../../subagent/subagent/src/activation.ts'
 import type { TaskMemberTurnOutcome } from '../src/member-session-types.ts'
+import type { TaskRecordWaitResult } from '../src/coordination-types.ts'
 import type { ExecutionPlan } from '../src/types.ts'
 
 const signal = new AbortController().signal
@@ -109,6 +111,44 @@ it('shares task concurrency between ordinary children and executor members', asy
   } finally { gate.resolve(undefined) }
 })
 
+it('allows an author stage to raise concurrency above the carrier default', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('one'), gate: gate.promise }, { chunks: textResponse('two'), gate: gate.promise },
+  ], { maxConcurrent: 1 })
+  const parallel: ExecutionPlan = { name: 'parallel', stages: [{ name: 'work', maxConcurrent: 2, tasks: [
+    { ...step, label: 'one' }, { ...step, label: 'two' },
+  ] }] }
+  try {
+    const id = await ctx.taskRuns.start(parent, 'work', parallel, { ...taskRules, maxConcurrent: 1 }, signal)
+    await vi.waitFor(() => { expect(model.requests).toHaveLength(2) })
+    gate.resolve(undefined)
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+  } finally { gate.resolve(undefined) }
+})
+
+it('keeps the carrier concurrency available to members of one executor stage', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('one'), gate: gate.promise }, { chunks: textResponse('two'), gate: gate.promise },
+  ])
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'nested parallel members', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing member context')
+      const first = context.members.open(step, 'first', childSignal)
+      const second = context.members.open(step, 'second', childSignal)
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(2) })
+      gate.resolve(undefined)
+      await Promise.all([first, second])
+      return { stopReason: 'completed', output: 'both members settled' }
+    } })
+  try {
+    const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+    expect(model.requests).toHaveLength(2)
+  } finally { gate.resolve(undefined) }
+})
+
 it('logs exact accepted identities and sender, retains history, and waits inside the original Job for an explicit decision', async () => {
   const { ctx, parent, model } = await bootTaskRuntime([{ chunks: maxTokensResponse('blocked evidence') },
     { chunks: textResponse('recovered result') }], undefined, true)
@@ -141,9 +181,9 @@ it('logs exact accepted identities and sender, retains history, and waits inside
   expect(JSON.stringify(model.requests[1]?.messages)).toContain('chosen repair')
   const stored = await loadStoredSession(ctx.sessionPersistence, first.sessionId)
   const inputs = stored.events.filter(event => event.type === 'user/message')
-  expect(inputs).toContainEqual(expect.objectContaining({ data: expect.objectContaining({ id: first.messageId }) }))
-  expect(inputs).toContainEqual(expect.objectContaining({ data: expect.objectContaining({ id: second?.messageId,
-    source: { kind: 'agent-message', form: 'relay', senderSessionId: parent.id } }) }))
+  expect(inputs.some(event => event.data.id === first.messageId)).toBe(true)
+  expect(inputs.some(event => event.data.id === second?.messageId && event.data.source.kind === 'agent-message'
+    && event.data.source.form === 'relay' && event.data.source.senderSessionId === parent.id)).toBe(true)
   expect(ctx.taskRuns.inspect(parent, id)).toMatchObject({ phase: 'completed', startedTasks: 3, activeMembers: [] })
 })
 
@@ -187,6 +227,65 @@ it('reports unavailable continuation without replacing the original member or ba
   expect(ctx.taskRuns.inspect(parent, id).activeMembers).toEqual([])
 })
 
+it('waits for a persisted shared-record revision and rejects a stale compare-and-set', async () => {
+  const { ctx, parent } = await bootTaskRuntime([], undefined, true)
+  let observed: TaskRecordWaitResult | undefined
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'shared records', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing coordination context')
+      const pending = context.coordination.records.wait('issue/1', 0, 5000, childSignal)
+      const first = await context.coordination.records.write('issue/1', { status: 'open' }, 0, childSignal)
+      observed = await pending
+      await expect(context.coordination.records.write('issue/1', { status: 'stale' }, 0, childSignal))
+        .rejects.toThrow(/revision conflict/)
+      await context.coordination.records.write('issue/1', { status: 'adopted' }, first.revision, childSignal)
+      expect(context.coordination.records.read('issue/1')).toMatchObject({ revision: 2, value: { status: 'adopted' } })
+      return { stopReason: 'completed', output: 'record saved' }
+    } })
+  const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+  expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+  expect(observed).toMatchObject({ timedOut: false, record: { revision: 1, value: { status: 'open' }, writer: parent.id } })
+  const stored = await loadStoredSession(ctx.sessionPersistence, parent.id)
+  const records = stored.events.flatMap((event) => {
+    const record = pluginRecordOf(event)
+    return record?.type === 'plugin:task-strategy/shared-record' ? [record.data] : []
+  })
+  expect(records).toHaveLength(2)
+})
+
+it('delivers coordination-facade messages to an active local member with the task owner as sender', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('first turn'), gate: gate.promise }, { chunks: textResponse('accepted adjustment') },
+  ], undefined, true)
+  let receipt: { readonly messageId: string } | undefined
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'coordination messages', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing coordination context')
+      const first = context.members.open(step, 'initial', childSignal)
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const sessionId = model.requests[0]?.sessionId
+      if (sessionId === undefined) throw new Error('Missing active member session')
+      receipt = await context.coordination.messages.send(sessionId, 'owner adjustment', childSignal)
+      gate.resolve(undefined)
+      const outcome = await first
+      if (outcome.kind !== 'settled') throw new Error(outcome.error)
+      return outcome.result
+    } })
+  try {
+    const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+    expect(model.requests.length).toBeGreaterThanOrEqual(2)
+    expect(JSON.stringify(model.requests.slice(1).map(request => request.messages))).toContain('owner adjustment')
+    const memberSessionId = model.requests[0]?.sessionId
+    if (memberSessionId === undefined) throw new Error('Missing active member session')
+    const stored = await loadStoredSession(ctx.sessionPersistence, memberSessionId)
+    expect(stored.events.some(event => event.type === 'user/message' && event.data.id === receipt?.messageId
+      && event.data.source.kind === 'agent-message' && event.data.source.senderSessionId === parent.id
+      && JSON.stringify(event.data.content).includes('owner adjustment'))).toBe(true)
+  } finally { gate.resolve(undefined) }
+})
+
 it('exposes a capture failure as unobserved after actual execution without replay', async () => {
   const { ctx, parent, model } = await bootTaskRuntime([{ chunks: textResponse('executed once') }], undefined, true)
   const capture = vi.spyOn(activationResults, 'captureLocalResult').mockImplementationOnce(() => { throw new Error('capture failed') })
@@ -200,7 +299,8 @@ it('exposes a capture failure as unobserved after actual execution without repla
   try {
     const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
     expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('failed')
-    expect(observed).toMatchObject({ kind: 'unobserved', error: expect.stringContaining('capture failed') })
+    expect(observed?.kind).toBe('unobserved')
+    if (observed?.kind === 'unobserved') expect(observed.error).toContain('capture failed')
     expect(model.requests).toHaveLength(1)
     expect(ctx.taskRuns.inspect(parent, id).activeMembers).toEqual([])
   } finally { capture.mockRestore() }
