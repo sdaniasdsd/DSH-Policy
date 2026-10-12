@@ -4,7 +4,7 @@
 
 实验性的 task-strategy 库将作者的工作流决策与 DSH 插件身份分开。它的可选 Cordis 载体仅通过显式 profile patch 加载。启用后，`ctx.taskStrategies` 会校验有序计划，并通过 DSH 现有的 preset、subagent 和 Jobs 服务分发各个下层任务；下层 agent 不会获得策略控制工具。
 
-阶段按顺序执行，同一阶段内的任务可以并发。分发前会检查预设与工具过滤器，进度记入 DSH 自有 job。卸载载体会移除其注册，但已接收的 Job 继续遵循 Jobs 服务的生命周期；需要显式取消时使用 `job_kill`。并发任务仍可能共享文件，因此作者需要协调写入。任务轮次结束仅表示子任务已结束，不代表其输出经过独立验证。
+阶段按顺序执行，作者通过 `maxConcurrent` 决定同阶段并发数，或通过 `serial` 指定串行。只有阶段省略并发数时才使用载体默认值。分发前会检查预设与工具过滤器，进度记入 DSH 自有 job。卸载载体会移除其注册，但已接收的 Job 继续遵循 Jobs 服务的生命周期；需要显式取消时使用 `job_kill`。并发任务仍可能共享文件，因此作者需要协调写入。任务轮次结束仅表示子任务已结束，不代表其输出经过独立验证。
 
 计划格式和 profile patch 示例见[包文档](../../packages/experimental/task-strategy/README.zh.md)。
 

@@ -4,7 +4,7 @@ English | [中文](task-strategy.zh.md)
 
 The experimental task-strategy library keeps author workflow decisions separate from DSH plugin identities. Its optional Cordis carrier is loaded only through an explicit profile patch. Once enabled, `ctx.taskStrategies` validates an ordered plan and dispatches each lower task through DSH's existing preset, subagent, and Jobs services. Lower agents do not receive the strategy control tools.
 
-Stages run in order; tasks within a stage may run concurrently. Presets and tool filters are checked before dispatch, and progress is recorded in an owned DSH job. Unloading the carrier removes its registrations but leaves accepted Jobs under the Jobs service lifetime; use `job_kill` for explicit cancellation. Concurrent tasks can still share files, so authors must coordinate writes. Completion means the child turns ended, not that their output was independently verified.
+Stages run in order; authors choose concurrency within a stage through `maxConcurrent`, or request serial execution through `serial`. The carrier default applies only when the stage omits a count. Presets and tool filters are checked before dispatch, and progress is recorded in an owned DSH job. Unloading the carrier removes its registrations but leaves accepted Jobs under the Jobs service lifetime; use `job_kill` for explicit cancellation. Concurrent tasks can still share files, so authors must coordinate writes. Completion means the child turns ended, not that their output was independently verified.
 
 See the [package documentation](../../packages/experimental/task-strategy/README.md) for plan and profile-patch examples.
 

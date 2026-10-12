@@ -40,7 +40,14 @@ export interface TaskStep {
 /** Sequential stages, with concurrent children inside each stage. */
 export interface ExecutionPlan {
   readonly name: string
-  readonly stages: { readonly name: string; readonly serial?: boolean; readonly tasks: TaskStep[] }[]
+  readonly stages: {
+    readonly name: string
+    /** Explicit serial execution; incompatible with maxConcurrent greater than one. */
+    readonly serial?: boolean
+    /** Author-selected worker count; omission uses the carrier's default. */
+    readonly maxConcurrent?: number
+    readonly tasks: TaskStep[]
+  }[]
 }
 
 /** A trusted, finite synchronous plan decision; asynchronous work belongs to the executor. */
@@ -138,6 +145,7 @@ export type ExecutionEvent =
 
 /** Validated per-run limits and caller cancellation. */
 export interface ExecutionOptions {
+  /** Default worker count for stages without an explicit author choice. */
   readonly maxConcurrent: number
   readonly maxTasks: number
   readonly maxResultBytes: number
@@ -181,6 +189,7 @@ export interface AdapterConfig {
   /** Explicit opt-in for external execution adapters; omission permits none. */
   readonly allowedExecutors?: string[] | undefined
   readonly strategies: StrategyDefinition[]
+  /** Default worker count; each author stage may supply its own maxConcurrent. */
   readonly maxConcurrent: number
   readonly maxTasks: number
   readonly maxPlanBytes: number

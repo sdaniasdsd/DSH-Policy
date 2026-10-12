@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { StrategyRegistry, executePlan } from '../src/index.ts'
+import { parsePlan } from '../src/schema.ts'
+import { validatePlan } from '../src/executor.ts'
 import type { ExecutionPlan, TaskExecutor } from '../src/types.ts'
 
 const plan: ExecutionPlan = {
@@ -57,6 +59,69 @@ describe('author strategy decisions', () => {
 })
 
 describe('phased execution', () => {
+  it.each([1, 2, 3])('runs an author-selected stage with %i workers instead of the carrier default', async (concurrency) => {
+    const authored = { name: 'author concurrency', stages: [{ name: 'modules', maxConcurrent: concurrency,
+      tasks: Array.from({ length: 3 }, (_, index) => ({ label: `module:${index}`, preset: 'coding', instruction: 'Implement assigned module' })) }] }
+    const gate = Promise.withResolvers<undefined>()
+    let started = 0, active = 0, maximum = 0
+    const running = executePlan(authored, 'implement modules', async (step) => {
+      started++; maximum = Math.max(maximum, ++active)
+      try { await gate.promise; return { stopReason: 'completed', output: step.label } }
+      finally { active-- }
+    }, { ...limits, maxConcurrent: concurrency === 1 ? 3 : 1, signal: new AbortController().signal })
+    try { await vi.waitFor(() => { expect(started).toBe(concurrency) }) }
+    finally { gate.resolve(undefined); await running }
+    expect(maximum).toBe(concurrency)
+    expect(active).toBe(0)
+  })
+  it('retains strategy-owned concurrency through JSON parsing and rejects contradictory or invalid author choices', () => {
+    const authored = { ...plan, stages: [{ ...plan.stages[0]!, maxConcurrent: 3 }] }
+    expect(parsePlan(authored).stages[0]).toHaveProperty('maxConcurrent', 3)
+    for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      const invalid = { ...plan, stages: [{ ...plan.stages[0]!, maxConcurrent: value }] }
+      expect(() => validatePlan(invalid, limits)).toThrow('Stage concurrency')
+      expect(() => parsePlan(invalid)).toThrow()
+    }
+    expect(() => validatePlan({ ...plan, stages: [{ ...plan.stages[0]!, serial: true, maxConcurrent: 2 }] }, limits))
+      .toThrow('Serial stage')
+  })
+  it.each(['cancelled', 'failed'] as const)('drains strategy-selected concurrent children before reporting %s', async (status) => {
+    const authored: ExecutionPlan = { name: 'parallel modules', stages: [
+      { name: 'modules', maxConcurrent: 3, tasks: Array.from({ length: 4 },
+        (_, index) => ({ label: `module:${index}`, preset: 'coding', instruction: 'work' })) },
+      { name: 'later', tasks: [{ label: 'later', preset: 'coding', instruction: 'work' }] },
+    ] }
+    const controller = new AbortController()
+    const failure = Promise.withResolvers<undefined>(), cleanup = Promise.withResolvers<undefined>()
+    const labels: string[] = []
+    let active = 0, aborted = 0, settled = false
+    const running = executePlan(authored, 'implement modules', async (step, _prompt, signal) => {
+      labels.push(step.label); active++
+      try {
+        if (status === 'failed' && step.label === 'module:0') {
+          await failure.promise
+          return { stopReason: 'max-tokens', output: 'partial' }
+        }
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve()
+          else signal.addEventListener('abort', () => resolve(), { once: true })
+        })
+        aborted++
+        await cleanup.promise
+        return { stopReason: 'aborted', output: '' }
+      } finally { active-- }
+    }, { ...limits, maxConcurrent: 1, signal: controller.signal }).then((result) => { settled = true; return result })
+    try {
+      await vi.waitFor(() => { expect(labels).toHaveLength(3) })
+      if (status === 'cancelled') controller.abort()
+      else failure.resolve(undefined)
+      await vi.waitFor(() => { expect(aborted).toBe(status === 'failed' ? 2 : 3) })
+      expect(settled).toBe(false)
+    } finally { controller.abort(); failure.resolve(undefined); cleanup.resolve(undefined); await running }
+    expect((await running).status).toBe(status)
+    expect(labels).toEqual(['module:0', 'module:1', 'module:2'])
+    expect(active).toBe(0)
+  })
   it('rejects an empty task before dispatching any child', async () => {
     let started = 0
     await expect(executePlan(plan, ' \n\t', async () => {
