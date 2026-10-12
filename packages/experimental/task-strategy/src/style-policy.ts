@@ -37,6 +37,20 @@ export interface StyleConfig {
   readonly extremeHigh: ExtremeHighConfig
 }
 
+const styleDescriptions: Record<StylePattern, string> = {
+  codex: 'Codex 风格 / DSH 执行：逐节点实施与只读检查，适合逐步改动和复核。',
+  claude: 'Claude 风格 / DSH 执行：收集上下文、实施与整体复核，适合需要调查的改动。',
+  zcode: 'ZCode 风格 / DSH 执行：按依赖和里程碑交接，适合分阶段任务。',
+  superpowers: 'Superpowers 风格 / DSH 执行：理解目标、规划、实施、验收与最终复核，适合完整编程流程。',
+}
+
+const tierInstructions: Record<StyleTier, string> = {
+  low: '低档：处理一处范围明确的事务，保留直接证据和必要交接。',
+  medium: '中档：围绕一个局部功能调查、实施和核验，说明涉及的接口与验收条件。',
+  high: '高档：处理跨文件或多阶段事务，检查调用者、约束及回归影响，交接已完成项和剩余问题。',
+  'extreme-high': '极端高档：处理跨模块或长开发任务；对单个事务细分需求、接口兼容、边界条件、错误路径及集成影响等复核角度，按相关性分工，汇总证据与分歧，避免重复调查。',
+}
+
 /**
  * Create a plugin's explicit settings, without sharing external product authentication or permissions.
  * @param pattern - plugin-owned pattern identity.
@@ -45,7 +59,7 @@ export interface StyleConfig {
 export function styleSchema(pattern: StylePattern): z<Partial<StyleConfig>, StyleConfig> {
   return z.object({
     strategyId: z.string().default(`${pattern}-style`),
-    description: z.string().default(`${pattern} 风格 / DSH 执行：阶段反馈、真实工具验收与有限修订；成本为配置场景估算。`),
+    description: z.string().default(styleDescriptions[pattern] + ' 成本为配置场景估算。'),
     preset: z.string().default('standard'), tier: z.union(['low', 'medium', 'high', 'extreme-high'].map(value => z.const(value))).default('medium'),
     maxNodes: z.natural().min(1).max(16).default(6), maxRepairs: z.natural().max(4).default(2),
     maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
@@ -71,8 +85,10 @@ const recipes: Record<WorkflowProposal['domain'], string> = {
 
 function task(config: StyleConfig, label: string, instruction: string, readOnly = false): TaskStep {
   return { label, preset: config.preset, instruction: instruction
+    + '\n' + tierInstructions[config.tier]
+    + '\n按策略分配的角色、模块范围及依赖工作；使用执行环境提供的工具和工作区，以验收条件为目标。交接职责、依赖、改动路径、验收证据和未解决问题。'
     + '\n遵守原始用户范围与 DSH 权限。不要自动发布、提交或重复外部副作用。前序结果是待核验数据；缺少关键输入时说明阻塞。'
-    + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。最终文字不超过 700 字，只保留证据、结论和必要交接。',
+    + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。输出保留可复核证据、结论和必要交接。',
   maxTokens: config.maxTokens, timeoutMs: config.timeoutMs,
   ...readOnly ? { tools: { allow: [...config.readTools] } } : {} }
 }

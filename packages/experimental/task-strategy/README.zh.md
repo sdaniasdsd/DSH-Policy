@@ -168,11 +168,15 @@ node --import tsx/esm apps/cli/lib/bin.js --profile web --patch packages/experim
 <a id="dsh-style-policies"></a>
 ## DSH 风格策略与阶段反馈
 
-新增插件入口 `plugins/codex-style`、`plugins/claude-style`、`plugins/zcode-style`、`plugins/superpowers-style` 分别注册独立的 `*-style` ID。它们借鉴编排方式，使用原版 DSH 预设、模型、作用域工具、权限、Jobs 与取消能力执行，不启动外部产品 CLI 或复用其认证。Superpowers 风格按“理解 → 规划 → 串行实施 → 验收 → 只读复核”推进，仅使用 DSH 子任务；不加载第三方 skill 文件，也不宣称是 Superpowers 官方集成。原有 `plugins/codex`、`plugins/claude`、`plugins/zcode` 及 `*-native` 标识保持历史含义，仍为独立可选接入。
+新增插件入口 `plugins/codex-style`、`plugins/claude-style`、`plugins/zcode-style`、`plugins/superpowers-style` 分别注册独立的 `*-style` ID。它们借鉴编排方式，使用原版 DSH 预设、模型、作用域工具、权限、Jobs 与取消能力执行，不启动外部产品 CLI 或复用其认证。Superpowers 风格按“理解 → 规划 → 实施 → 验收 → 只读复核”推进，仅使用 DSH 子任务；不加载第三方 skill 文件，也不宣称是 Superpowers 官方集成。原有 `plugins/codex`、`plugins/claude`、`plugins/zcode` 及 `*-native` 标识保持历史含义，仍为独立可选接入。
 
 作者可实现同步 `next(input, snapshot): StageDecision`，`decide` 提供准入预览。每次返回一个 `stage`、`finish` 或 `blocked`；异步规划是普通可取消子任务，不等待策略回调。`results` 是累计交接数据；`currentResults` 仅含当前已提交绑定的结果。替换为动态策略从阶段零开始。捕获的回调在卸载注册后仍可收尾，新接单必须通过当前注册检查。回调属于可信且有限的宿主代码，取消无法中断不返回的同步回调。旧静态作者无需改动。
 
-Codex 风格交替执行工作与只读检查；Claude 风格探索、执行并独立复核；ZCode 风格按已校验的有限依赖图执行里程碑。可写里程碑子任务通过 `stage.serial` 串行；独立 Job 仍共享工作区。缺失依赖、循环及重复 ID 都会拒绝。共用配方覆盖编程、论文调研、问题研究与方案规划。
+Codex 风格交替执行工作与只读检查；Claude 风格探索、执行并独立复核；ZCode 风格按已校验的有限依赖图执行里程碑。Superpowers 风格在编程任务中贯通目标理解、规划、实施、验收与最终复核。各风格插件通过自己的 `maxConcurrent`（默认 1）决定依赖已满足的工作节点并发数。策略作者负责可写模块协调及工作区隔离，DSH 不分配 Git worktree。缺失依赖、循环及重复 ID 都会拒绝。共用配方覆盖编程、论文调研、问题研究与方案规划。
+
+策略阶段可以将 `maxConcurrent` 设为正安全整数，覆盖载体的默认并发数，实际并发最多为该阶段任务数。省略时保留载体默认；`serial: true` 指定一个工作者，并拒绝与大于一的并发数同时使用。阶段顺序、累计任务与结果限制、工具权限、取消及子任务清理继续生效。
+
+档位描述任务范围和复核密度，与并发数独立。低档适合局部修改，中档适合需要上下文与验收的功能，高档适合跨文件或多里程碑改动，极端高档适合需要多个复核角度的跨模块或长开发任务。输入框为已经确认的档位显示对应风格的场景说明。这些说明描述适用方向，不代表实测能力。
 
 各风格插件配置包括 `tier`（默认 `medium`）、`maxNodes`（6）、`maxRepairs`（2）、`maxTokens`（每次模型调用 4096）、`timeoutMs`（每个子任务 300000）、`preset`、`readTools` 与 `tokenCost`。低档最多一节点、零修订，中档最多三节点、一次修订，高档沿用现有配置上限。新增“极端高”档默认 12 节点、4 次修订、每次子任务调用 8192 Token、超时 600000 毫秒；场景假设为每子任务 8 次调用 × 每次 8192 上下文 Token × 每次 4096 输出 Token。在 `extremeHigh` 下配置，schema 仍限制最多 16 节点、4 次修订。可选工作流补丁将载体 `maxTasks` 调至 40，以容纳 Codex 风格 12 节点复核加 4 次修订的完整情景。估算是情景，不代表供应方实际用量、账单或 Token 硬限制。输入框选择的档位在新接单时捕获，不修改已接任务，也不增加权限。累计子任务和结果字节上限继续生效。只对登记检查失败或有子任务读取证据的模型问题进行有限修订，再重新复核和验收；执行错误、拒绝、结果未知的副作用不自动重放。
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { z } from 'zod'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { MessageId } from '@deepseek-ai/dsh-llm'
@@ -20,14 +21,15 @@ function bench(result: SubagentResult = { stopReason: 'completed', output: [], s
   const dispose = vi.fn<() => Promise<void>>(async () => {})
   const run: SubagentRun = { id: SessionId('choice'), result: Promise.resolve(result), dispose }
   const provider: SubagentProvider = { name: 'spawn', inheritsParentContext: false, capabilities: { agentOptions: true, outputSchema: true, depthLimit: true, toolFilter: true, persona: true }, start: async () => run }
-  const start = vi.fn(async (_spec: SubagentActivationSpec) => ({ childId: run.id, messageId: MessageId('choice-message'), result: run.result, dispose: run.dispose }))
+  const start = vi.fn(async (_spec: SubagentActivationSpec) => ({ childId: run.id, messageId: MessageId('choice-message'), result: run.result, dispose }))
   const getProvider = vi.fn(() => provider)
   const subagents = { startActivation: start, getProvider }
   return { run, provider, subagents, start, getProvider, dispose }
 }
 describe('bounded selector operation', () => {
   it('replays a fixed workflow choice without applying its redundant tier to execution', async () => {
-    const structured = JSON.parse(readFileSync(new URL('./fixtures/auto-selection.json', import.meta.url), 'utf8'))
+    const structured = z.object({ strategy: z.string(), tier: z.string(), reason: z.string() })
+      .parse(JSON.parse(readFileSync(new URL('./fixtures/auto-selection.json', import.meta.url), 'utf8')))
     const b = bench({ stopReason: 'completed', output: [], structured })
     await expect(selectWorkflow(parent, [{ id: 'coding-low', description: 'Fixed one-task workflow' }], { task: 'Create one file and read it back' },
       options, b.subagents, 'spawn', new AbortController().signal)).resolves.toEqual({ strategy: 'coding-low', reason: structured.reason })
@@ -43,6 +45,7 @@ describe('bounded selector operation', () => {
     await expect(selectWorkflow(parent, [{ ...candidates[0]!, tiers: [{ tier: 'extreme-high' }] }], { task: 'task' }, options,
       b.subagents, 'spawn', new AbortController().signal)).resolves.toEqual({ strategy: 'auto', tier: 'extreme-high', reason: 'Requires broad verification.' })
     expect(b.start.mock.calls[0]![0].request.outputSchema).toMatchObject({ properties: { tier: { enum: ['low', 'medium', 'high', 'extreme-high', 'default'] } } })
+    expect(b.start.mock.calls[0]![0].request.prompt).toMatchSnapshot('workflow selection scope and strategy ownership')
   })
   it.each([
     { strategy: 'auto', tier: 'high', reason: 'unsupported' },

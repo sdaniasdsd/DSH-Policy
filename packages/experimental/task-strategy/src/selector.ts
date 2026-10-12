@@ -54,8 +54,9 @@ async function choose(parent: Agent, candidates: readonly WorkflowCandidate[], i
     + 'Known input is partial, scenario totals depend on assumptions, and unknown cost is not zero. '
     + 'Costs describe strategy children only; they exclude this selection and the parent.\n'
     + (workflow ? 'Choose the strategy yourself without asking the user to select. Consider every registered strategy, not only orchestration styles. '
-      + 'Use low for small, clear tasks; medium for work needing investigation and verification; high for complex work needing deeper review. '
-      + 'For strategies with tiers choose only a supported tier. extreme-high means a broad, multi-step task that needs extra independent checks and bounded repairs; it carries the highest estimated cost. Use it only when task scope justifies it. For fixed strategies use tier default. '
+      + 'Use low for one localized change with known requirements; medium for one feature needing context gathering and acceptance checks; high for changes spanning files or milestones with interface and regression concerns. '
+      + 'Use extreme-high for cross-module or long development work needing separate perspectives on requirements, compatibility, edge cases, error paths and integration. Match the registered style to its described workflow. '
+      + 'Tiers describe task scope and review density; each strategy owns its stage concurrency and work assignments. Choose the least intensive supported tier that covers the task. For fixed strategies use tier default. '
       + 'Return a short reason in the user language (one sentence), based on task fit and uncertainty.\n' : '')
     + JSON.stringify({ task: input.task, preferences: input.preferences ?? {}, strategies: candidates })
   if (Buffer.byteLength(prompt, 'utf8') > options.maxPromptBytes) throw new Error('Strategy selection prompt exceeds byte limit')

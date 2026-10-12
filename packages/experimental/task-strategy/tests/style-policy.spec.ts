@@ -31,6 +31,22 @@ describe('DSH style policy plugins', () => {
     expect(maximum).toBe(2)
     expect(active).toBe(0)
   })
+  it('hands extreme-high work explicit review angles and collaboration responsibilities without provisioning workspaces', async () => {
+    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high' }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const instructions: string[] = []
+    const run = new TaskRun('implement one module', registry.capture(policy.id, { task: 'implement one module' }), async (step) => {
+      instructions.push(step.instruction)
+      return { stopReason: 'completed', output: 'evidence',
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes: [proposal.nodes[0]!] } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    expect((await run.start()).status).toBe('completed')
+    expect(instructions.every(instruction => instruction.includes('单个事务'))).toBe(true)
+    expect(instructions[2]).toContain('接口兼容、边界条件、错误路径')
+    expect(instructions[2]).toContain('执行环境提供的工具和工作区')
+    expect(instructions[2]).toContain('验收条件')
+  })
   it('assigns each Codex check its target after a concurrent work batch', async () => {
     const policy = createStyleStrategy('codex', styleSchema('codex')({ maxConcurrent: 2 }))
     const registry = new StrategyRegistry(); registry.register(policy)
@@ -112,7 +128,9 @@ describe('DSH style policy plugins', () => {
       calls.push(step.label)
       return { stopReason: 'completed', output: 'evidence', ...step.workflowOutput ? { workflow: { ...proposal, nodes: oversized } } : {} }
     }, { ...options, maxTasks: 32 })
-    expect(await run.start()).toMatchObject({ status: 'failed', error: expect.stringContaining('node limit 12') })
+    const result = await run.start()
+    expect(result.status).toBe('failed')
+    expect(result.error).toContain('node limit 12')
     expect(calls).toEqual(['understand', 'plan'])
   })
 
@@ -127,7 +145,7 @@ describe('DSH style policy plugins', () => {
         if (step.workflowOutput) return { stopReason: 'completed', output: '', workflow: proposal }
         if (step.label === 'work:a') {
           childStarted.resolve(undefined)
-          return new Promise(resolve => signal.addEventListener('abort', () => { resolve({ stopReason: 'cancelled', output: '' }) }, { once: true }))
+          return new Promise((resolve) =>{  signal.addEventListener('abort', () => { resolve({ stopReason: 'cancelled', output: '' }) }, { once: true }) })
         }
         return { stopReason: 'completed', output: '' }
       }, options)
@@ -147,7 +165,9 @@ describe('DSH style policy plugins', () => {
       if (step.workflowOutput) return { stopReason: 'completed', output: '', workflow: proposal }
       return step.label === 'work:a' ? { stopReason: 'error', output: '', diagnostic: 'outcome unknown' } : { stopReason: 'completed', output: '' }
     }, options)
-    expect(await run.start()).toMatchObject({ status: 'failed', error: expect.stringContaining('outcome unknown') })
+    const result = await run.start()
+    expect(result.status).toBe('failed')
+    expect(result.error).toContain('outcome unknown')
     expect(calls).toEqual(['understand', 'plan', 'work:a'])
   })
 
@@ -182,7 +202,9 @@ describe('DSH style policy plugins', () => {
     const run = new TaskRun('task', registry.capture(policy.id, { task: 'task' }), async () => {
       calls++; return { stopReason: 'error', output: '', diagnostic: 'denied by DSH' }
     }, options)
-    expect(await run.start()).toMatchObject({ status: 'failed', error: expect.stringContaining('denied by DSH') })
+    const result = await run.start()
+    expect(result.status).toBe('failed')
+    expect(result.error).toContain('denied by DSH')
     expect(calls).toBe(1)
   })
 

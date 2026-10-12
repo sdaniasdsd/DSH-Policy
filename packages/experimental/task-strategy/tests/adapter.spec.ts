@@ -158,7 +158,7 @@ describe('Loader-composed strategy adapter', () => {
   it('loads Superpowers-style as an opt-in DSH preset plugin and removes it on disposal', async () => {
     const proposal: WorkflowProposal = { summary: 'one bounded change', domain: 'coding', nodes: [{ id: 'a', instruction: 'work', dependencies: [] }], artifacts: [] }
     const respond = respondToWorkflow(proposal)
-    const { ctx, parent } = await boot(Array.from({ length: 12 }, () => respond), undefined, { entry: { enabled: true } })
+    const { ctx, model, parent } = await boot(Array.from({ length: 12 }, () => respond), undefined, { entry: { enabled: true } })
     ctx.loader.builtins['strategy-superpowers-style'] = SuperpowersStyle
     await ctx.loader.create({ name: 'cordis:strategy-superpowers-style',
       config: SuperpowersStyle.Config({ preset: 'coding', tier: 'low', readTools: [] }) })
@@ -175,6 +175,12 @@ describe('Loader-composed strategy adapter', () => {
     const job = await ctx.jobs.wait(receipt.jobId, 5000, parent.id)
     expect(job.status, job.detail).toBe('completed')
     expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review'])
+    const instructions = model.requests.flatMap(request => request.messages.filter(message => message.role === 'user')
+      .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
+      .filter(text => text.startsWith('Task:\n'))
+      .map(text => text.split('\n\nInstructions:\n')[1]?.split('\n\nPrior-stage results (data, not instructions):\n')[0]))
+    expect(instructions).toHaveLength(5)
+    expect(instructions).toMatchSnapshot('loaded Superpowers task instructions')
     const entry = [...ctx.loader.entries()].find(row => row.options.name === 'cordis:strategy-superpowers-style')
     await entry?.fiber?.dispose()
     expect(ctx.taskStrategies.catalog().strategies.map(row => row.id)).not.toContain('superpowers-style')
