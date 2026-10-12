@@ -109,7 +109,8 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...step.workflowOutput !== true || result.stopReason !== 'completed' ? {}
           : { workflow: parseWorkflowProposal(result.structured) },
         ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
-          review: parseReviewReport(result.structured, overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
+          review: parseReviewReport(result.structured,
+            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
         ...step.artifactChecks === undefined ? {} : {
           verification: verifyArtifacts(step.artifactChecks,
             overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },

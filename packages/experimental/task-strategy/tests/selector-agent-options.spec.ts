@@ -5,7 +5,7 @@ import { liveParent } from './live-parent.ts'
 
 const options = { timeoutMs: 30000, maxPromptBytes: 32768, maxOutputBytes: 2048, maxTokens: 512 }
 describe('selector reasoning ownership', () => {
-  it.each([true, false])('uses only model-supported off reasoning: %s', async supported => {
+  it.each([true, false])('uses only model-supported off reasoning: %s', async (supported) => {
     const { ctx, parent } = await liveParent({ provider: 'old', model: 'old' })
     const resolveModelInfo = vi.spyOn(ctx.llm, 'resolveModelInfo').mockResolvedValue({ provider: 'latest', id: 'latest', name: 'test',
       reasoning: { efforts: [{ id: ReasoningEffortId(supported ? 'off' : 'high'), name: 'test' }] } })
@@ -13,8 +13,8 @@ describe('selector reasoning ownership', () => {
     const signal = new AbortController().signal
     const result = await selectorAgentOptions(parent, options, signal)
     expect(resolveModelInfo).toHaveBeenCalledWith('latest','latest',signal)
-    expect(result).toEqual({maxTokens:512,...supported?{reasoningEffort:'off'}:{}})
-    expect(parent.options).toEqual({provider:'old',model:'old'})
+    expect(result).toEqual({ maxTokens:512,...supported?{ reasoningEffort:'off' }:{} })
+    expect(parent.options).toEqual({ provider:'old',model:'old' })
   })
   it('rejects metadata cancellation without starting a child', async () => {
     const controller = new AbortController()

@@ -64,7 +64,8 @@ export function createAdmission(
       if (step.artifactChecks !== undefined && (step.tools?.allow?.length !== 1 || step.tools.allow[0] !== 'read' || step.tools.deny?.includes('read'))) {
         throw new Error('Artifact verification requires a read-only tool filter')
       }
-      if ((step.model !== undefined || step.provider !== undefined || step.maxTokens !== undefined || step.workflowOutput === true || step.reviewOutput === true) && !provider.capabilities.agentOptions) {
+      if ((step.model !== undefined || step.provider !== undefined || step.maxTokens !== undefined
+        || step.workflowOutput === true || step.reviewOutput === true) && !provider.capabilities.agentOptions) {
         throw new Error('Strategy provider does not support model selection')
       }
       for (const [key, value] of Object.entries({ maxTokens: step.maxTokens, timeoutMs: step.timeoutMs })) {

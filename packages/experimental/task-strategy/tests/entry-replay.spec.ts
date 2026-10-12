@@ -23,12 +23,13 @@ function lookup(request: Recording['request']): Recording {
   return fixture
 }
 describe('real incident boundary replay (no network)', () => {
-  it.each(recordings)('replays $response.stopReason with recorded request fingerprint $fingerprint', async fixture => {
+  it.each(recordings)('replays $response.stopReason with recorded request fingerprint $fingerprint', async (fixture) => {
     const recorded = lookup(fixture.request)
     const dispose = vi.fn(async () => {})
     const result: SubagentResult = { ...recorded.response, output: [] }
     const provider: SubagentProvider = { name: 'spawn', inheritsParentContext: false,
-      capabilities: { outputSchema: true, toolFilter: true, agentOptions: true, depthLimit: true, persona: true }, prepareContinuable: async () => ({}) }
+      capabilities: { outputSchema: true, toolFilter: true, agentOptions: true, depthLimit: true, persona: true },
+      prepareContinuable: async () => ({}) }
     const subagents = { getProvider: () => provider,
       startActivation: vi.fn(async () => ({ childId: SessionId('replay-child'), messageId: MessageId('replay-message'), result: Promise.resolve(result), dispose })) }
     const { parent } = await liveParent()

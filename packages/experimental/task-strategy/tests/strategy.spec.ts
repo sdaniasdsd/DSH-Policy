@@ -79,10 +79,10 @@ describe('phased execution', () => {
     expect(parsePlan(authored).stages[0]).toHaveProperty('maxConcurrent', 3)
     for (const value of [0, -1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
       const invalid = { ...plan, stages: [{ ...plan.stages[0]!, maxConcurrent: value }] }
-      expect(() => validatePlan(invalid, limits)).toThrow('Stage concurrency')
+      expect(() => { validatePlan(invalid, limits) }).toThrow('Stage concurrency')
       expect(() => parsePlan(invalid)).toThrow()
     }
-    expect(() => validatePlan({ ...plan, stages: [{ ...plan.stages[0]!, serial: true, maxConcurrent: 2 }] }, limits))
+    expect(() => { validatePlan({ ...plan, stages: [{ ...plan.stages[0]!, serial: true, maxConcurrent: 2 }] }, limits) })
       .toThrow('Serial stage')
   })
   it.each(['cancelled', 'failed'] as const)('drains strategy-selected concurrent children before reporting %s', async (status) => {
@@ -104,7 +104,7 @@ describe('phased execution', () => {
         }
         await new Promise<void>((resolve) => {
           if (signal.aborted) resolve()
-          else signal.addEventListener('abort', () => resolve(), { once: true })
+          else signal.addEventListener('abort', () => { resolve() }, { once: true })
         })
         aborted++
         await cleanup.promise

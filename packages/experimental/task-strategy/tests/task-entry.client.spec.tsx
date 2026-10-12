@@ -51,9 +51,9 @@ describe('task entry chat card', () => {
       onConnectionLoss: (listener: () => void) => { lose = listener; return () => {} }, cancel: async () => {},
       switchStrategy: async () => {}, resume: async () => {} } satisfies TaskEntryCardProps
     render(<TaskEntryCard {...props} />)
-    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(false) })
+    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' })).disabled).toBe(false) })
     lose()
-    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(true) })
+    await vi.waitFor(() => { expect((screen.getByRole('button', { name: '取消任务' })).disabled).toBe(true) })
     expect(screen.getByRole('status').textContent).toContain('连接')
   })
   it('shows the committed replacement binding instead of the initial receipt strategy', () => {
@@ -79,7 +79,7 @@ describe('task entry chat card', () => {
       onReset: (listener: () => void) => { reset = listener; return () => {} },
       cancel: async () => {}, switchStrategy: async () => {}, resume: async () => {} } satisfies TaskEntryCardProps
     render(<TaskEntryCard {...props} />)
-    expect((screen.getByRole('button', { name: '取消任务' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: '取消任务' })).disabled).toBe(true)
     reset()
     await vi.waitFor(() => { expect(screen.getByText('已取消')).toBeTruthy() })
     old.resolve({ ...base, state: 'running' })

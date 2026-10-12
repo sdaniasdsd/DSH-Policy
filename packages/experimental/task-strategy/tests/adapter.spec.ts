@@ -651,7 +651,7 @@ describe('Loader-composed strategy adapter', () => {
         model.requests.push(options)
         await new Promise<void>((_resolve, reject) => {
           if (options.signal?.aborted) { reject(new Error('aborted')); return }
-          options.signal?.addEventListener('abort', () =>{  reject(new Error('aborted')) }, { once: true })
+          options.signal?.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
         })
       })
     }, { entry: { enabled: true } })

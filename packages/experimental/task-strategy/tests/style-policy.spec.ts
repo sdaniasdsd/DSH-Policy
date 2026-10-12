@@ -145,7 +145,9 @@ describe('DSH style policy plugins', () => {
         if (step.workflowOutput) return { stopReason: 'completed', output: '', workflow: proposal }
         if (step.label === 'work:a') {
           childStarted.resolve(undefined)
-          return new Promise((resolve) =>{  signal.addEventListener('abort', () => { resolve({ stopReason: 'cancelled', output: '' }) }, { once: true }) })
+          return new Promise((resolve) => {
+            signal.addEventListener('abort', () => { resolve({ stopReason: 'cancelled', output: '' }) }, { once: true })
+          })
         }
         return { stopReason: 'completed', output: '' }
       }, options)
