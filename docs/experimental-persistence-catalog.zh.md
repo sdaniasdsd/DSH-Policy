@@ -13,5 +13,6 @@
 
 | 记录 | 所属包 | 用途 | 载荷与源码 |
 |---|---|---|---|
+| `plugin:task-strategy/shared-record` | `@deepseek-ai/dsh-experimental-task-strategy` | Versioned task-scoped coordination value, appended to the exact task owner's Session. | <code>{ readonly version: 1; readonly jobId: string; readonly key: string; readonly revision: number; readonly writer: SessionId; readonly value: unknown; }</code> · [`packages/experimental/task-strategy/src/task-coordination.ts`](../packages/experimental/task-strategy/src/task-coordination.ts) |
 | `plugin:translator/request` | `@deepseek-ai/dsh-experimental-translator` | Provider-independent translation input, retained before dispatch. | <code>TranslationRequestRecord</code> · [`packages/experimental/translator/src/types.ts`](../packages/experimental/translator/src/types.ts) |
 | `plugin:translator/result` | `@deepseek-ai/dsh-experimental-translator` | Successful translation, retained before it is returned to the consumer. | <code>TranslationResultRecord</code> · [`packages/experimental/translator/src/types.ts`](../packages/experimental/translator/src/types.ts) |
