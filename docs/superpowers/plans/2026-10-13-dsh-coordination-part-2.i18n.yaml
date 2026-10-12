@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-13-dsh-coordination-part-2.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-13-dsh-coordination-part-2.md
+/dsh-coordination-part-2-implementation-plan:
+  en: 28a7125415bcfa0e
+  zh: 0b842d73222dde0f
+/dsh-coordination-part-2-implementation-plan/global-constraints:
+  en: 27f359ac5b5d4988
+  zh: fa6f2bd79c5d2603
+/dsh-coordination-part-2-implementation-plan/review-focus:
+  en: a0d37251151f280e
+  zh: d7063e002e275846
+/dsh-coordination-part-2-implementation-plan/task-0-return-an-exact-handle-for-explicit-continuation:
+  en: e578b37de3d32e00
+  zh: 543d8712e80af284
+/dsh-coordination-part-2-implementation-plan/task-1-provide-bounded-member-session-outcomes:
+  en: bb3ccb0fed52650b
+  zh: a132ecfba9442ee0
+/dsh-coordination-part-2-implementation-plan/task-2-give-asynchronous-executors-the-task-owned-context:
+  en: 27e2b1b9afa87850
+  zh: 83903a1331518f40
+/dsh-coordination-part-2-implementation-plan/task-3-prove-the-complete-opt-in-path-and-document-its-boundary:
+  en: 8c24aadf3fbe221c
+  zh: 93049869b1d765d7
+/dsh-coordination-part-2-implementation-plan/review-and-handoff:
+  en: ac8ab074d94828a8
+  zh: 40f0437f2aad93b9
