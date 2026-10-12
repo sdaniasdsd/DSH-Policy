@@ -54,6 +54,8 @@ kind: "package-library"
 
 每条任务必须且只能选择原生 `preset` 或外部 `executor`。`allowedExecutors` 显式授权适配器身份，省略时不允许任何外部执行器。`taskRuns.registerExecutor` 在调用插件的 Cordis 生命周期内注册 `{ id, description, check, execute }`。`check` 同步检查后端可用性；`execute(parent, step, prompt, signal)` 必须响应取消并在子任务释放后结束。外部步骤不能携带 DSH 预设、工具过滤或模型/provider 覆盖，因为原生 provider 无法执行这些限制。卸载后，运行中的子任务保留原有 owner，适配器移除后的新准入会失败。
 
+执行器可选择使用第五个 `context?: TaskExecutorContext` 参数。其 `members` 接口打开允许的本地 DSH 预设，观察真实轮次结果，并在原 Job 内显式继续所属会话。继续输入由原任务的精确 owner 发送。活跃成员查询只列出正在执行的轮次。控制步骤及已尝试的成员准入消耗捕获的累计任务额度；成员并发、完整请求及结果受部署上限约束。执行器结算时关闭准入并排空成员。未捕获到结果时返回携带已接收身份的 `unobserved`，不自动重放。失败、取消及未完成保留原始 stopReason。原生适配器只有作者明确使用该上下文时才创建本地成员；本份未增加原生会话继续、黑板、会议或 Superpowers 恢复策略。
+
 `./plugins/codex`、`./plugins/claude`、`./plugins/zcode` 可独立挂载，各自注册策略与执行器。Codex、Claude 将自主工作派给现有官方 `@deepseek-ai/dsh-subagent-codex`、`@deepseek-ai/dsh-subagent-claude-code` provider。规划、上下文、工具、认证和权限保留在原产品中，启用编排插件前须配置后端 bundle。策略/后端身份、描述和指令可编辑；`tokenCost` 可选提供场景假设，未配置时内部轮数与工具流量保持未知。每条步骤启动一次原生运行，不暴露原生 steering 和会话恢复。
 
 ZCode 使用官方[开源 CLI](https://github.com/zai-org/ZCode)，传入 `--prompt`、`--output-format json`、显式 `--mode` 和可选 `--enable-workflow`。通过 `command` 与可选前置 `args` 指定已安装的可执行文件，路径解析和完整进程范围清理使用原版 DSH subprocess 服务。默认 `mode: plan` 保留规划权限，`build`、`edit`、`yolo` 需要显式配置。超时、清理宽限和提示/结果字节上限可配置。截断、无效 JSON 或非终态投影会被拒绝，退出码为零后仍检查取消。插件不会隐式继承 DSH 凭证或提升权限。

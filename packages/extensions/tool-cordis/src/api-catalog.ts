@@ -2941,6 +2941,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when continuation services are unavailable, adjacency is rejected, or the message was not admitted.'],
       },
       {
+        signature: 'continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[], options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }>',
+        description: 'Explicitly continue an idle or absent direct local child under its original session.',
+        parameters: [{ name: 'parent', description: 'exact live direct parent authorizing and originating the input.' }, { name: 'childId', description: 'durable child session identity; running targets reject.' }, { name: 'content', description: 'input for the next execution.' }, { name: 'options', description: 'cancellation before acceptance.' }],
+        returns: 'accepted message identity and result/disposer bound to its exact activation.',
+      },
+      {
         signature: 'interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void',
         description: 'Interrupt one live child\'s current execution under a human parent address or an exact live ancestor Agent. Fire-and-return: the cancel signal is issued before this returns, but the target may keep running until it observes the signal. Unclaimed pending inbox work, the Activation, and published descendants are preserved; claimed work is not requeued. Once the interrupted Agent is idle, a waking send resumes the parked FIFO queue. External backends stop their single execution. An absent target is an accepted no-op, as is a manager-less composition, which cannot own a live Activation.',
         parameters: [{ name: 'targetSessionId', description: 'the durable child session id to interrupt.' }, { name: 'authority', description: 'the human parent address or exact live ancestor Agent.' }],
@@ -7894,7 +7900,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SubagentRuntime',
-    declaration: 'export class SubagentRuntime extends TypertRemoteService {\n    static Config;\n    static inject;\n    constructor(ctx: Context, private config: Config);\n    resolveMaxDepth(configured?: number | \'provider-managed\'): number | undefined;\n    startActivation(spec: SubagentActivationSpec & {\n        readonly childId: SessionId;\n    }): Promise<SubagentActivation & {\n        readonly messageId: MessageId;\n    }>;\n    startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;\n    async startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;\n    async waitForChildren(parent: Agent): Promise<boolean>;\n    async sendMessage(sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions): Promise<MessageId>;\n    interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void;\n    async drainDescendants(parents: readonly Agent[]): Promise<void>;\n    async drainChildren(parent: Agent, childIds: readonly SessionId[]): Promise<void>;\n    listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentCatalogEntry[]>;\n    listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<SubagentDescendantListEntry[]>;\n    @Remote(\'prompt\')\n    async prompt(request: SubagentPromptRequest, signal: AbortSignal): Promise<SubagentPromptReceipt>;\n    @Remote(\'interruptByParent\')\n    interruptByParent(childSessionId: SessionId, parentSessionId: SessionId, mode: \'continuable\'): SubagentIn /* …truncated — full shape in source */',
+    declaration: 'export class SubagentRuntime extends TypertRemoteService {\n    static Config;\n    static inject;\n    constructor(ctx: Context, private config: Config);\n    resolveMaxDepth(configured?: number | \'provider-managed\'): number | undefined;\n    startActivation(spec: SubagentActivationSpec & {\n        readonly childId: SessionId;\n    }): Promise<SubagentActivation & {\n        readonly messageId: MessageId;\n    }>;\n    startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;\n    async startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;\n    async waitForChildren(parent: Agent): Promise<boolean>;\n    async sendMessage(sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions): Promise<MessageId>;\n    continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[], options: {\n        readonly signal: AbortSignal;\n    }): Promise<SubagentActivation & {\n        readonly messageId: MessageId;\n    }>;\n    interrupt(targetSessionId: SessionId, authority: SubagentInterruptAuthority): void;\n    async drainDescendants(parents: readonly Agent[]): Promise<void>;\n    async drainChildren(parent: Agent, childIds: readonly SessionId[]): Promise<void>;\n    listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentCatalogEntry[]>;\n    listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<SubagentDescendantListEntry[]>;\n    @Remote(\'prompt\')\n    async prompt(request: S /* …truncated — full shape in source */',
   },
   {
     name: 'SubagentSendMessageOptions',
@@ -8025,12 +8031,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TaskExecutorContext',
+    declaration: 'export interface TaskExecutorContext {\n    readonly members: TaskMemberSessions;\n}',
+  },
+  {
     name: 'TaskExecutorProvider',
-    declaration: 'export interface TaskExecutorProvider {\n    readonly id: string;\n    readonly description: string;\n    readonly check: () => void;\n    readonly execute: (parent: Agent, step: TaskStep, prompt: string, signal: AbortSignal) => Promise<ChildResult>;\n}',
+    declaration: 'export interface TaskExecutorProvider {\n    readonly id: string;\n    readonly description: string;\n    readonly check: () => void;\n    readonly execute: (parent: Agent, step: TaskStep, prompt: string, signal: AbortSignal, context?: TaskExecutorContext) => Promise<ChildResult>;\n}',
   },
   {
     name: 'TaskIntakeRequest',
     declaration: 'export interface TaskIntakeRequest extends StrategyInput {\n    readonly requestId: string;\n    readonly selection?: TaskSelection;\n}',
+  },
+  {
+    name: 'TaskMemberSessions',
+    declaration: 'export interface TaskMemberSessions {\n    open(step: TaskStep, prompt: string, signal: AbortSignal): Promise<TaskMemberTurnOutcome>;\n    continue(sessionId: SessionId, text: string, signal: AbortSignal): Promise<TaskMemberTurnOutcome>;\n    inspect(): readonly TaskMemberSessionView[];\n    close(): Promise<void>;\n}',
+  },
+  {
+    name: 'TaskMemberSessionView',
+    declaration: 'export interface TaskMemberSessionView {\n    readonly sessionId: SessionId;\n    readonly label: string;\n    readonly phase: \'running\' | \'settled\' | \'unobserved\' | \'closed\';\n}',
+  },
+  {
+    name: 'TaskMemberTurnOutcome',
+    declaration: 'export type TaskMemberTurnOutcome = {\n    readonly kind: \'settled\';\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n    readonly result: ChildResult;\n} | {\n    readonly kind: \'unobserved\';\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n    readonly error: string;\n};',
   },
   {
     name: 'TaskMemberView',

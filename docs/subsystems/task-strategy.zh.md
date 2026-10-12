@@ -39,6 +39,8 @@
 
 目录条目包含可解释的子任务 Token 成本。注册表在注册时估算声明式计划，原任务与偏好可细化估算而不执行作者函数。可选场景假设估算预期调用、额外上下文和输出传递。选择器接收任务目录，插件页展示基线成本与未知项。未知成本不是零，不计入父任务与选择器用量。参见[估算契约](../../packages/experimental/task-strategy/README.zh.md#token-estimates)与[迁移说明](../upgrade-guide/v0.2.0-rc.2/task-strategy-cost-catalog/guide.zh.md)。
 
+执行器可选择使用第五个 `context?: TaskExecutorContext` 参数。其 `members` 接口打开允许的本地 DSH 预设，观察真实轮次结果，并在原 Job 内显式继续所属会话。继续输入由原任务的精确 owner 发送。活跃成员查询只列出正在执行的轮次。控制步骤及已尝试的成员准入消耗捕获的累计任务额度；成员并发、完整请求及结果受部署上限约束。执行器结算时关闭准入并排空成员。未捕获到结果时返回携带已接收身份的 `unobserved`，不自动重放。失败、取消及未完成保留原始 stopReason。原生适配器只有作者明确使用该上下文时才创建本地成员；本份未增加原生会话继续、黑板、会议或 Superpowers 恢复策略。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>

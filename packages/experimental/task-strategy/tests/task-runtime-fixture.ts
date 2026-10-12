@@ -64,7 +64,8 @@ export const workPlan: ExecutionPlan = {
 }
 
 /** Real Loader composition; only the external model stream is deterministic. */
-export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partial<AdapterConfig>, persistence = false) {
+export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partial<AdapterConfig>,
+  persistence = false, continuation = persistence) {
   const ctx = new Context()
   const directory = await mkdtemp(join(tmpdir(), 'dsh-task-message-'))
   cleanups.push(async () => {
@@ -91,8 +92,10 @@ export async function bootTaskRuntime(entries: TaskModelEntry[], config?: Partia
   }
   if (persistence) {
     await ctx.plugin(JsonlSessionPersistence, { root: join(directory, 'sessions') })
-    await ctx.loader.create({ name: 'cordis:session-query', config: { path: ':memory:', openAt: 'never' } })
-    await ctx.loader.await()
+    if (continuation) {
+      await ctx.loader.create({ name: 'cordis:session-query', config: { path: ':memory:', openAt: 'never' } })
+      await ctx.loader.await()
+    }
   }
   const model = new TaskModel(entries)
   ctx.llm.registerAdapter(['mock'], model)

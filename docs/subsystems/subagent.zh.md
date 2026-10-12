@@ -495,6 +495,16 @@ async waitForChildren(parent: Agent): Promise<boolean>
 async sendMessage( sender: Agent, targetId: SessionId, content: ContentBlock[], options: SubagentSendMessageOptions, ): Promise<MessageId>
 
 /**
+ * Explicitly continue an idle or absent direct local child under its original session.
+ * @param parent - exact live direct parent authorizing and originating the input.
+ * @param childId - durable child session identity; running targets reject.
+ * @param content - input for the next execution.
+ * @param options - cancellation before acceptance.
+ * @returns accepted message identity and result/disposer bound to its exact activation.
+ */
+continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[], options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }>
+
+/**
  * Interrupt one live child's current execution under a human parent
  * address or an exact live ancestor Agent. Fire-and-return: the cancel
  * signal is issued before this returns, but the target may keep running
