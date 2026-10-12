@@ -68,6 +68,8 @@ kind: "package-reference"
 
 Host 调用方可以在 `sendMessage` 中设置 `activeOnly: true`，仅在目标正在执行时接收输入。空闲、不在线或正在关闭的目标返回 `TARGET_NOT_RUNNING`；该模式不会唤醒或从持久化恢复目标。检查在收件箱接收时执行，避免查询后已结束的目标被迟到消息重启。省略选项时保留通常的延续行为。接收成功返回消息 id，不表示模型已经处理消息。
 
+Host 执行器可对空闲或不在线的直接本地子级调用 `continueActivation(parent, childId, content, { signal })`，取得已接收消息 id 及该确切 activation 的结果/清理句柄，并保留会话与持久历史。正在执行或已有待处理输入的目标返回 `TARGET_RUNNING`；继续能力不可用时保留实际能力错误。旧回执的清理不会关闭同一会话的后续 activation。
+
 ### 失败与恢复
 
 缺少 `agents` 服务时，启动请求以 `CONTINUATION_UNAVAILABLE` 拒绝；运行时可用但父级缺失或被替换时，以 `UNAUTHORIZED` 拒绝。未实现任何执行方法的提供方会在注册时以 `UNSUPPORTED_CAPABILITY` 被拒绝；请求不受支持的能力会以同一码使创建失败。调用方信号仅取消尚未发布的工作；发布后通过 `dispose()` 取消该次 activation，并等待其后代（包括正在启动的后代）及其资源清理完成。`result` 在清理与通知结束后完成，携带输出、可选结构化数据与停止原因；结果捕获故障在清理后使其拒绝。清理失败使 `dispose()` 拒绝，并将生命周期结束事件标记为失败；结果 promise 与父级通知保留已捕获的执行结果。

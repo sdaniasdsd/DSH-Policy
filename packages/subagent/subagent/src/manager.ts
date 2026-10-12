@@ -54,6 +54,7 @@ type ChildDeliveryOptions =
     readonly source?: MessageSource
     readonly signal: AbortSignal
     readonly activeOnly?: boolean
+    readonly continueOnly?: boolean
   }
   | { readonly delivery: 'queue'; readonly source: MessageSource; readonly signal: AbortSignal; readonly activeOnly?: boolean }
 
@@ -573,11 +574,17 @@ export class SubagentManager {
         'UNAUTHORIZED',
       )
     }
-    return this.deliverToChild(sender, targetId, content, {
+    return (await this.deliverToChild(sender, targetId, content, {
       signal: options.signal,
       delivery: 'steer',
       ...options.activeOnly === undefined ? {} : { activeOnly: options.activeOnly },
-    })
+    })).messageId
+  }
+
+  /** Explicit continuation returns the accepted activation, never a subsequent lookup. */
+  async continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[],
+    options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }> {
+    return this.deliverToChild(parent, childId, content, { signal: options.signal, delivery: 'steer', continueOnly: true })
   }
 
   /**
@@ -596,7 +603,7 @@ export class SubagentManager {
     source: MessageSource,
     signal: AbortSignal,
   ): Promise<MessageId> {
-    return this.deliverToChild(parent, childId, content, { source, signal, delivery: 'queue' })
+    return (await this.deliverToChild(parent, childId, content, { source, signal, delivery: 'queue' })).messageId
   }
 
   /**
@@ -615,7 +622,7 @@ export class SubagentManager {
     source: MessageSource,
     signal: AbortSignal,
   ): Promise<MessageId> {
-    return this.deliverToChild(parent, childId, content, { source, signal, delivery: 'steer' })
+    return (await this.deliverToChild(parent, childId, content, { source, signal, delivery: 'steer' })).messageId
   }
 
   /** Admit local input synchronously before any teardown can begin. */
@@ -1238,7 +1245,7 @@ export class SubagentManager {
     childId: SessionId,
     content: ContentBlock[],
     options: ChildDeliveryOptions,
-  ): Promise<MessageId> {
+  ): Promise<SubagentActivation & { readonly messageId: MessageId }> {
     this.assertAdmitting(parent)
     const releaseHold = this.holdOwnership(parent, childId)
     try {
@@ -1255,7 +1262,7 @@ export class SubagentManager {
     childId: SessionId,
     content: ContentBlock[],
     options: ChildDeliveryOptions,
-  ): Promise<MessageId> {
+  ): Promise<SubagentActivation & { readonly messageId: MessageId }> {
     while (true) {
       const live = await this.locks.run(childId, async () => {
         const activation = this.resident.get(childId)
@@ -1267,6 +1274,7 @@ export class SubagentManager {
         requireLocalActivation(activation)
         this.authorizeLineage(parent, childId, activation.parent.id)
         if (options.activeOnly === true) this.assertExecutingTarget(activation)
+        if (options.delivery === 'steer' && options.continueOnly === true) this.assertIdleTarget(activation)
         const disposal = activation.closing
         /* v8 ignore next 3 -- the send-versus-dispose cutoff needs a delivery to
          * observe the transaction inside the same critical section that opened it. */
@@ -1283,7 +1291,7 @@ export class SubagentManager {
         }
         const messageId = this.submitAdmitted(activation, content, options, parent)
         this.announce(activation)
-        return messageId
+        return { ...this.receipt(activation), messageId }
       })
       /* v8 ignore start -- only a delivery that lost the disposal cutoff retries. */
       if (live !== undefined) return live
@@ -1348,7 +1356,7 @@ export class SubagentManager {
     childId: SessionId,
     content: ContentBlock[],
     options: ChildDeliveryOptions,
-  ): Promise<MessageId> {
+  ): Promise<SubagentActivation & { readonly messageId: MessageId }> {
     const query = this.requireSessionQuery()
     let observation: SessionObservation
     try {
@@ -1388,13 +1396,15 @@ export class SubagentManager {
         preset: source.header.agentPreset,
         composition: { persona: descriptor.persona, toolFilter: descriptor.toolFilter },
         signal: options.signal,
+        ...options.delivery === 'steer' && options.continueOnly === true ? { delivery: 'caller' as const } : {},
       })
     } catch (error: unknown) {
       options.signal.throwIfAborted()
       if (error instanceof SubagentError) throw error
       throw new SubagentError(`subagent "${childId}" is unavailable`, 'NOT_RESUMABLE', { cause: error })
     }
-    return await this.submitMaterialized(activation, content, options, parent)
+    const messageId = await this.submitMaterialized(activation, content, options, parent)
+    return { ...this.receipt(activation), messageId }
   }
 
   /** Admit a materialized child, commit its creation fact, and release it on failure. */
@@ -1442,6 +1452,7 @@ export class SubagentManager {
     this.assertAdmitting(parent)
     this.authorizeLineage(parent, activation.childId, activation.parent.id)
     if (options.activeOnly === true) this.assertExecutingTarget(activation)
+    if (options.delivery === 'steer' && options.continueOnly === true) this.assertIdleTarget(activation)
     this.acquireOwnership(parent, activation.childId)
     try {
       this.deliver(activation, message, options.delivery)
@@ -1455,6 +1466,14 @@ export class SubagentManager {
   private assertExecutingTarget(activation: Activation): void {
     if (activation.closing !== undefined || requireLocalActivation(activation).handle.agent.status !== 'running') {
       throw new SubagentError(`subagent "${activation.childId}" is not running`, 'TARGET_NOT_RUNNING')
+    }
+  }
+
+  /** Explicit continuation cannot steer an executing turn or pending inbox. */
+  private assertIdleTarget(activation: Activation): void {
+    const agent = requireLocalActivation(activation).handle.agent
+    if (agent.status === 'running' || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0) {
+      throw new SubagentError(`subagent "${activation.childId}" is already executing`, 'TARGET_RUNNING')
     }
   }
 

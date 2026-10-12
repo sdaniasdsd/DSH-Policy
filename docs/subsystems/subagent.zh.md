@@ -193,6 +193,8 @@ sendMessage 根据确切的在线发送者实例授权，仅允许相邻本地�
 
 Host 调用方可以在 `sendMessage` 中设置 `activeOnly: true`，仅在目标正在执行时接收输入。空闲、不在线或正在关闭的目标返回 `TARGET_NOT_RUNNING`；该模式不会唤醒或从持久化恢复目标。检查在收件箱接收时执行，避免查询后已结束的目标被迟到消息重启。省略选项时保留通常的延续行为。接收成功返回消息 id，不表示模型已经处理消息。
 
+Host 执行器可对空闲或不在线的直接本地子级调用 `continueActivation(parent, childId, content, { signal })`，取得已接收消息 id 及该确切 activation 的结果/清理句柄，并保留会话与持久历史。正在执行或已有待处理输入的目标返回 `TARGET_RUNNING`；继续能力不可用时保留实际能力错误。旧回执的清理不会关闭同一会话的后续 activation。
+
 ```ts type-equiv
 /** Durable attribution for one model-authored message between Agents. */
 interface AgentMessageSource {

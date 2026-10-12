@@ -117,6 +117,135 @@ async function setup(script: Script, options: { persistence?: boolean } = {}) {
 
 const testSignal = new AbortController().signal
 
+describe('explicit continuation activation receipts', () => {
+  it('returns the exact cold activation, retained history and accepted message', async () => {
+    const { ctx, parent } = await setup([textResponse('first'), textResponse('second')])
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    const second = await ctx.subagents.continueActivation(parent, first.childId, message('follow up'), { signal: testSignal })
+    expect(second.childId).toBe(first.childId)
+    expect(await second.result).toMatchObject({ output: message('second'), stopReason: 'completed' })
+    const stored = await loadStoredSession(ctx.sessionPersistence, first.childId)
+    expect(userTexts(stored.events)).toEqual(['child task', `Agent ${parent.id} sent a message: `, 'follow up'])
+    expect(hasAssistantText(stored.events, 'first')).toBe(true)
+    expect(stored.events).toContainEqual(expect.objectContaining({ type: 'user/message', data: expect.objectContaining({
+      id: second.messageId, source: { kind: 'agent-message', form: 'relay', senderSessionId: parent.id },
+    }) }))
+    await second.dispose()
+  })
+
+  it('rejects a running target and admits at most one simultaneous continuation', async () => {
+    const hold = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([{ chunks: textResponse('first') }, { chunks: textResponse('second'), gate: hold.promise }])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    try {
+      const outcomes = await Promise.allSettled([1, 2].map(n => ctx.subagents.continueActivation(
+        parent, first.childId, message(`follow ${n}`), { signal: testSignal })))
+      expect(outcomes.filter(item => item.status === 'fulfilled')).toHaveLength(1)
+      expect(outcomes.find(item => item.status === 'rejected')).toMatchObject({ reason: { code: 'TARGET_RUNNING' } })
+      await expect(ctx.subagents.continueActivation(parent, first.childId, message('extra'), { signal: testSignal }))
+        .rejects.toMatchObject({ code: 'TARGET_RUNNING' })
+    } finally { hold.resolve(undefined) }
+    await waitNoActivation(ctx, first.childId)
+  })
+
+  it('does not let an old receipt dispose a later same-session activation', async () => {
+    const hold = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([{ chunks: textResponse('first') }, { chunks: textResponse('second') },
+      { chunks: textResponse('third'), gate: hold.promise }])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    const second = await ctx.subagents.continueActivation(parent, first.childId, message('second'), { signal: testSignal })
+    await second.result
+    const third = await ctx.subagents.continueActivation(parent, first.childId, message('third'), { signal: testSignal })
+    try {
+      await second.dispose()
+      expect(ctx.agents.get(first.childId)).toBeDefined()
+      expect(ctx.agents.get(first.childId)!.status).toBe('running')
+    } finally { hold.resolve(undefined) }
+    expect(await third.result).toMatchObject({ output: message('third') })
+  })
+
+  it('continues an idle resident target under its exact activation', async () => {
+    const hold = Promise.withResolvers<undefined>()
+    const adapter = new GatedAdapter([{ chunks: textResponse('first') }, { chunks: textResponse('nested'), gate: hold.promise },
+      { chunks: textResponse('second') }])
+    const { ctx, parent } = await setupWith(adapter)
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    const child = ctx.agents.get(first.childId)!
+    const nested = await ctx.subagents.startActivation({ ...startSpec(child), delivery: 'caller' })
+    try {
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(2); expect(child.status).toBe('idle') })
+      const continued = await ctx.subagents.continueActivation(parent, first.childId, message('idle follow'), { signal: testSignal })
+      expect(continued.result).toBe(first.result)
+      await vi.waitFor(() => { expect(adapter.requests).toHaveLength(3) })
+    } finally { hold.resolve(undefined) }
+    await nested.result
+    await first.result
+  })
+
+  it('rejects foreign ownership and unavailable query without creating a replacement', async () => {
+    const { ctx, parent } = await setupWith(new GatedAdapter([{ chunks: textResponse('first') }]), { sessionQuery: false })
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    const foreign = await ctx.agentLoop.create(SessionId('foreign-owner'), { provider: 'mock', model: 'mock' })
+    await expect(ctx.subagents.continueActivation(foreign, first.childId, message('foreign'), { signal: testSignal })).rejects.toThrow()
+    await expect(ctx.subagents.continueActivation(parent, first.childId, message('missing query'), { signal: testSignal }))
+      .rejects.toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' })
+    expect(ctx.agents.get(first.childId)).toBeUndefined()
+  })
+
+  it('rejects missing persistence after settlement', async () => {
+    const { ctx, parent, disposePersistence } = await setup([textResponse('first')])
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    await disposePersistence!()
+    await expect(ctx.subagents.continueActivation(parent, first.childId, message('no persistence'), { signal: testSignal }))
+      .rejects.toThrow()
+    expect(ctx.agents.get(first.childId)).toBeUndefined()
+  })
+
+  it('cancels during cold preparation before accepting a message', async () => {
+    const { ctx, parent } = await setup([textResponse('first')])
+    parkParent(ctx, parent)
+    const first = await ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'caller' })
+    await first.result
+    const controller = new AbortController()
+    const observe = ctx.sessionQuery.observeSession.bind(ctx.sessionQuery)
+    vi.spyOn(ctx.sessionQuery, 'observeSession').mockImplementation(async (...args) => {
+      const result = await observe(...args)
+      controller.abort(new Error('cancel during preparation'))
+      return result
+    })
+    await expect(ctx.subagents.continueActivation(parent, first.childId, message('cancelled follow'), { signal: controller.signal }))
+      .rejects.toThrow('cancel during preparation')
+    expect(ctx.agents.get(first.childId)).toBeUndefined()
+  })
+
+  it('rejects an external activation without dispatching another backend', async () => {
+    const { ctx, parent } = await setup([])
+    const pending = Promise.withResolvers<import('../src/types.ts').SubagentResult>()
+    const start = vi.fn(async () => ({ childId: SessionId('native-external'), result: pending.promise,
+      dispose: async () => { pending.resolve({ output: [], stopReason: 'cancelled' }) } }))
+    ctx.subagents.registerProvider({ name: 'native-external', inheritsParentContext: false,
+      capabilities: { agentOptions: false, outputSchema: false, depthLimit: false, toolFilter: false, persona: false }, start })
+    const native = await ctx.subagents.startActivation({ ...startSpec(parent, 'native-external'), delivery: 'caller' })
+    await expect(ctx.subagents.continueActivation(parent, native.childId, message('unsupported'), { signal: testSignal }))
+      .rejects.toThrow()
+    expect(start).toHaveBeenCalledTimes(1)
+    await native.dispose()
+  })
+})
+
 function startSpec(parent: Agent, provider = 'spawn', signal: AbortSignal = testSignal) {
   return {
     provider,

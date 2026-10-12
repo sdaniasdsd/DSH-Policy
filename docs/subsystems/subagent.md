@@ -193,6 +193,8 @@ sendMessage authorizes the exact live sender and permits only adjacent local age
 
 Host callers can set `activeOnly: true` on `sendMessage` to accept input only while the target is executing. Idle, absent, and closing targets reject with `TARGET_NOT_RUNNING`; this mode never wakes or cold-resumes them. The check runs at inbox acceptance, so a target ending after inspection cannot be restarted by a late message. Omitting the option retains ordinary continuation behavior. Acceptance returns a message id and does not confirm model processing.
 
+Host executors can use `continueActivation(parent, childId, content, { signal })` for an idle or absent direct local child. It returns the accepted message id and the exact activation result/disposer, preserving the session and persisted history. Running or pending-input targets reject with `TARGET_RUNNING`; unavailable continuation retains its capability error. Disposing an older receipt cannot close a later same-session activation.
+
 ```ts type-equiv
 /** Durable attribution for one model-authored message between Agents. */
 interface AgentMessageSource {

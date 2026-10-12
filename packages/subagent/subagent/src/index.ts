@@ -317,6 +317,19 @@ export class SubagentRuntime extends TypertRemoteService {
   }
 
   /**
+   * Explicitly continue an idle or absent direct local child under its original session.
+   * @param parent - exact live direct parent authorizing and originating the input.
+   * @param childId - durable child session identity; running targets reject.
+   * @param content - input for the next execution.
+   * @param options - cancellation before acceptance.
+   * @returns accepted message identity and result/disposer bound to its exact activation.
+   */
+  continueActivation(parent: Agent, childId: SessionId, content: ContentBlock[],
+    options: { readonly signal: AbortSignal }): Promise<SubagentActivation & { readonly messageId: MessageId }> {
+    return this.requireManager().continueActivation(parent, childId, content, options)
+  }
+
+  /**
    * Deliver one host-protocol message to a direct continuable child.
    * Symbol-keyed so host adapters can preserve their own source descriptors without
    * widening the public Service Definition or impersonating an Agent sender.
