@@ -3,6 +3,7 @@ import { startCancellableActivation } from './subagent-activation.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { SubagentActivation, SubagentActivationSpec } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { ChildResult, TaskStep, ObservedUsage } from './types.ts'
 import { parseWorkflowProposal, workflowOutputSchema, parseReviewReport, reviewOutputSchema } from './workflow-report.ts'
@@ -25,10 +26,12 @@ function readPath(value: unknown): string | undefined {
  * @param signal - original task cancellation.
  * @param maxEvidenceBytes - cumulative evidence memory bound.
  * @param onActive - optional task-owned registration, released after child cleanup even when cleanup fails.
+ * @param activate - optional task-owned turn admission using the same observation and cleanup path.
  * @returns settled child result after temporary listeners, timer and child have been released.
  */
 export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subagents: Pick<Context['subagents'], 'startActivation'> }, parent: Agent, provider: string, step: TaskStep,
-  prompt: string, signal: AbortSignal, maxEvidenceBytes: number, onActive?: (id: SessionId) => () => void): Promise<ChildResult> {
+  prompt: string, signal: AbortSignal, maxEvidenceBytes: number, onActive?: (id: SessionId) => () => void,
+  activate?: (spec: SubagentActivationSpec) => Promise<SubagentActivation>): Promise<ChildResult> {
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
   const timer = step.timeoutMs === undefined ? undefined
@@ -91,7 +94,8 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
       : { ...step.model === undefined ? {} : { model: step.model },
         ...step.provider === undefined ? {} : { provider: step.provider },
         ...step.maxTokens === undefined ? {} : { maxTokens: step.maxTokens } }
-    const run = await startCancellableActivation(ctx.subagents, { provider, label: step.label, signal: combined, delivery: 'caller', request: {
+    const start = activate ?? ((spec: SubagentActivationSpec) => startCancellableActivation(ctx.subagents, spec))
+    const run = await start({ provider, label: step.label, signal: combined, delivery: 'caller', request: {
       parent, prompt: [{ type: 'text', text: prompt }],
       ...step.preset === undefined ? {} : { agentPreset: step.preset },
       ...step.tools === undefined ? {} : { toolFilter: {
