@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for 2026-10-13-dsh-coordination-part-1.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-13-dsh-coordination-part-1.md
+/dsh-coordination-part-1-messages-during-execution:
+  en: cda58a4966d4b457
+  zh: 66234804c564e4bc
+/dsh-coordination-part-1-messages-during-execution/global-constraints:
+  en: 77c225bc63aa5c32
+  zh: 253a5677d94dea2f
+/dsh-coordination-part-1-messages-during-execution/review-focus:
+  en: 672d09656592d58c
+  zh: 8b13c12669c2ab0b
+/dsh-coordination-part-1-messages-during-execution/delivery-sequence:
+  en: 1428f33c2986db27
+  zh: de6a859e29a42402
+/dsh-coordination-part-1-messages-during-execution/task-0-admit-messages-without-waking-ended-targets:
+  en: e9c6751f0219d518
+  zh: 65aae8abd80006a7
+/dsh-coordination-part-1-messages-during-execution/task-1-track-active-task-members:
+  en: 021008f607a6d9ca
+  zh: 59712127e2210c9b
+/dsh-coordination-part-1-messages-during-execution/task-2-route-owner-messages-through-subagents:
+  en: 26d48843978f7552
+  zh: f1d126d08eb8ec40
+/dsh-coordination-part-1-messages-during-execution/task-3-expose-the-operation-and-prove-real-delivery:
+  en: 757aeaab5f297c3e
+  zh: 2f1e31e996b42363
+/dsh-coordination-part-1-messages-during-execution/working-copy-and-handoff:
+  en: a8b259b39fae1035
+  zh: 2683291767057b62
