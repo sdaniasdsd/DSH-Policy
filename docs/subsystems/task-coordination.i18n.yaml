@@ -1,0 +1,7 @@
+# Bilingual-pair consistency record for task-coordination.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/task-coordination.md
+/task-coordination-foundation:
+  en: 54daeae0542ef874
+  zh: dc8add3f6a2c70dc

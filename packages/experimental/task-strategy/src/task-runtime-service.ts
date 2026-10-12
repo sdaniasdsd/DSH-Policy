@@ -15,10 +15,12 @@ import { boundText } from './schema.ts'
 import { ExecutorRegistry } from './executor-registry.ts'
 import { executeDshChild } from './dsh-child.ts'
 import { createMemberSessions } from './member-sessions.ts'
+import { createTaskCoordination } from './task-coordination.ts'
 import { createHash } from 'node:crypto'
 import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
 import type { ExecutionPlan, TaskExecutor } from './types.ts'
 import type { TaskExecutorProvider } from './executor-types.ts'
+import type { TaskCoordination } from './coordination-types.ts'
 import type { CapturedStrategy, TaskMemberView, TaskMessageRequest, TaskMessageReceipt,
   TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
 
@@ -112,6 +114,8 @@ export default class TaskRuns extends Service {
     const { prepare, checkChild } = createAdmission(config, subagents, this.ctx.agentPresets, this.ctx.tools, executors)
     const store = ownerRuns(jobs, parent)
     const activeMembers = new Map<SessionId, TaskMemberView>()
+    const lifetime = new AbortController()
+    const coordinationRef: { current?: TaskCoordination } = {}
     let localTurns = 0
     const reserveLocalTurn = () => {
       if (localTurns >= config.maxConcurrent) throw new Error('Local child turns exceed captured maxConcurrent')
@@ -148,7 +152,12 @@ export default class TaskRuns extends Service {
             return () => { activeMembers.delete(id) }
           },
         })
-        try { return await executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal, { members }) }
+        try {
+          const coordination = coordinationRef.current
+          if (coordination === undefined) throw new Error('Task coordination was not initialized')
+          return await executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal,
+            { members, coordination })
+        }
         finally { await members.close() }
       }
       const releaseTurn = reserveLocalTurn()
@@ -161,7 +170,6 @@ export default class TaskRuns extends Service {
       }) } finally { releaseTurn() }
     }
     let runtime!: TaskRun
-    const lifetime = new AbortController()
     const jobId = jobs.start({
       kind: 'strategy', label: captured.plan.name, owner: parent.id, outputLimitBytes: runConfig.maxOutputBytes,
       run: (job) => {
@@ -187,6 +195,9 @@ export default class TaskRuns extends Service {
         }, done }
       },
     })
+    coordinationRef.current = createTaskCoordination({ ctx: this.ctx, parent, jobId, activeMembers,
+      maxRecordBytes: config.maxPlanBytes, signal: lifetime.signal,
+      assertOwner: () => { this.assertOpen(); this.assertLiveOwner(parent) } })
     store.runs.set(jobId, { task, run: runtime, execution, activeMembers,
       maxMessageBytes: config.maxPlanBytes, lifetime: lifetime.signal })
     return jobId

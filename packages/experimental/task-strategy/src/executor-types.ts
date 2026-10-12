@@ -2,10 +2,15 @@
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ChildResult, TaskStep } from './types.ts'
 import type { TaskMemberSessions } from './member-session-types.ts'
+import type { TaskCoordination } from './coordination-types.ts'
+
+export type * from './coordination-types.ts'
 
 /** Optional execution capabilities owned by this adapter call and the original task. */
 export interface TaskExecutorContext {
   readonly members: TaskMemberSessions
+  /** Task-scoped records, change waits, and sender-preserving member messages. */
+  readonly coordination: TaskCoordination
 }
 
 /** External adapter contributes execution and synchronous backend availability checks. */
