@@ -18,7 +18,8 @@ import { createHash } from 'node:crypto'
 import { parentAgentOptionsForDelegation } from '@deepseek-ai/dsh-subagent'
 import type { ExecutionPlan, TaskExecutor } from './types.ts'
 import type { TaskExecutorProvider } from './executor-types.ts'
-import type { CapturedStrategy, TaskMemberView, TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
+import type { CapturedStrategy, TaskMemberView, TaskMessageRequest, TaskMessageReceipt,
+  TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { taskRuns: TaskRuns }
@@ -137,6 +138,7 @@ export default class TaskRuns extends Service {
       })
     }
     let runtime!: TaskRun
+    const lifetime = new AbortController()
     const jobId = jobs.start({
       kind: 'strategy', label: captured.plan.name, owner: parent.id, outputLimitBytes: runConfig.maxOutputBytes,
       run: (job) => {
@@ -154,11 +156,16 @@ export default class TaskRuns extends Service {
           status: result.status === 'cancelled' ? 'killed' : result.status,
           ...result.error === undefined ? {} : { detail: boundText(result.error, runConfig.maxOutputBytes) },
           result: boundText(JSON.stringify(result), runConfig.maxOutputBytes),
-        }))
-        return { cancel: (reason) => { runtime.cancel(new Error(reason ?? 'strategy job cancelled')) }, done }
+        })).finally(() => { lifetime.abort(new Error('Task execution ended')) })
+        return { cancel: (reason) => {
+          const error = new Error(reason ?? 'strategy job cancelled')
+          lifetime.abort(error)
+          runtime.cancel(error)
+        }, done }
       },
     })
-    store.runs.set(jobId, { task, run: runtime, execution, activeMembers, maxMessageBytes: config.maxPlanBytes })
+    store.runs.set(jobId, { task, run: runtime, execution, activeMembers,
+      maxMessageBytes: config.maxPlanBytes, lifetime: lifetime.signal })
     return jobId
   }
 
@@ -172,6 +179,32 @@ export default class TaskRuns extends Service {
     const owned = this.ownedRun(parent, jobId)
     return { ...owned.run.inspect(), activeMembers: structuredClone([...owned.activeMembers.values()]),
       ...owned.execution === undefined ? {} : { execution: structuredClone(owned.execution) } }
+  }
+
+  /**
+   * Send an adjustment to one currently executing local member under the original owner.
+   * @param parent - exact live Agent owning this task.
+   * @param jobId - original Job identity.
+   * @param request - active child identity and nonempty text within captured maxPlanBytes.
+   * @param signal - caller cancellation, combined with the accepted task lifetime.
+   * @returns inbox acceptance identity, without claiming processing or adoption.
+   */
+  async sendMessage(parent: Agent, jobId: JobId, request: TaskMessageRequest, signal: AbortSignal): Promise<TaskMessageReceipt> {
+    this.assertOpen()
+    const owned = this.ownedRun(parent, jobId)
+    const deliverySignal = AbortSignal.any([signal, owned.lifetime])
+    deliverySignal.throwIfAborted()
+    if (owned.run.inspect().phase !== 'running') throw new Error('Task is not executing; message admission is closed')
+    const { childId, text } = request
+    if (!owned.activeMembers.has(childId)) throw new Error('Target is not an active DSH member of this task')
+    if (!text.trim()) throw new Error('Task message text must not be empty')
+    if (Buffer.byteLength(JSON.stringify(request), 'utf8') > owned.maxMessageBytes) {
+      throw new Error('Task message exceeds the captured maxPlanBytes limit')
+    }
+    const messageId = await this.ctx.subagents.sendMessage(parent, childId, [{ type: 'text', text }], {
+      signal: deliverySignal, activeOnly: true,
+    })
+    return { messageId }
   }
 
   /**

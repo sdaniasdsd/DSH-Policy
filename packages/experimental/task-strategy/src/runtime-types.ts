@@ -1,6 +1,7 @@
 /** Static strategy bindings, task state and host admission interfaces. */
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { MessageId } from '@deepseek-ai/dsh-llm'
 import type { StagePolicy } from './policy-types.ts'
 import type { VerificationReport } from './verification-types.ts'
 import type { ReviewReport } from './workflow-types.ts'
@@ -21,6 +22,17 @@ export interface CapturedStrategy {
 export interface TaskMemberView {
   readonly sessionId: SessionId
   readonly label: string
+}
+
+/** Adjustment to one active local member; admission preserves the original sender. */
+export interface TaskMessageRequest {
+  readonly childId: SessionId
+  readonly text: string
+}
+
+/** Inbox acceptance identity; it does not report processing or decision adoption. */
+export interface TaskMessageReceipt {
+  readonly messageId: MessageId
 }
 
 /** Task state belongs to the run and survives replacement of its strategy cursor. */

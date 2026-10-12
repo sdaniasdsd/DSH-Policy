@@ -18,6 +18,7 @@ interface OwnerRuns {
     readonly execution?: TaskRunView['execution']
     readonly activeMembers: Map<SessionId, TaskMemberView>
     readonly maxMessageBytes: number
+    readonly lifetime: AbortSignal
   }>
   readonly requests: Map<string, { readonly digest: string; readonly receipt: Promise<TaskReceipt> }>
 }
