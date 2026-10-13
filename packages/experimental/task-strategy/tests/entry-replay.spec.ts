@@ -61,7 +61,8 @@ describe('real incident boundary replay (no network)', () => {
     const dispose = vi.fn(async () => {})
     const continuationDispose = vi.fn(async () => {})
     const first: SubagentResult = { stopReason: 'max-tokens', structured: undefined, output: [] }
-    const second: SubagentResult = { stopReason: 'completed', structured: { kind: 'chat' }, output: [] }
+    const second: SubagentResult = { stopReason: 'completed', structured: undefined,
+      output: [{ type: 'text', text: '{"kind":"chat"}' }] }
     const provider: SubagentProvider = { name: 'spawn', inheritsParentContext: false,
       capabilities: { outputSchema: true, toolFilter: true, agentOptions: true, depthLimit: true, persona: true },
       prepareContinuable: async () => ({}) }

@@ -84,8 +84,15 @@ export async function routeEntry(
         combined.throwIfAborted()
       }
       if (result.stopReason !== 'completed') throw new Error(`Task entry routing did not complete: ${result.stopReason}`)
-      if (Buffer.byteLength(JSON.stringify(result.structured ?? null), 'utf8') > options.maxOutputBytes) throw new Error('Task entry routing output exceeds byte limit')
-      const route = schema.parse(wireSchema.parse(result.structured))
+      let structured = result.structured
+      if (structured === undefined) {
+        const text = result.output.filter(block => block.type === 'text').map(block => block.text).join('').trim()
+        if (Buffer.byteLength(text, 'utf8') > options.maxOutputBytes) throw new Error('Task entry routing output exceeds byte limit')
+        try { structured = JSON.parse(text) as unknown }
+        catch { throw new Error('Task entry routing did not return a valid structured result') }
+      }
+      if (Buffer.byteLength(JSON.stringify(structured ?? null), 'utf8') > options.maxOutputBytes) throw new Error('Task entry routing output exceeds byte limit')
+      const route = schema.parse(wireSchema.parse(structured))
       if ('requestId' in route && route.requestId !== undefined && !active.some(view => view.requestId === route.requestId)) {
         throw new Error('Task entry routing referenced an unknown owned task')
       }
