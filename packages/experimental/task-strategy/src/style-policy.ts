@@ -14,6 +14,7 @@ export type StylePattern = 'codex' | 'claude' | 'zcode' | 'superpowers'
 /** Bounded high-volume profile; cost values are scenario assumptions. */
 export interface ExtremeHighConfig {
   readonly maxNodes: number
+  readonly maxConcurrent: number
   readonly maxRepairs: number
   readonly maxTokens: number
   readonly timeoutMs: number
@@ -37,6 +38,8 @@ export interface StyleConfig {
   readonly extremeHigh: ExtremeHighConfig
 }
 
+type StyleConfigInput = Omit<Partial<StyleConfig>, 'extremeHigh'> & { readonly extremeHigh?: Partial<ExtremeHighConfig> }
+
 const styleDescriptions: Record<StylePattern, string> = {
   codex: 'Codex 风格 / DSH 执行：逐节点实施与只读检查，适合逐步改动和复核。',
   claude: 'Claude 风格 / DSH 执行：收集上下文、实施与整体复核，适合需要调查的改动。',
@@ -56,7 +59,7 @@ const tierInstructions: Record<StyleTier, string> = {
  * @param pattern - plugin-owned pattern identity.
  * @returns configuration schema for new task captures.
  */
-export function styleSchema(pattern: StylePattern): z<Partial<StyleConfig>, StyleConfig> {
+export function styleSchema(pattern: StylePattern): z<StyleConfigInput, StyleConfig> {
   return z.object({
     strategyId: z.string().default(`${pattern}-style`),
     description: z.string().default(styleDescriptions[pattern] + ' 成本为配置场景估算。'),
@@ -68,12 +71,14 @@ export function styleSchema(pattern: StylePattern): z<Partial<StyleConfig>, Styl
     readTools: z.array(z.string()).default(['read', 'glob', 'grep']),
     tokenCost: z.object({ callsPerTask: z.natural().min(1).default(4), contextTokensPerCall: z.natural().default(2048),
       outputTokensPerCall: z.natural().default(1024) }).default({}),
-    extremeHigh: z.object({ maxNodes: z.natural().min(1).max(16).default(12), maxRepairs: z.natural().max(4).default(4),
+    extremeHigh: z.object({ maxNodes: z.natural().min(1).max(16).default(12),
+      maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(4),
+      maxRepairs: z.natural().max(4).default(4),
       maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(8192),
       timeoutMs: z.natural().min(1).max(2147483647).default(600000),
       tokenCost: z.object({ callsPerTask: z.natural().min(1).default(8), contextTokensPerCall: z.natural().default(8192),
         outputTokensPerCall: z.natural().default(4096) }).default({}) }).default({}),
-  }) as z<Partial<StyleConfig>, StyleConfig>
+  }) as z<StyleConfigInput, StyleConfig>
 }
 
 const recipes: Record<WorkflowProposal['domain'], string> = {
@@ -149,7 +154,8 @@ function verify(config: StyleConfig, checks: readonly ArtifactCheck[], label = '
 }
 
 function forTier(config: StyleConfig, tier: StyleTier): StyleConfig {
-  if (tier === 'extreme-high') return { ...config, tier, maxNodes: config.extremeHigh.maxNodes, maxRepairs: config.extremeHigh.maxRepairs,
+  if (tier === 'extreme-high') return { ...config, tier, maxNodes: config.extremeHigh.maxNodes, maxConcurrent: config.extremeHigh.maxConcurrent,
+    maxRepairs: config.extremeHigh.maxRepairs,
     maxTokens: config.extremeHigh.maxTokens, timeoutMs: config.extremeHigh.timeoutMs, tokenCost: config.extremeHigh.tokenCost }
   return { ...config, tier, maxNodes: Math.min(config.maxNodes, tier === 'low' ? 1 : tier === 'medium' ? 3 : config.maxNodes),
     maxRepairs: Math.min(config.maxRepairs, tier === 'low' ? 0 : tier === 'medium' ? 1 : config.maxRepairs) }

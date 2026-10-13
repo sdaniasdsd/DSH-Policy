@@ -67,6 +67,7 @@ describe('DSH style policy plugins', () => {
   it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('accepts extreme-high for %s within package bounds', (pattern) => {
     const schema = styleSchema(pattern)
     const defaults = schema({})
+    expect(defaults.extremeHigh).toHaveProperty('maxConcurrent', 4)
     expect(defaults.extremeHigh).toMatchObject({ maxNodes: 12, maxRepairs: 4, maxTokens: 8192, timeoutMs: 600000,
       tokenCost: { callsPerTask: 8, contextTokensPerCall: 8192, outputTokensPerCall: 4096 } })
     expect(Reflect.apply(schema, undefined, [{ tier: 'extreme-high' }]).tier).toBe('extreme-high')
@@ -95,7 +96,7 @@ describe('DSH style policy plugins', () => {
   })
 
   it('executes the exact 12-node, four-repair extreme-high path with serial writes', async () => {
-    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high' }))
+    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high', extremeHigh: { maxConcurrent: 1 } }))
     const registry = new StrategyRegistry(); registry.register(policy)
     const nodes = Array.from({ length: 12 }, (_, index) => ({ id: `n${index + 1}`, instruction: 'work', dependencies: [] }))
     let verifications = 0, activeWrites = 0, maximumWrites = 0
@@ -117,6 +118,29 @@ describe('DSH style policy plugins', () => {
     expect(calls).toHaveLength(28)
     expect(maximumWrites).toBe(1)
     expect(verifications).toBe(5)
+  })
+
+  it('runs five extreme-high members concurrently when configured above the carrier default', async () => {
+    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high', extremeHigh: { maxConcurrent: 5 } }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const gate = Promise.withResolvers<undefined>()
+    const nodes = Array.from({ length: 6 }, (_, index) => ({ id: `module${index}`, instruction: 'Implement assigned module', dependencies: [] }))
+    let started = 0, active = 0, maximum = 0
+    const run = new TaskRun('implement six independent modules', registry.capture(policy.id, { task: 'implement six independent modules', preferences: { tier: 'extreme-high' } }), async (step) => {
+      if (step.label.startsWith('work:')) {
+        started++; maximum = Math.max(maximum, ++active)
+        try { await gate.promise } finally { active-- }
+      }
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    const running = run.start()
+    try { await vi.waitFor(() => { expect(started).toBe(5) }) }
+    finally { gate.resolve(undefined); await running }
+    expect(run.inspect().phase).toBe('completed')
+    expect(maximum).toBe(5)
+    expect(active).toBe(0)
   })
 
   it('rejects a plan beyond the captured extreme-high node limit before work begins', async () => {
