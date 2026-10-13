@@ -5,6 +5,7 @@ import type { MessageId } from '@deepseek-ai/dsh-llm'
 import type { StagePolicy } from './policy-types.ts'
 import type { VerificationReport } from './verification-types.ts'
 import type { ReviewReport } from './workflow-types.ts'
+import type { TaskConclusion } from './workflow-types.ts'
 import type { ObservedUsage, StyleTier } from './types.ts'
 import type { AdapterConfig, ExecutionEvent, ExecutionOptions, ExecutionPlan, StrategyInput, TaskResult } from './types.ts'
 
@@ -43,6 +44,8 @@ export interface TaskRunView {
   readonly completedStages: number
   readonly startedTasks: number
   readonly results: TaskResult[]
+  /** Bounded user-facing synthesis, present for strategies that provide one. */
+  readonly finalSummary?: TaskConclusion
   /** Runtime inspection supplies active local members; pure policy views may omit them. */
   readonly activeMembers?: readonly TaskMemberView[]
   readonly pendingSwitch?: number

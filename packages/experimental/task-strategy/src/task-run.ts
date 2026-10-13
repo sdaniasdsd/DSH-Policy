@@ -111,11 +111,13 @@ export class TaskRun {
    * @returns task state including cumulative usage and the currently committed binding.
    */
   inspect(): TaskRunView {
+    const finalSummary = this.results.findLast(result => result.finalSummary !== undefined)?.finalSummary
     return structuredClone({
       phase: this.phase,
       binding: { id: this.strategy.id, revision: this.strategy.revision, epoch: this.epoch },
       nextStage: this.stage, completedStages: this.completedStages, startedTasks: this.startedTasks,
       results: this.results,
+      ...finalSummary === undefined ? {} : { finalSummary },
       ...projectRunResults(this.results, this.bindingStartResult),
       ...this.pending === undefined ? {} : { pendingSwitch: this.pending.command },
       ...this.error === undefined ? {} : { error: this.error },

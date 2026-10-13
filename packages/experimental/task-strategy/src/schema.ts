@@ -30,6 +30,8 @@ export const planSchema = z.object({
       provider: z.string(),
       workflowOutput: z.boolean(),
       reviewOutput: z.boolean(),
+      intakeOutput: z.boolean(),
+      finalSummaryOutput: z.boolean(),
       artifactChecks: z.union([z.const(undefined), z.array(z.object({
         id: z.string().required(), path: z.string().required(), contains: z.string(),
       }))]),

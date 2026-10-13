@@ -21,8 +21,10 @@ describe('DSH style policy plugins', () => {
         try { await gate.promise } finally { active-- }
       }
       return { stopReason: 'completed', output: step.label,
+        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement modules', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
+        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Modules implemented.', evidence: ['All work nodes completed.'], blocker: '', nextStep: '' } } : {} }
     }, options)
     const running = run.start()
     try { await vi.waitFor(() => { expect(started).toBe(2) }) }
@@ -38,8 +40,10 @@ describe('DSH style policy plugins', () => {
     const run = new TaskRun('implement one module', registry.capture(policy.id, { task: 'implement one module' }), async (step) => {
       instructions.push(step.instruction)
       return { stopReason: 'completed', output: 'evidence',
+        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement one module', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes: [proposal.nodes[0]!] } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
+        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'One module implemented.', evidence: [], blocker: '', nextStep: '' } } : {} }
     }, options)
     expect((await run.start()).status).toBe('completed')
     expect(instructions.every(instruction => instruction.includes('单个事务'))).toBe(true)
@@ -84,15 +88,42 @@ describe('DSH style policy plugins', () => {
     const run = new TaskRun('create test.md', registry.capture(policy.id, { task: 'create test.md', preferences: { tier: 'extreme-high' } }), async (step) => {
       calls.push(step.label)
       return { stopReason: 'completed', output: 'evidence',
+        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Create test.md', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: proposal } : {},
         ...step.artifactChecks ? { verification: { status: 'passed', checks: [{ id: 'file', status: 'passed', reason: 'read evidence' }] } as const } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
+        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Created test.md.', evidence: ['Registered check passed.'], blocker: '', nextStep: '' } } : {} }
     }, options)
     expect((await run.start()).status).toBe('completed')
-    expect(calls).toEqual(['understand', 'plan', 'work:a', 'work:b', 'verify', 'final-review'])
+    expect(calls).toEqual(['understand', 'plan', 'work:a', 'work:b', 'verify', 'final-review', 'final-summary'])
+    expect(run.inspect().finalSummary).toEqual({ status: 'resolved', conclusion: 'Created test.md.', evidence: ['Registered check passed.'], blocker: '', nextStep: '' })
     const extreme = registry.list({ task: 'large task', preferences: { tier: 'extreme-high' } })[0]!.cost
     expect(extreme.kind).toBe('estimated')
     if (extreme.kind === 'estimated') expect(extreme.maximumScenarioTasks).toBeGreaterThan(extreme.tasks)
+  })
+
+  it('stops before planning when understanding finds a blocking conflict and exposes one concise conclusion', async () => {
+    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high' }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const calls: string[] = []
+    const run = new TaskRun('read-only audit with incompatible evidence and output constraints',
+      registry.capture(policy.id, { task: 'read-only audit with incompatible evidence and output constraints', preferences: { tier: 'extreme-high' } }),
+      async (step) => {
+        calls.push(step.label)
+        if (step.label === 'understand') return { stopReason: 'completed', output: '', intake: {
+          decision: 'blocked', goal: 'Verify the project state', blocker: 'Ten evidence items cannot fit the requested 500-character limit.',
+        } }
+        if (step.label === 'final-summary') return { stopReason: 'completed', output: '', finalSummary: {
+          status: 'blocked', conclusion: 'Cannot determine the requested state under the conflicting output constraint.',
+          evidence: [], blocker: 'Choose whether to keep all ten evidence items or enforce the 500-character limit.', nextStep: 'Resolve the output constraint.',
+        } }
+        return { stopReason: 'completed', output: 'must not execute' }
+      }, options)
+    const result = await run.start()
+    expect(result.status).toBe('completed')
+    expect(calls).toEqual(['understand', 'final-summary'])
+    expect(run.inspect().finalSummary)
+      .toMatchObject({ status: 'blocked', evidence: [], blocker: 'Choose whether to keep all ten evidence items or enforce the 500-character limit.' })
   })
 
   it('executes the exact 12-node, four-repair extreme-high path with serial writes', async () => {
@@ -108,14 +139,17 @@ describe('DSH style policy plugins', () => {
         await new Promise(resolve => setTimeout(resolve, 1))
         activeWrites--
       }
-      return { stopReason: 'completed', output: 'evidence', ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+      return { stopReason: 'completed', output: 'evidence',
+        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Execute the task', blocker: '' } } : {},
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
         ...step.artifactChecks ? { verification: { status: ++verifications <= 4 ? 'failed' : 'passed', checks: [] } as const } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
+        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Task complete.', evidence: [], blocker: '', nextStep: '' } } : {} }
     }, { ...options, maxTasks: 64 })
     expect((await run.start()).status).toBe('completed')
     expect(calls.filter(label => label.startsWith('work:'))).toHaveLength(12)
     expect(calls.filter(label => label.startsWith('repair:'))).toHaveLength(4)
-    expect(calls).toHaveLength(28)
+    expect(calls).toHaveLength(29)
     expect(maximumWrites).toBe(1)
     expect(verifications).toBe(5)
   })
@@ -132,8 +166,10 @@ describe('DSH style policy plugins', () => {
         try { await gate.promise } finally { active-- }
       }
       return { stopReason: 'completed', output: step.label,
+        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement modules', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
+        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Modules implemented.', evidence: [], blocker: '', nextStep: '' } } : {} }
     }, options)
     const running = run.start()
     try { await vi.waitFor(() => { expect(started).toBe(5) }) }

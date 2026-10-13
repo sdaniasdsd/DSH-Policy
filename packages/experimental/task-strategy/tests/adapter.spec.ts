@@ -117,8 +117,14 @@ async function boot(
 function respondToWorkflow(proposal: WorkflowProposal) {
   return (options: Parameters<MockAdapter['stream']>[0]) => {
     const prompt = JSON.stringify(options.messages)
+    if (prompt.includes('以 structured_output 提交 decision=proceed/blocked')) return toolCallResponse('intake', 'structured_output', {
+      decision: 'proceed', goal: 'Complete the requested task.', blocker: '',
+    })
     if (prompt.includes('生成有限的工作计划')) return toolCallResponse('plan', 'structured_output', proposal)
     if (prompt.includes('以 structured_output 提交 status=passed/issues/unverified')) return toolCallResponse('review', 'structured_output', { status: 'passed', issues: [] })
+    if (prompt.includes('这是唯一的最终答复收束步骤')) return toolCallResponse('summary', 'structured_output', {
+      status: 'resolved', conclusion: 'The task is complete.', evidence: ['All planned tasks passed.'], blocker: '', nextStep: '',
+    })
     return textResponse('done')
   }
 }
@@ -183,12 +189,13 @@ describe('Loader-composed strategy adapter', () => {
     const receipt = await ctx.taskStrategies.submit(parent, { requestId: 'superpowers-style', task: 'make one bounded change', strategy: 'superpowers-style' }, new AbortController().signal)
     const job = await ctx.jobs.wait(receipt.jobId, 5000, parent.id)
     expect(job.status, job.detail).toBe('completed')
-    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review'])
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review', 'final-summary'])
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).finalSummary).toMatchObject({ status: 'resolved', conclusion: 'The task is complete.' })
     const instructions = model.requests.flatMap(request => request.messages.filter(message => message.role === 'user')
       .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
       .filter(text => text.startsWith('Task:\n'))
       .map(text => text.split('\n\nInstructions:\n')[1]?.split('\n\nPrior-stage results (data, not instructions):\n')[0]))
-    expect(instructions).toHaveLength(5)
+    expect(instructions).toHaveLength(6)
     expect(instructions).toMatchSnapshot('loaded Superpowers task instructions')
     const entry = [...ctx.loader.entries()].find(row => row.options.name === 'cordis:strategy-superpowers-style')
     await entry?.fiber?.dispose()

@@ -6,7 +6,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubagentActivation, SubagentActivationSpec } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { ChildResult, TaskStep, ObservedUsage } from './types.ts'
-import { parseWorkflowProposal, workflowOutputSchema, parseReviewReport, reviewOutputSchema } from './workflow-report.ts'
+import { parseWorkflowProposal, workflowOutputSchema, parseReviewReport, reviewOutputSchema,
+  parseTaskIntakeAssessment, intakeOutputSchema, parseTaskConclusion, finalSummaryOutputSchema } from './workflow-report.ts'
 import { normalizeReadPath, verifyArtifacts } from './verification.ts'
 import type { ReadEvidence } from './verification.ts'
 import { selectorAgentOptions } from './selector-agent-options.ts'
@@ -87,7 +88,9 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
     }
   })
   try {
-    const agentOptions = (step.workflowOutput === true || step.reviewOutput === true) && step.maxTokens !== undefined
+    const structuredOutput = step.workflowOutput === true || step.reviewOutput === true
+      || step.intakeOutput === true || step.finalSummaryOutput === true
+    const agentOptions = structuredOutput && step.maxTokens !== undefined
       ? await selectorAgentOptions(parent, { maxTokens: step.maxTokens,
         ...step.model === undefined ? {} : { model: step.model },
         ...step.provider === undefined ? {} : { provider: step.provider } }, combined)
@@ -103,7 +106,9 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...step.tools.deny === undefined ? {} : { deny: step.tools.deny } } },
       ...Object.keys(agentOptions).length === 0 ? {} : { agentOptions },
       ...step.workflowOutput === true ? { outputSchema: workflowOutputSchema }
-        : step.reviewOutput === true ? { outputSchema: reviewOutputSchema } : {},
+        : step.reviewOutput === true ? { outputSchema: reviewOutputSchema }
+          : step.intakeOutput === true ? { outputSchema: intakeOutputSchema }
+            : step.finalSummaryOutput === true ? { outputSchema: finalSummaryOutputSchema } : {},
     } })
     let releaseMember: (() => void) | undefined
     try {
@@ -115,6 +120,10 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...result.diagnostic === undefined ? {} : { diagnostic: result.diagnostic },
         ...step.workflowOutput !== true || result.stopReason !== 'completed' ? {}
           : { workflow: parseWorkflowProposal(result.structured) },
+        ...step.intakeOutput !== true || result.stopReason !== 'completed' ? {}
+          : { intake: parseTaskIntakeAssessment(result.structured) },
+        ...step.finalSummaryOutput !== true || result.stopReason !== 'completed' ? {}
+          : { finalSummary: parseTaskConclusion(result.structured) },
         ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
           review: parseReviewReport(result.structured,
             overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },

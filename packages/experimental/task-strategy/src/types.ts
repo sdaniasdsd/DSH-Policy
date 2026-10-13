@@ -3,6 +3,7 @@ import type { SelectionConfig } from './selection-types.ts'
 import type { PolicySnapshot, StageDecision } from './policy-types.ts'
 import type { ArtifactCheck, VerificationReport } from './verification-types.ts'
 import type { WorkflowProposal, ReviewReport } from './workflow-types.ts'
+import type { TaskIntakeAssessment, TaskConclusion } from './workflow-types.ts'
 
 /** Supported style orchestration intensity. */
 export type StyleTier = 'low' | 'medium' | 'high' | 'extreme-high'
@@ -30,6 +31,10 @@ export interface TaskStep {
   readonly workflowOutput?: boolean
   /** Structured read-only assessment, separate from objective artifact verification. */
   readonly reviewOutput?: boolean
+  /** Structured intake conflict check; blocked tasks must not proceed to planning. */
+  readonly intakeOutput?: boolean
+  /** Structured bounded final synthesis; this step must not start new work. */
+  readonly finalSummaryOutput?: boolean
   /** Checks are run in a read-only DSH child; they do not elevate permissions. */
   readonly artifactChecks?: readonly ArtifactCheck[]
   /** Optional bounded model output and child deadline, supplied by validated plugin configuration. */
@@ -123,6 +128,8 @@ export interface ChildResult {
   readonly diagnostic?: string
   readonly workflow?: WorkflowProposal
   readonly review?: ReviewReport
+  readonly intake?: TaskIntakeAssessment
+  readonly finalSummary?: TaskConclusion
   /** Reported usage of logged child assistant messages; excludes router/root and provider-internal retries. */
   readonly usage?: ObservedUsage
   readonly verification?: VerificationReport
