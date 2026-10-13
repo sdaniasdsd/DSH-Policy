@@ -61,7 +61,7 @@ describe('real incident boundary replay (no network)', () => {
     const dispose = vi.fn(async () => {})
     const continuationDispose = vi.fn(async () => {})
     const first: SubagentResult = { stopReason: 'max-tokens', structured: undefined, output: [] }
-    const second: SubagentResult = { stopReason: 'completed', structured: undefined,
+    const second: SubagentResult = { stopReason: 'error', structured: undefined,
       output: [{ type: 'text', text: '{"kind":"chat"}' }] }
     const provider: SubagentProvider = { name: 'spawn', inheritsParentContext: false,
       capabilities: { outputSchema: true, toolFilter: true, agentOptions: true, depthLimit: true, persona: true },
@@ -81,5 +81,26 @@ describe('real incident boundary replay (no network)', () => {
     expect(continueActivation.mock.calls[0]?.[3]).toMatchObject({ resume: { maxTokens: 512, outputSchema: expect.any(Object) } })
     expect(dispose).toHaveBeenCalledOnce()
     expect(continuationDispose).toHaveBeenCalledOnce()
+  })
+  it('accepts only schema-valid JSON text when a provider omits structured output on an error result', async () => {
+    const { parent } = await liveParent()
+    const childId = SessionId('route-error-child')
+    const dispose = vi.fn(async () => {})
+    const provider: SubagentProvider = { name: 'spawn', inheritsParentContext: false,
+      capabilities: { outputSchema: true, toolFilter: true, agentOptions: true, depthLimit: true, persona: true },
+      prepareContinuable: async () => ({}) }
+    const continueActivation = vi.fn<Context['subagents']['continueActivation']>(async () => { throw new Error('unexpected continuation') })
+    const result: SubagentResult = { stopReason: 'error', structured: undefined,
+      output: [{ type: 'text', text: '{"kind":"chat"}' }] }
+    const subagents = { getProvider: () => provider,
+      startActivation: vi.fn(async () => ({ childId, messageId: MessageId('route-error-message'),
+        result: Promise.resolve(result), dispose })),
+      continueActivation }
+
+    await expect(routeEntry(parent, createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'hello' }] }), [],
+      { timeoutMs: 1000, maxPromptBytes: 32768, maxOutputBytes: 2048, maxTokens: 512 }, subagents, 'spawn',
+      new AbortController().signal)).resolves.toEqual({ kind: 'chat' })
+    expect(continueActivation).not.toHaveBeenCalled()
+    expect(dispose).toHaveBeenCalledOnce()
   })
 })

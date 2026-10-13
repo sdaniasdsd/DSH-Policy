@@ -83,7 +83,11 @@ export async function routeEntry(
         result = await continuation.result
         combined.throwIfAborted()
       }
-      if (result.stopReason !== 'completed') throw new Error(`Task entry routing did not complete: ${result.stopReason}`)
+      // Some structured-output providers mark a turn as `error` after returning
+      // complete JSON text instead of the structured channel. The wire and
+      // intent schemas below remain the authority for whether it can be used.
+      const textFallback = result.stopReason === 'error' && result.structured === undefined
+      if (result.stopReason !== 'completed' && !textFallback) throw new Error(`Task entry routing did not complete: ${result.stopReason}`)
       let structured = result.structured
       if (structured === undefined) {
         const text = result.output.filter(block => block.type === 'text').map(block => block.text).join('').trim()
