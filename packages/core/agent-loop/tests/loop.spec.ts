@@ -1509,6 +1509,50 @@ describe('agent loop', () => {
     expect(reasons).toEqual([{ kind: 'max-tokens' }])
   })
 
+  it('continues after a tool call following a steered max-tokens step', async () => {
+    const adapter = new MockAdapter([
+      maxTokensResponse('partial'),
+      toolCallResponse('c1', 'echo', { text: 'tool result' }),
+      textResponse('completed after reading tool result'),
+    ])
+    const ctx = await harness(adapter)
+    ctx.tools.register(defineContentToolFixture({
+      name: 'echo',
+      description: '',
+      parameters: { text: { type: 'string' } },
+      async execute(args) {
+        return [{ type: 'text', text: String(args.text) }]
+      },
+    }))
+    const agent = await ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
+    let steered = false
+    ctx.on('agent/turn-stopping', ({ agent: subject }) => {
+      if (steered) return
+      steered = true
+      subject.steer(createUserMessage({
+        content: [{ type: 'text', text: 'continue after truncation' }],
+        source: { kind: 'max-tokens-test' },
+      }))
+    })
+
+    send(agent, 'go')
+    await waitForIdle(ctx, agent)
+
+    expect(adapter.requests).toHaveLength(3)
+    expect(adapter.requests[2]?.messages.at(-1)).toMatchObject({
+      role: 'tool',
+      content: [{ type: 'text', text: 'tool result' }],
+    })
+    expect(agent.session.deriveMessages().at(-1)).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: 'completed after reading tool result' }],
+    })
+    expect(agent.session.snapshotEvents().findLast(event => event.type === 'turn/end')).toMatchObject({
+      type: 'turn/end',
+      data: { reason: { kind: 'max-tokens' } },
+    })
+  })
+
   it('a completed step after no max-tokens keeps the turn completed (max-tokens does not leak across turns)', async () => {
     // Two consecutive turns: turn 1 is cut off (max-tokens), turn 2 is a clean
     // stop. The per-turn reason must be independent — turn 2 ends completed.
