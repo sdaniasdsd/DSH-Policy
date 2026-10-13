@@ -86,7 +86,11 @@ export const preferencesSchema = z.dict(z.string()).required()
  * @returns validated plan; rejects malformed fields.
  */
 export function parsePlan(value: unknown): ExecutionPlan {
-  return planSchema(value as ExecutionPlan)
+  if (typeof value !== 'string') return planSchema(value as ExecutionPlan)
+  let decoded: unknown
+  try { decoded = JSON.parse(value) }
+  catch { throw new Error('Execution plan text must be valid JSON') }
+  return planSchema(decoded as ExecutionPlan)
 }
 
 /**

@@ -3,6 +3,24 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { bootTaskRuntime } from './task-runtime-fixture.ts'
 
+it('distinguishes task Jobs from request entries in model-facing controls', async () => {
+  const { parent } = await bootTaskRuntime([])
+  const tools = parent.ctx.tools.schemas(parent)
+  const runTool = tools.find(tool => tool.name === 'task_strategy_run')!
+  const description = (name: string) => tools.find(tool => tool.name === name)?.description ?? ''
+  expect(description('task_strategy_run')).toContain('The returned id is a Job id, not a requestId')
+  expect(description('task_strategy_status')).toContain('does not report Jobs started by task_strategy_run')
+  expect(description('task_strategy_resume')).toContain('requestId from task_strategy_submit or task_strategy_propose')
+  expect(description('task_strategy_cancel')).toContain('does not accept a Job id')
+  const parameters = runTool.parameters as { properties?: Record<string, unknown> }
+  const plan = JSON.stringify(parameters.properties?.plan)
+  expect(plan).toContain('"oneOf"')
+  expect(plan).toContain('"object"')
+  expect(plan).toContain('"string"')
+  expect(plan).toContain('"allow"')
+  expect(runTool.description).toContain('preset is a DSH preset name from task_strategy_list')
+})
+
 function isInspectionView(value: unknown): value is {
   readonly detailsOmitted: boolean
   readonly completedTasks: number

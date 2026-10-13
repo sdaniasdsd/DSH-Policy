@@ -1397,6 +1397,20 @@ describe('Loader-composed strategy adapter', () => {
     expect(ctx.taskStrategies.inspect(parent, job.id).results.map(result => result.label)).toEqual(['understand', 'work'])
   })
 
+  it('accepts a JSON-text execution plan from model tool calls', async () => {
+    const { ctx, parent } = await boot([textResponse('child output')])
+    const plan: ExecutionPlan = { name: 'encoded plan', stages: [{ name: 'work', tasks: [
+      { label: 'work', preset: 'coding', instruction: 'work' },
+    ] }] }
+    const result = await ctx.tools.execute({ callId: ToolCallId('encoded-plan'), name: 'task_strategy_run',
+      arguments: { task: 'run encoded plan', plan: JSON.stringify(plan) }, agent: parent,
+      signal: new AbortController().signal })
+    expect(result.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(item => item.label)).toEqual(['work'])
+  })
+
   it.each([{}, { strategy: 'review-first', plan: { name: 'unused', stages: [] } }])('rejects ambiguous dispatch without creating a Job: %j', async (selection) => {
     const { ctx, parent, model } = await boot()
     const result = await ctx.tools.execute({ callId: ToolCallId('ambiguous'), name: 'task_strategy_run',

@@ -22,16 +22,18 @@ export function entryTools(service: TaskStrategies, prefix: string, maxBytes: nu
           ...args.strategy === undefined ? {} : { strategy: args.strategy } })
         return Promise.resolve(boundText(JSON.stringify(view), maxBytes))
       } }),
-    defineTool({ name: `${prefix}_status`, description: 'Read owned task entry states, chosen strategies and binding epochs.',
-      parameters: {}, output, execute(_args, exec) {
-        if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
-        return Promise.resolve(boundText(JSON.stringify(service.entryState({ sessionId: exec.agent.id })), maxBytes))
-      } }),
-    defineTool({ name: `${prefix}_cancel`, description: 'Cancel one owned request during selection or accepted execution.',
-      parameters: { requestId: { type: 'string', required: true } }, output, execute(args, exec) {
-        if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
-        service.cancelEntry({ sessionId: exec.agent.id, requestId: args.requestId }); return Promise.resolve('Cancellation requested')
-      } }),
+    defineTool({ name: `${prefix}_status`, description: 'Read owned task request-entry states, chosen strategies and binding epochs. '
+      + 'This does not report Jobs started by task_strategy_run; use job_list or job_output with that Job id.',
+    parameters: {}, output, execute(_args, exec) {
+      if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
+      return Promise.resolve(boundText(JSON.stringify(service.entryState({ sessionId: exec.agent.id })), maxBytes))
+    } }),
+    defineTool({ name: `${prefix}_cancel`, description: 'Cancel one owned request entry during selection or accepted execution, using its requestId '
+      + 'from task_strategy_submit or task_strategy_propose. This does not accept a Job id; cancel a task_strategy_run Job with job_kill(job_id).',
+    parameters: { requestId: { type: 'string', required: true } }, output, execute(args, exec) {
+      if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
+      service.cancelEntry({ sessionId: exec.agent.id, requestId: args.requestId }); return Promise.resolve('Cancellation requested')
+    } }),
     defineTool({ name: `${prefix}_switch`, description: 'Reserve a strategy replacement at the next stage boundary, using the binding epoch from task status.',
       parameters: { requestId: { type: 'string', required: true }, strategy: { type: 'string', required: true },
         expectedBindingEpoch: { type: 'number', required: true } }, output,
@@ -41,11 +43,12 @@ export function entryTools(service: TaskStrategies, prefix: string, maxBytes: nu
           request: { strategy: args.strategy, expectedBindingEpoch: args.expectedBindingEpoch } })
         return Promise.resolve('Replacement reserved; inspect status for commitment')
       } }),
-    defineTool({ name: `${prefix}_resume`, description: 'Resume the retained strategy after a rejected replacement, using its observed binding epoch.',
-      parameters: { requestId: { type: 'string', required: true }, epoch: { type: 'number', required: true } }, output,
-      execute(args, exec) {
-        if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
-        service.resumeEntry({ sessionId: exec.agent.id, requestId: args.requestId, epoch: args.epoch }); return Promise.resolve('Task resumed')
-      } }),
+    defineTool({ name: `${prefix}_resume`, description: 'Resume a retained request entry after a rejected replacement, using its observed binding epoch. '
+      + 'Use requestId from task_strategy_submit or task_strategy_propose; this does not accept a Job id from task_strategy_run.',
+    parameters: { requestId: { type: 'string', required: true }, epoch: { type: 'number', required: true } }, output,
+    execute(args, exec) {
+      if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
+      service.resumeEntry({ sessionId: exec.agent.id, requestId: args.requestId, epoch: args.epoch }); return Promise.resolve('Task resumed')
+    } }),
   ]
 }

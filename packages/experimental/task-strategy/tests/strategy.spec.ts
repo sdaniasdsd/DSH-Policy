@@ -59,6 +59,10 @@ describe('author strategy decisions', () => {
 })
 
 describe('phased execution', () => {
+  it('accepts a model-supplied plan encoded as JSON text', () => {
+    expect(parsePlan(JSON.stringify(plan))).toEqual(plan)
+  })
+
   it.each([1, 2, 3])('runs an author-selected stage with %i workers instead of the carrier default', async (concurrency) => {
     const authored = { name: 'author concurrency', stages: [{ name: 'modules', maxConcurrent: concurrency,
       tasks: Array.from({ length: 3 }, (_, index) => ({ label: `module:${index}`, preset: 'coding', instruction: 'Implement assigned module' })) }] }
