@@ -449,16 +449,16 @@ describe('continuable activation capacity', () => {
     }
   })
 
-  it('defaults to eight live children and reuses capacity after settlement', async () => {
+  it('defaults to four live children and reuses capacity after settlement', async () => {
     const release = Promise.withResolvers<undefined>()
     const adapter = new GatedAdapter([
-      ...Array.from({ length: 8 }, () => ({ chunks: textResponse('done'), gate: release.promise })),
+      ...Array.from({ length: 4 }, () => ({ chunks: textResponse('done'), gate: release.promise })),
       { chunks: textResponse('replacement') },
     ])
     const { ctx, parent } = await setupWith(adapter)
     parkParent(ctx, parent)
     try {
-      const started = await Promise.all(Array.from({ length: 8 }, () => ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'parent' })))
+      const started = await Promise.all(Array.from({ length: 4 }, () => ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'parent' })))
       await expect(ctx.subagents.startActivation({ ...startSpec(parent), delivery: 'parent' })).rejects.toMatchObject({ code: 'ACTIVATION_LIMIT_REACHED' })
       release.resolve(undefined)
       await Promise.all(started.map(child => waitNoActivation(ctx, child.childId)))
