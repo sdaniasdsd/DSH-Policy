@@ -212,3 +212,38 @@ it('repairs a malformed final-summary structured output once within the existing
   expect(firstDispose).toHaveBeenCalledOnce()
   expect(continuationDispose).toHaveBeenCalledOnce()
 })
+
+it('repairs a final-review response that ended without structured output once', async () => {
+  const { ctx, parent } = await liveParent()
+  const childId = SessionId('final-review-repair-child')
+  const firstDispose = vi.fn(async () => {})
+  const continuationDispose = vi.fn(async () => {})
+  const continueActivation = vi.fn<typeof ctx.subagents.continueActivation>(async () => ({ childId,
+    messageId: MessageId('repair-review'),
+    result: Promise.resolve({ stopReason: 'completed' as const, output: [{ type: 'text' as const, text: 'review structured' }],
+      structured: { status: 'unverified', issues: [] } }),
+    dispose: continuationDispose,
+  }))
+  const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: {
+    startActivation: async () => ({ childId, messageId: MessageId('initial-review'),
+      result: Promise.resolve({ stopReason: 'error' as const, output: [{ type: 'text' as const, text: 'status: unverified; issues: []' }] }),
+      dispose: firstDispose,
+    }),
+    continueActivation,
+  } }
+
+  const settled = await executeDshChild(services, parent, 'spawn', {
+    label: 'final-review', preset: 'standard', instruction: 'review read-only evidence', maxTokens: 768, reviewOutput: true,
+  }, 'return a concise review', new AbortController().signal, 65536)
+
+  expect(continueActivation).toHaveBeenCalledOnce()
+  expect(continueActivation.mock.calls[0]?.[1]).toBe(childId)
+  expect(continueActivation.mock.calls[0]?.[2]).toEqual([{ type: 'text', text: expect.stringContaining('structured_output') }])
+  expect(continueActivation.mock.calls[0]?.[3]).toMatchObject({ resume: {
+    maxTokens: 768, outputSchema: { type: 'object', properties: expect.any(Object) },
+  } })
+  expect(settled.stopReason).toBe('completed')
+  expect(settled.review).toEqual({ status: 'unverified', issues: [] })
+  expect(firstDispose).toHaveBeenCalledOnce()
+  expect(continuationDispose).toHaveBeenCalledOnce()
+})

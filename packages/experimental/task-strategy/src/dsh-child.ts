@@ -217,6 +217,33 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
             finalSummary = parseTaskConclusion(corrected.structured)
           }
         }
+        let review: ReturnType<typeof parseReviewReport> | undefined
+        if (step.reviewOutput === true && (result.stopReason === 'completed' || result.stopReason === 'error')) {
+          const evidence = overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []]
+          let repair = result.stopReason !== 'completed'
+          if (!repair) {
+            try { review = parseReviewReport(result.structured, evidence, cwd) }
+            catch { repair = true }
+          }
+          if (repair) {
+            if (continuation !== undefined) throw new Error('Review repair unavailable after the continuation was already used')
+            combined.throwIfAborted()
+            continuation = ownActivation(await ctx.subagents.continueActivation(parent, run.childId, [{ type: 'text',
+              text: '上一轮终审未产生有效 structured_output。请只根据原任务和已保留的 read 证据，按原 review schema 输出；不得调用工具或继续调查。没有成功读取的文件证据时，status 必须为 unverified 且 issues 为空数组。',
+            }], { signal: combined, resume: {
+              ...step.maxTokens === undefined ? {} : { maxTokens: step.maxTokens },
+              outputSchema: reviewOutputSchema,
+            } }), combined)
+            const corrected = await continuation.result
+            if (corrected.stopReason !== 'completed') throw new Error(`Final review repair ended with ${corrected.stopReason}`)
+            const previousText = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+            const correctedText = corrected.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+            result = { ...corrected, output: [previousText, correctedText].filter(Boolean).length === 0 ? [] : [{ type: 'text',
+              text: [previousText, correctedText].filter(Boolean).join('\n'),
+            }] }
+            review = parseReviewReport(corrected.structured, evidence, cwd)
+          }
+        }
         return { sessionId: run.childId, stopReason: result.stopReason,
           usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
           output: result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'),
@@ -228,9 +255,7 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
           ...step.intakeOutput !== true || result.stopReason !== 'completed' ? {}
             : { intake: parseTaskIntakeAssessment(result.structured) },
           ...finalSummary === undefined ? {} : { finalSummary },
-          ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
-            review: parseReviewReport(result.structured,
-              overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
+          ...review === undefined ? {} : { review },
           ...step.artifactChecks === undefined ? {} : {
             verification: verifyArtifacts(step.artifactChecks,
               overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
