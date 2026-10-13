@@ -9,6 +9,15 @@ const proposal = { summary: 'fixture', domain: 'coding' as const, artifacts: [{ 
 const options = { maxConcurrent: 1, maxTasks: 16, maxResultBytes: 65536, prepare: async () => {} }
 
 describe('DSH style policy plugins', () => {
+  it('keeps the understand stage read-only without treating that as a workflow-wide capability limit', () => {
+    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'low' }))
+    const instruction = policy.decide({ task: 'Create note.txt and verify it.' }).stages[0]!.tasks[0]!.instruction
+
+    expect(instruction).toContain('本阶段仅只读')
+    expect(instruction).toContain('后续执行阶段')
+    expect(instruction).toContain('不要因为本阶段未开放写入工具而判为 blocked')
+  })
+
   it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('lets the %s plugin choose parallel work above the carrier default', async (pattern) => {
     const policy = createStyleStrategy(pattern, styleSchema(pattern)({ maxConcurrent: 2 }))
     const registry = new StrategyRegistry(); registry.register(policy)

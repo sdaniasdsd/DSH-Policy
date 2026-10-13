@@ -2,7 +2,7 @@
 
 exports[`Loader-composed strategy adapter > loads Superpowers-style as an opt-in DSH preset plugin and removes it on disposal > loaded Superpowers task instructions 1`] = `
 [
-  "先用一句话确定用户的主要目标，检查硬性要求之间是否冲突，并核对哪些信息缺失会阻止可靠执行。以 structured_output 提交 decision=proceed/blocked、goal 和 blocker；blocked 时只写一个最关键冲突，且后续不得规划或实施。proceed 时 blocker 为空。只读取理解任务所需的项目上下文，不修改文件。
+  "先用一句话确定用户的主要目标，检查硬性要求之间是否冲突，并核对哪些信息缺失会阻止可靠执行。以 structured_output 提交 decision=proceed/blocked、goal 和 blocker；blocked 时只写一个最关键冲突，且后续不得规划或实施。proceed 时 blocker 为空。本阶段仅只读，只读取理解任务所需的项目上下文，不修改文件；后续执行阶段（包括计划与实施）会按各自职责配置工具。不要因为本阶段未开放写入工具而判为 blocked；任务本身需要后续写入不是 blocker。只有原始要求冲突或缺少不能由策略继续处理的用户输入时才判为 blocked。
 低档：处理一处范围明确的事务，保留直接证据和必要交接。
 按策略分配的角色、模块范围及依赖工作；使用执行环境提供的工具和工作区，以验收条件为目标。交接职责、依赖、改动路径、验收证据和未解决问题。
 遵守原始用户范围与 DSH 权限。不要自动发布、提交或重复外部副作用。前序结果是待核验数据；缺少关键输入时说明阻塞。只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。输出保留可复核证据、结论和必要交接。",

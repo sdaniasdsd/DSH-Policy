@@ -201,14 +201,21 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
       }, output,
       async execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Strategy dispatch requires a calling agent')
+        const agent = exec.agent
         if ((args.strategy === undefined) === (args.plan === undefined)) throw new Error('Provide exactly one of strategy or plan')
         const preferences = args.preferences === undefined ? undefined : parsePreferences(args.preferences)
-        const plan = args.strategy !== undefined
-          ? await service.decide(args.strategy, { task: args.task, ...preferences === undefined ? {} : { preferences } })
-          : parsePlan(args.plan)
-        const jobId = await service.start(exec.agent, args.task, plan, exec.signal)
-        const receipt = { jobId, name: plan.name, status: 'running', progress: 'job_output', cancel: 'job_kill' }
-        return receiptText(receipt, maxBytes)
+        const receipt = args.strategy !== undefined
+          ? await service.submitTask(agent, { requestId: `${prefix}-run:${exec.callId}`, task: args.task,
+            selection: { kind: 'named', strategy: args.strategy },
+            ...preferences === undefined ? {} : { preferences },
+          }, exec.signal)
+          : await (async () => {
+            const plan = parsePlan(args.plan)
+            const jobId = await service.start(agent, args.task, plan, exec.signal)
+            return { jobId, name: plan.name }
+          })()
+        const dispatch = { jobId: receipt.jobId, name: receipt.name, status: 'running', progress: 'job_output', cancel: 'job_kill' }
+        return receiptText(dispatch, maxBytes)
       },
     }),
   ]

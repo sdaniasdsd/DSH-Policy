@@ -121,7 +121,8 @@ function planner(config: StyleConfig): ExecutionPlan['stages'][number] {
 function understand(config: StyleConfig): ExecutionPlan['stages'][number] {
   return single({ ...task(config, 'understand', '先用一句话确定用户的主要目标，检查硬性要求之间是否冲突，并核对哪些信息缺失会阻止可靠执行。'
     + '以 structured_output 提交 decision=proceed/blocked、goal 和 blocker；blocked 时只写一个最关键冲突，且后续不得规划或实施。'
-    + 'proceed 时 blocker 为空。只读取理解任务所需的项目上下文，不修改文件。', true),
+    + 'proceed 时 blocker 为空。本阶段仅只读，只读取理解任务所需的项目上下文，不修改文件；后续执行阶段（包括计划与实施）会按各自职责配置工具。'
+    + '不要因为本阶段未开放写入工具而判为 blocked；任务本身需要后续写入不是 blocker。只有原始要求冲突或缺少不能由策略继续处理的用户输入时才判为 blocked。', true),
   tools: { allow: [...config.readTools] }, intakeOutput: true, maxTokens: Math.min(config.maxTokens, 1024) })
 }
 

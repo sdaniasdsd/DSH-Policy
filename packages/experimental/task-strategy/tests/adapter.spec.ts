@@ -1377,6 +1377,26 @@ describe('Loader-composed strategy adapter', () => {
     expect(ctx.jobs.list(parent.id)).toHaveLength(1)
   })
 
+  it('preserves registered policy continuation when dispatched by the named run tool', async () => {
+    const { ctx, parent } = await boot([textResponse('intake evidence'), textResponse('work evidence')])
+    const stage = (label: string): ExecutionPlan['stages'][number] => ({ name: label,
+      tasks: [{ label, preset: 'coding', instruction: label }] })
+    ctx.taskStrategies.register({ id: 'adaptive-run', description: 'Adaptive named strategy',
+      decide: () => ({ name: 'adaptive-run', stages: [stage('preview')] }),
+      next: (_input, snapshot) => snapshot.nextStage === 0 ? { kind: 'stage', stage: stage('understand') }
+        : snapshot.nextStage === 1 ? { kind: 'stage', stage: stage('work') }
+          : { kind: 'finish', reason: 'All policy stages completed' },
+    })
+
+    const dispatched = await ctx.tools.execute({ callId: ToolCallId('adaptive-run'), name: 'task_strategy_run',
+      arguments: { task: 'perform the named adaptive task', strategy: 'adaptive-run' },
+      agent: parent, signal: new AbortController().signal })
+    expect(dispatched.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(result => result.label)).toEqual(['understand', 'work'])
+  })
+
   it.each([{}, { strategy: 'review-first', plan: { name: 'unused', stages: [] } }])('rejects ambiguous dispatch without creating a Job: %j', async (selection) => {
     const { ctx, parent, model } = await boot()
     const result = await ctx.tools.execute({ callId: ToolCallId('ambiguous'), name: 'task_strategy_run',
