@@ -9,6 +9,8 @@ it('distinguishes task Jobs from request entries in model-facing controls', asyn
   const runTool = tools.find(tool => tool.name === 'task_strategy_run')!
   const description = (name: string) => tools.find(tool => tool.name === name)?.description ?? ''
   expect(description('task_strategy_run')).toContain('The returned id is a Job id, not a requestId')
+  expect(description('task_strategy_run')).toContain('Do not launch the same child work again through subagent')
+  expect(description('task_strategy_run')).toContain('A running Job with no new output is not complete')
   expect(description('task_strategy_status')).toContain('does not report Jobs started by task_strategy_run')
   expect(description('task_strategy_resume')).toContain('requestId from task_strategy_submit or task_strategy_propose')
   expect(description('task_strategy_cancel')).toContain('does not accept a Job id')
@@ -18,6 +20,9 @@ it('distinguishes task Jobs from request entries in model-facing controls', asyn
   expect(plan).toContain('"object"')
   expect(plan).toContain('"string"')
   expect(plan).toContain('"allow"')
+  const preferences = JSON.stringify(parameters.properties?.preferences)
+  expect(preferences).toContain('"oneOf"')
+  expect(preferences).toContain('"additionalProperties":true')
   expect(runTool.description).toContain('preset is a DSH preset name from task_strategy_list')
 })
 

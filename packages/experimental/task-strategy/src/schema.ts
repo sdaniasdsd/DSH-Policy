@@ -99,7 +99,11 @@ export function parsePlan(value: unknown): ExecutionPlan {
  * @returns string-valued preference dictionary.
  */
 export function parsePreferences(value: unknown): Record<string, string> {
-  return preferencesSchema(structuredClone(value) as Record<string, string>)
+  if (typeof value !== 'string') return preferencesSchema(structuredClone(value) as Record<string, string>)
+  let decoded: unknown
+  try { decoded = JSON.parse(value) }
+  catch { throw new Error('Task preferences text must be valid JSON') }
+  return preferencesSchema(decoded as Record<string, string>)
 }
 
 /**

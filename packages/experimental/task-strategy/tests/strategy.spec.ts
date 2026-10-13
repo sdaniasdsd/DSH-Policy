@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { StrategyRegistry, executePlan } from '../src/index.ts'
-import { parsePlan } from '../src/schema.ts'
+import { parsePlan, parsePreferences } from '../src/schema.ts'
 import { validatePlan } from '../src/executor.ts'
 import type { ExecutionPlan, TaskExecutor } from '../src/types.ts'
 
@@ -61,6 +61,10 @@ describe('author strategy decisions', () => {
 describe('phased execution', () => {
   it('accepts a model-supplied plan encoded as JSON text', () => {
     expect(parsePlan(JSON.stringify(plan))).toEqual(plan)
+  })
+
+  it('accepts model preferences encoded as JSON text', () => {
+    expect(parsePreferences('{"tier":"extreme-high"}')).toEqual({ tier: 'extreme-high' })
   })
 
   it.each([1, 2, 3])('runs an author-selected stage with %i workers instead of the carrier default', async (concurrency) => {

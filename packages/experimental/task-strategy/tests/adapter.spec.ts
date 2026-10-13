@@ -1377,6 +1377,22 @@ describe('Loader-composed strategy adapter', () => {
     expect(ctx.jobs.list(parent.id)).toHaveLength(1)
   })
 
+  it('preserves JSON-text tier preferences through named dispatch', async () => {
+    const { ctx, parent } = await boot([textResponse('child output')])
+    ctx.taskStrategies.register({ id: 'preference-round-trip', description: 'Preference round trip', decide: input => ({
+      name: 'preference-round-trip', stages: [{ name: 'work', tasks: [{
+        label: input.preferences?.tier ?? 'missing-tier', preset: 'coding', instruction: 'work',
+      }] }],
+    }) })
+    const result = await ctx.tools.execute({ callId: ToolCallId('preferences-json-text'), name: 'task_strategy_run',
+      arguments: { task: 'preserve extreme tier', strategy: 'preference-round-trip',
+        preferences: '{"tier":"extreme-high"}' }, agent: parent, signal: new AbortController().signal })
+    expect(result.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(item => item.label)).toEqual(['extreme-high'])
+  })
+
   it('preserves registered policy continuation when dispatched by the named run tool', async () => {
     const { ctx, parent } = await boot([textResponse('intake evidence'), textResponse('work evidence')])
     const stage = (label: string): ExecutionPlan['stages'][number] => ({ name: label,

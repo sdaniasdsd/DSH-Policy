@@ -8,6 +8,11 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { inspectionText } from './task-inspection.ts'
 import type { TaskSharedRecord } from './coordination-types.ts'
 
+const preferencesParameter = { oneOf: [
+  { type: 'object' as const, additionalProperties: true as const, description: 'Object mapping author preference names to string values.' },
+  { type: 'string' as const, description: 'JSON text encoding the same string-valued preference object.' },
+], description: 'String-valued author preferences; provide an object or JSON text encoding that object.' } as const
+
 function recordText(record: TaskSharedRecord | undefined, maxBytes: number): string {
   const full = JSON.stringify(record ?? null)
   if (Buffer.byteLength(full, 'utf8') <= maxBytes) return full
@@ -147,7 +152,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
       parameters: {
         requestId: { type: 'string', required: true }, task: { type: 'string', required: true },
         strategy: { type: 'string', description: 'Optional registered strategy id chosen by the user.' },
-        preferences: { type: 'json', description: 'Optional object mapping author preference names to string values.' },
+        preferences: preferencesParameter,
       }, output,
       async execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Strategy submission requires a calling agent')
@@ -165,7 +170,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
         + 'for task-specific estimates; omitted task gives registration baselines. Known input excludes unknown context and outputs. '
         + 'Scenario totals require explicit assumptions. Unknown cost is not zero. Choose a suitable workflow before comparing costs.',
       parameters: { task: { type: 'string', description: 'Optional original task for refining token estimates.' },
-        preferences: { type: 'json', description: 'Optional string-valued preferences; requires task.' } }, output,
+        preferences: preferencesParameter }, output,
       execute(args) {
         if (args.task === undefined && args.preferences !== undefined) throw new Error('Cost preferences require the original task')
         const preferences = args.preferences === undefined ? undefined : parsePreferences(args.preferences)
@@ -180,7 +185,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
       description: 'Preview an author strategy decision without starting any task. Inspect the returned stages and child presets before dispatch.',
       parameters: {
         strategy: { type: 'string', required: true }, task: { type: 'string', required: true },
-        preferences: { type: 'json', description: 'Optional object mapping author preference names to string values.' },
+        preferences: preferencesParameter,
       }, output,
       async execute(args) {
         const preferences = args.preferences === undefined ? undefined : parsePreferences(args.preferences)
@@ -198,7 +203,10 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
         + 'preset is a DSH preset name from task_strategy_list.presets, never a tool name; tools is an object containing allow/deny tool-name arrays. '
         + 'The returned id is a Job id, not a requestId; '
         + 'use job_output with job_id to inspect progress and job_kill with job_id to cancel. Do not pass this id to task_strategy_status, '
-        + 'task_strategy_resume, or task_strategy_cancel; those controls operate on request entries. Concurrent tasks share files.',
+        + 'task_strategy_resume, or task_strategy_cancel; those controls operate on request entries. '
+        + 'The returned Job owns its child work. Do not launch the same child work again through subagent, task_strategy_submit, or a second task_strategy_run. '
+        + 'A running Job with no new output is not complete; keep tracking it with job_output until a terminal status. '
+        + 'Concurrent tasks share files.',
       parameters: {
         task: { type: 'string', required: true }, strategy: { type: 'string', description: 'Registered author strategy id from task_strategy_list.strategies; omit when providing plan.' },
         plan: { oneOf: [
@@ -225,7 +233,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
           } },
           { type: 'string', description: 'JSON text encoding an explicit execution plan object.' },
         ] },
-        preferences: { type: 'json', description: 'String-valued author preferences for a named strategy.' },
+        preferences: preferencesParameter,
       }, output,
       async execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Strategy dispatch requires a calling agent')
