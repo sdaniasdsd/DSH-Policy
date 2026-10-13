@@ -145,7 +145,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
     defineTool({
       name: `${prefix}_submit`,
       description: 'Submit the original task once using a stable requestId. Omit strategy to use the configured automatic or named default; '
-        + 'provide strategy to honor a user choice. Automatic selection needs no user reply. '
+        + 'provide a registered strategy id to honor a user choice; a tier such as extreme-high belongs in preferences.tier, not strategy. Automatic selection needs no user reply. '
         + 'If useful, ask the user with the original timed ask_user_question tool before submitting; a pending or skipped reply uses the default. '
         + 'A late reply must not create another request id or execute this task again. '
         + 'Reuse the same requestId and input when retrying a tool call. Use job_output for results and job_kill to cancel accepted work.',
@@ -182,7 +182,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
     }),
     defineTool({
       name: `${prefix}_plan`,
-      description: 'Preview an author strategy decision without starting any task. Inspect the returned stages and child presets before dispatch.',
+      description: 'Preview an author strategy decision without starting any task. Use a registered strategy id; tier names such as extreme-high belong in preferences.tier. Inspect the returned stages and child presets before dispatch.',
       parameters: {
         strategy: { type: 'string', required: true }, task: { type: 'string', required: true },
         preferences: preferencesParameter,
@@ -196,7 +196,7 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
     defineTool({
       name: `${prefix}_run`,
       description: 'Dispatch a task using exactly one of a registered author strategy or an explicit execution plan. '
-        + 'For strategy, use an id from task_strategy_list.strategies and omit plan. For plan, omit strategy. '
+        + 'For strategy, use an id from task_strategy_list.strategies and omit plan; tier names such as extreme-high are preferences, not strategy ids (for example strategy="superpowers-style", preferences={"tier":"extreme-high"}). For plan, omit strategy. '
         + 'The plan is an object; a JSON string encoding the same object is also accepted. '
         + 'Its format is {name, stages:[{name,tasks:[{label,preset,instruction,tools?:{allow?:string[],deny?:string[]},model?,provider?}]}]}. '
         + 'Stages run in order; tasks within a stage may run concurrently. Failed children stop the plan. '
@@ -204,11 +204,12 @@ export function strategyTools(service: TaskStrategies, prefix: string, maxBytes:
         + 'The returned id is a Job id, not a requestId; '
         + 'use job_output with job_id to inspect progress and job_kill with job_id to cancel. Do not pass this id to task_strategy_status, '
         + 'task_strategy_resume, or task_strategy_cancel; those controls operate on request entries. '
-        + 'The returned Job owns its child work. Do not launch the same child work again through subagent, task_strategy_submit, or a second task_strategy_run. '
+        + 'The returned Job owns its child work. Do not launch the same child work again through subagent, task_strategy_submit, task_strategy_propose, or a second task_strategy_run. '
         + 'A running Job with no new output is not complete; keep tracking it with job_output until a terminal status. '
+        + 'Do not cancel a Job solely because output is empty or it is still running; use task_strategy_inspect or continue polling. Only cancel when the user requests cancellation. '
         + 'Concurrent tasks share files.',
       parameters: {
-        task: { type: 'string', required: true }, strategy: { type: 'string', description: 'Registered author strategy id from task_strategy_list.strategies; omit when providing plan.' },
+        task: { type: 'string', required: true }, strategy: { type: 'string', description: 'Registered author strategy id from task_strategy_list.strategies, not a tier name; omit when providing plan.' },
         plan: { oneOf: [
           { type: 'object', additionalProperties: false, description: 'Explicit upper-authored execution plan.', properties: {
             name: { type: 'string', required: true },

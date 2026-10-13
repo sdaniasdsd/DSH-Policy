@@ -14,7 +14,7 @@ import { boundText } from './schema.ts'
 export function entryTools(service: TaskStrategies, prefix: string, maxBytes: number): ToolDefinition[] {
   const output = { schema: { type: 'string' as const }, render: (_args: object, value: string) => [{ type: 'text' as const, text: value }] }
   return [
-    defineTool({ name: `${prefix}_propose`, description: 'Register a task suggestion with a stable proposalId, without executing it. Only a human reply or UI acceptance dispatches it. Never suggest repeating the same accepted work.',
+    defineTool({ name: `${prefix}_propose`, description: 'Register one task suggestion with a stable proposalId for human review; this does not execute the task. Create at most one proposal for each user request. When the current request is to execute without human approval, use task_strategy_run instead. Only a human reply or UI acceptance dispatches a proposal. Never suggest repeating the same accepted work.',
       parameters: { proposalId: { type: 'string', required: true }, task: { type: 'string', required: true }, strategy: { type: 'string' } }, output,
       execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Proposal requires a root Agent')
