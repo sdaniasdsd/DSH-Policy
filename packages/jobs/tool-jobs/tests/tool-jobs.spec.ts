@@ -137,6 +137,17 @@ async function settleTasks(ctx: Context, owner: Agent, count: number): Promise<v
 }
 
 describe('tool-jobs setup', () => {
+  it('distinguishes background job ids from subagent ids in model guidance', async () => {
+    const { ctx } = await setup()
+    const assembly = await ctx.systemPrompt.assemble()
+    const guidance = assembly.sections.find(section => section.name === 'tool:jobs')?.text ?? ''
+    expect(guidance).toContain('A subagent id from `subagent` or `subagent_fork` is not a background job id')
+    expect(guidance).toContain('use its runtime completion notice instead')
+    const schema = ctx.tools.schemas().find(tool => tool.name === 'job_output')!
+    const jobIdDescription = (schema.parameters as { properties: Record<string, { description?: string }> }).properties.job_id?.description
+    expect(jobIdDescription).toContain('Subagent ids from `subagent` or `subagent_fork` are not valid here')
+  })
+
   it('attaches the job controller on load and detaches it with the fiber', async () => {
     const { ctx, toolsFiber } = await setup()
     expect(() => ctx.jobs.start(producer().spec)).not.toThrow()

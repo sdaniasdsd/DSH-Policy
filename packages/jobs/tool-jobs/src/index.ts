@@ -250,7 +250,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.systemPrompt.section({
     name: 'tool:jobs',
     order: ctx.systemPrompt.getSectionOrder('TOOL_JOBS'),
-    text: 'Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job\'s work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering.',
+    text: 'Track every background job id you start. A subagent id from `subagent` or `subagent_fork` is not a background job id; use its runtime completion notice instead. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job\'s work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering.',
   })
 
   // Live jobs whose kill the model itself requested through `job_kill`: that
@@ -313,7 +313,7 @@ export function apply(ctx: Context, config: Config): void {
     // A timed-out wait returns job state rather than a TOOL_TIMEOUT error, so
     // this tool owns its deadline instead of using ToolDefinition.timeoutMs.
     parameters: {
-      job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work.' },
+      job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work. Subagent ids from `subagent` or `subagent_fork` are not valid here; their results arrive through runtime completion notices.' },
       wait: { type: 'boolean', description: 'Block until the job finishes or the timeout expires; a timed-out wait leaves the job running. Defaults to false.' },
       timeout_ms: { type: 'number', description: 'Max wait in milliseconds with wait: true. Defaults to and is capped by configuration.' },
     },
@@ -350,7 +350,7 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_list',
-    description: 'List your background jobs (running and finished) with their ids, kinds, and statuses.',
+    description: 'List your background jobs (running and finished) with their ids, kinds, and statuses. Subagents are tracked separately and are not listed here.',
     parameters: {},
     output: {
       schema: { type: 'array', items: PUBLIC_JOB_SCHEMA },
@@ -372,7 +372,7 @@ export function apply(ctx: Context, config: Config): void {
     name: 'job_kill',
     description: 'Request cancellation of a running background job.',
     parameters: {
-      job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work.' },
+      job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work. Subagent ids from `subagent` or `subagent_fork` are not valid here.' },
       reason: { type: 'string', description: 'Optional short reason, recorded in the log and forwarded to the job.' },
     },
     finalizeContent: finalizeJobContent,

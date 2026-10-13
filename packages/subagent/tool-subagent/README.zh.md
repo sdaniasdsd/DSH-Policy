@@ -56,7 +56,9 @@ kind: "package-reference"
 
 ### 受管理的委派
 
-运行时接受子任务后，每次调用都会返回 `started subagent <childId>`，不等待子任务结果。activation 独立于已完成的工具调用拥有这项工作；运行时发送完成通知并释放执行资源。
+运行时接受子任务后，每次调用都会返回 `started subagent <childId>`，并提醒该 id 是子会话 id、不是后台 job id；调用不等待子任务结果。activation 独立于已完成的工具调用拥有这项工作；运行时发送完成通知并释放执行资源。
+
+返回的 id 是子 agent id，不是后台 job id。`send_message` 成功只表示消息已送达；汇报子任务结果前，要先收到运行时的完成通知。保留每个子任务与其 id 的对应关系，等待完成通知时不要重复启动相同工作。
 
 所有后端的完成通知都会附带最终回答。本地 Spawn 和 Fork 子任务还可以发送消息，在活跃期间通过 `send_message` 接受更多工作，或在结束后恢复。Codex、Claude Code、ACP 与 DSH SDK 后端不接受后续消息。
 
@@ -161,7 +163,7 @@ Session 携带策略的 settings 控制实例会公开子级 LLM 选择字段与
 ##### 工具指导 section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run. Use runtime completion notices to collect results; a delivery acknowledgment is not the result, and child ids are not background job ids.
 ```
 
 #### Token 影响
@@ -176,7 +178,7 @@ Start independent delegations with `subagent` or `subagent_fork` together in one
 
 #### 模型看到什么
 
-调用保留任务描述与提示词。成功返回 `started subagent <childId>`；启动被拒绝则返回错误。子任务执行详情独立于这条确认交付。
+调用保留任务描述与提示词。成功返回 `started subagent <childId>` 和子会话 id／完成通知提醒；启动被拒绝则返回错误。子任务执行详情独立于这条确认交付。
 
 #### Token 影响
 

@@ -56,7 +56,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Managed delegation
 
-Every call returns `started subagent <childId>` after the runtime accepts the child. It does not wait for the child's result. The activation owns the work independently of the completed tool call; the runtime sends a completion notice and releases execution resources.
+Every call returns `started subagent <childId>` after the runtime accepts the child, followed by a reminder that this is a child-session id rather than a background job id. It does not wait for the child's result. The activation owns the work independently of the completed tool call; the runtime sends a completion notice and releases execution resources.
+
+Treat the returned id as a subagent id, not a background job id. A successful `send_message` only confirms delivery; use the runtime completion notice to collect the child's result before reporting it. Keep each child id assigned to its task and do not start duplicate work while waiting for its completion notice.
 
 Every backend’s completion notice carries its final answer. Local Spawn and Fork children can also send messages, accept more work through `send_message` while active, or resume after settling. Codex, Claude Code, ACP, and DSH SDK backends do not accept follow-up messages.
 
@@ -161,7 +163,7 @@ Visible delegation tools share one guidance paragraph, listing tools in name ord
 ##### Tool-guidance section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run. Use runtime completion notices to collect results; a delivery acknowledgment is not the result, and child ids are not background job ids.
 ```
 
 #### Token effect
@@ -176,7 +178,7 @@ Prefix-stable while the visible tool names are unchanged; adding or removing a v
 
 #### What the model sees
 
-The call retains the task description and prompt. Success returns `started subagent <childId>`; startup rejection returns an error. Child execution details are delivered separately from this acknowledgement.
+The call retains the task description and prompt. Success returns `started subagent <childId>` plus the child-id/completion-notice reminder; startup rejection returns an error. Child execution details are delivered separately from this acknowledgement.
 
 #### Token effect
 

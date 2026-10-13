@@ -44,6 +44,8 @@ async function delegationGuidance(ctx: Context, agent?: Agent): Promise<string[]
   return assembly.sections.map(section => section.text).filter(text => text.startsWith('Start independent delegations'))
 }
 
+const completionGuidance = ' Use runtime completion notices to collect results; a delivery acknowledgment is not the result, child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.'
+
 /**
  * Drives the REAL plugin body: mounts `dsh-tool-subagent` on a real
  * `ToolRuntime` + `SubagentRuntime`, with a package-local scripted child
@@ -380,21 +382,21 @@ describe('dsh-tool-subagent', () => {
 
     const forkProvider = await mock.mountScriptedProvider(ctx, { name: 'fork', inheritsParentContext: true })
     expect(await delegationGuidance(ctx)).toEqual([
-      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     await mock.mountScriptedProvider(ctx, { name: 'spawn' })
     expect(await delegationGuidance(ctx)).toEqual([
-      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
 
     await forkProvider.dispose()
     expect(await delegationGuidance(ctx)).toEqual([
-      'Start independent delegations with `subagent` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     await mock.mountScriptedProvider(ctx, { name: 'fork', inheritsParentContext: true })
     await spawnTool.dispose()
     expect(await delegationGuidance(ctx)).toEqual([
-      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     await forkTool.dispose()
     expect(await delegationGuidance(ctx)).toEqual([])
@@ -408,19 +410,19 @@ describe('dsh-tool-subagent', () => {
     const peer = (await ctx.agents.create({ sessionId: SessionId('guidance-peer') })).agent
     const showSpawn = parent.ctx.tools.restrict({ deny: ['subagent'] })
     expect(await delegationGuidance(ctx, parent)).toEqual([
-      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     expect(await delegationGuidance(ctx, peer)).toEqual([
-      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     expect(await delegationGuidance(unrelated)).toEqual([
-      'Start independent delegations with `other_delegate` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `other_delegate` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     showSpawn()
 
     const scoped = await parent.ctx.plugin(tool, { provider: 'mock', toolName: 'subagent' })
     expect(await delegationGuidance(ctx, parent)).toEqual([
-      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.',
+      'Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.' + completionGuidance,
     ])
     await scoped.dispose()
     parent.ctx.tools.restrict({ deny: ['subagent', 'subagent_fork'] })
@@ -744,6 +746,10 @@ describe('dsh-tool-subagent local activation', () => {
     expect(schema.description).not.toContain('job_kill')
     expect(schema.description).toContain('send_message')
     expect(schema.description).toContain('steer it while running')
+    expect(schema.description).toContain('The returned id is a subagent id, not a job id')
+    expect(schema.description).toContain('successful `send_message` confirms delivery only')
+    expect(schema.description).toContain('runtime completion notice')
+    expect(schema.description.toLowerCase()).toContain('do not start a duplicate for the same task while waiting for its completion notice')
     expect(schema.description).not.toContain('send_message` starts a later turn')
     expect(schema.description).toContain('immediately returns its id')
     expect(schema.description).not.toContain('never poll or wait on it')
@@ -753,7 +759,7 @@ describe('dsh-tool-subagent local activation', () => {
     expect(properties.run_in_background).toBeUndefined()
     const assembly = await ctx.systemPrompt.assemble(assembleContextFor(parent))
     const guidance = assembly.sections.find(section => section.name === 'tool:subagent')
-    expect(guidance?.text).toBe('Start independent delegations with `subagent` together in one assistant message and continue useful work while they run.')
+    expect(guidance?.text).toBe('Start independent delegations with `subagent` together in one assistant message and continue useful work while they run.' + completionGuidance)
 
     const started = await callSubagent(
       ctx,
@@ -761,7 +767,11 @@ describe('dsh-tool-subagent local activation', () => {
       { agent: parent },
     )
     expect(started.isError).toBe(false)
-    const match = /^started subagent (\S+)$/.exec(text(started))
+    const startText = text(started)
+    expect(startText).toContain('This is a subagent session id, not a background job id')
+    expect(startText).toContain('The runtime will deliver its result in a completion notice')
+    expect(startText).toContain('Do not start a duplicate for this task while waiting for its completion notice')
+    const match = /^started subagent (\S+)/.exec(startText)
     expect(match).not.toBeNull()
     const [, childId] = match!
     // No Task was created for the continuable child.

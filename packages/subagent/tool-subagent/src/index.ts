@@ -227,6 +227,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           + (subagentProvider.prepareContinuable !== undefined
             ? ' The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.'
             : ' The completion notice includes its final answer. This backend does not accept follow-up messages.')
+          + ' The returned id is a subagent id, not a job id; do not pass it to job tools. Treat only the runtime completion notice as the result; a successful `send_message` confirms delivery only. Do not start a duplicate for the same task while waiting for its completion notice.'
           + choiceDescription,
         parameters: {
           cwd: {
@@ -274,7 +275,10 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
               subagentId: { type: 'string', required: true },
             },
           },
-          render: (_args, value) => [{ type: 'text', text: `started subagent ${value.subagentId}` }],
+          render: (_args, value) => [{
+            type: 'text',
+            text: `started subagent ${value.subagentId}\nThis is a subagent session id, not a background job id. The runtime will deliver its result in a completion notice. Do not start a duplicate for this task while waiting for its completion notice.`,
+          }],
         },
         isConcurrencySafe: () => true,
         async execute(args, exec) {
@@ -380,7 +384,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           .sort()
         if (visible[0] !== toolName) return ''
         const names = visible.map(name => `\`${name}\``).join(' or ')
-        return `Start independent delegations with ${names} together in one assistant message and continue useful work while they run.`
+        return `Start independent delegations with ${names} together in one assistant message and continue useful work while they run. Use runtime completion notices to collect results; a delivery acknowledgment is not the result, child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.`
       },
     })
   }
