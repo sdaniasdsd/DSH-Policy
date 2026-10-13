@@ -174,3 +174,41 @@ it('does not continue again when the extra turn also reaches the output limit', 
   expect(firstDispose).toHaveBeenCalledOnce()
   expect(continuationDispose).toHaveBeenCalledOnce()
 })
+
+it('repairs a malformed final-summary structured output once within the existing schema', async () => {
+  const { ctx, parent } = await liveParent()
+  const childId = SessionId('final-summary-repair-child')
+  const firstDispose = vi.fn(async () => {})
+  const continuationDispose = vi.fn(async () => {})
+  const continueActivation = vi.fn<typeof ctx.subagents.continueActivation>(async () => ({ childId,
+    messageId: MessageId('repair-summary'),
+    result: Promise.resolve({ stopReason: 'completed' as const, output: [{ type: 'text' as const, text: 'corrected summary' }],
+      structured: { status: 'resolved', conclusion: 'Four files were created and verified.',
+        evidence: ['All four files exist.', 'All four contents match.', 'The job completed.'], blocker: '', nextStep: '' } }),
+    dispose: continuationDispose,
+  }))
+  const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: {
+    startActivation: async () => { throw new Error('the injected activation should be used') },
+    continueActivation,
+  } }
+  const activate = async () => ({ childId, messageId: MessageId('invalid-summary'),
+    result: Promise.resolve({ stopReason: 'completed' as const, output: [{ type: 'text' as const, text: 'four evidence items' }],
+      structured: { status: 'resolved', conclusion: 'Four files were created and verified.',
+        evidence: ['File one verified.', 'File two verified.', 'File three verified.', 'File four verified.'], blocker: '', nextStep: '' } }),
+    dispose: firstDispose,
+  })
+
+  const settled = await executeDshChild(services, parent, 'spawn', {
+    label: 'final-summary', preset: 'standard', instruction: 'summarize', maxTokens: 768, finalSummaryOutput: true,
+  }, 'return a bounded final summary', new AbortController().signal, 65536, undefined, activate)
+
+  expect(continueActivation).toHaveBeenCalledOnce()
+  expect(continueActivation.mock.calls[0]?.[1]).toBe(childId)
+  expect(continueActivation.mock.calls[0]?.[2]).toEqual([{ type: 'text', text: expect.stringContaining('evidence') }])
+  expect(continueActivation.mock.calls[0]?.[3]).toMatchObject({ resume: {
+    maxTokens: 768, outputSchema: { type: 'object', properties: expect.any(Object) },
+  } })
+  expect(settled.finalSummary?.evidence).toHaveLength(3)
+  expect(firstDispose).toHaveBeenCalledOnce()
+  expect(continuationDispose).toHaveBeenCalledOnce()
+})

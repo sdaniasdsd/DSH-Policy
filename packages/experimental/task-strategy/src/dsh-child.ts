@@ -190,6 +190,33 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
             continuationDiagnostic = `One continuation after max-tokens could not be completed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 512)
           }
         }
+        let finalSummary: ReturnType<typeof parseTaskConclusion> | undefined
+        if (step.finalSummaryOutput === true && result.stopReason === 'completed') {
+          try {
+            finalSummary = parseTaskConclusion(result.structured)
+          } catch (error) {
+            // One repair shares the same continuation slot as max-token recovery;
+            // a malformed structured result must not create an unbounded retry path.
+            if (continuation !== undefined) throw error
+            combined.throwIfAborted()
+            continuation = ownActivation(await ctx.subagents.continueActivation(parent, run.childId, [{ type: 'text',
+              text: '上一次结构化最终总结未通过 DSH 校验。请只依据已有任务记录重新输出 structured_output，使用原 schema 的全部必需字段；evidence 为最多三条、每条不超过 240 字符的字符串。不要调用工具、不要新增工作。',
+            }], { signal: combined, resume: {
+              ...step.maxTokens === undefined ? {} : { maxTokens: step.maxTokens },
+              outputSchema: finalSummaryOutputSchema,
+            } }), combined)
+            const corrected = await continuation.result
+            if (corrected.stopReason !== 'completed') {
+              throw new Error(`Final summary repair ended with ${corrected.stopReason}`)
+            }
+            const previousText = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+            const correctedText = corrected.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+            result = { ...corrected, output: [previousText, correctedText].filter(Boolean).length === 0 ? [] : [{ type: 'text',
+              text: [previousText, correctedText].filter(Boolean).join('\n'),
+            }] }
+            finalSummary = parseTaskConclusion(corrected.structured)
+          }
+        }
         return { sessionId: run.childId, stopReason: result.stopReason,
           usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
           output: result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'),
@@ -200,8 +227,7 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
             : { workflow: parseWorkflowProposal(result.structured) },
           ...step.intakeOutput !== true || result.stopReason !== 'completed' ? {}
             : { intake: parseTaskIntakeAssessment(result.structured) },
-          ...step.finalSummaryOutput !== true || result.stopReason !== 'completed' ? {}
-            : { finalSummary: parseTaskConclusion(result.structured) },
+          ...finalSummary === undefined ? {} : { finalSummary },
           ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
             review: parseReviewReport(result.structured,
               overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
