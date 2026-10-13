@@ -37,6 +37,38 @@ describe('ReasoningRow', () => {
     expect(view.getAllByRole('button')).toHaveLength(1)
   })
 
+  it('opens live reasoning automatically and keeps it open after generation settles', () => {
+    const props = {
+      renderSlot: renderSlot,
+      useDisclosure,
+      usePresentation: useDetailedPresentation,
+      t,
+      text: 'Inspect the request budget\nCheck the provider finish reason',
+    }
+    const view = render(<ReasoningRow {...props} running />)
+    const toggle = view.getByRole('button')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(view.container.querySelector('[class*="thinkBody"]')?.textContent).toContain('Check the provider finish reason')
+
+    view.rerender(<ReasoningRow {...props} running={false} />)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(view.container.querySelector('[class*="thinkBody"]')?.textContent).toContain('Check the provider finish reason')
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('allows the reader to collapse live reasoning manually', () => {
+    const view = render(<ReasoningRow renderSlot={renderSlot} useDisclosure={useDisclosure}
+      text={'Inspect the request budget\nFull reasoning body'} running
+      usePresentation={useDetailedPresentation} t={t} />)
+    const toggle = view.getByRole('button')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(view.container.querySelector('[class*="thinkBody"]')).toBeNull()
+  })
+
   it.each([
     ['', ''],
     ['An unfinished line', ''],
@@ -55,6 +87,7 @@ describe('ReasoningRow', () => {
   ])('previews the completed paragraph first line for %j', (text, summary) => {
     const view = render(<ReasoningRow renderSlot={renderSlot} useDisclosure={useDisclosure}
       text={text} running usePresentation={useDetailedPresentation} t={t} />)
+    fireEvent.click(view.getByRole('button'))
     const root = view.container.querySelector('[data-variant="think"]')!
     expect(root.querySelector('[class*="summaryText"]')?.textContent).toBe(summary)
     expect(root.hasAttribute('data-preview')).toBe(summary !== '')
@@ -95,6 +128,7 @@ describe('ReasoningRow', () => {
     const usePresentation = bindSnapshotSelector(derivePresentationPolicy(mode, createSnapshotStore<CollapseTiming>('completion')))
     const props = { text: 'First line\n', usePresentation, t }
     const view = render(<ReasoningRow renderSlot={renderSlot} useDisclosure={useDisclosure} {...props} running />)
+    fireEvent.click(view.getByRole('button'))
     const summary = view.getByText('First line')
     const root = view.container.querySelector('[data-variant="think"]')!
     expect(root.hasAttribute('data-preview')).toBe(true)
@@ -106,30 +140,33 @@ describe('ReasoningRow', () => {
   it.each([
     { kind: 'text' as const, text: 'Answer' },
     { kind: 'tool-call' as const, callId: 'call-1', name: 'read', argsRaw: '{}' },
-  ])('starts collapsed and preserves manual expansion when $kind arrives', (nextBlock) => {
+  ])('opens live reasoning and preserves manual disclosure when $kind arrives', (nextBlock) => {
     const reasoning = { kind: 'reasoning' as const, text: 'Inspect the session\nCheck persistence' }
     const view = render(
       <AssistantMarkdown renderSlot={renderSlot} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         t={t} blocks={[reasoning]} streaming renderMessageImages={renderMessageImages} />,
     )
-    expect(view.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(view.getByText('思考'))
+    const toggle = view.getByRole('button')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
     view.rerender(
       <AssistantMarkdown renderSlot={renderSlot} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         t={t} blocks={[reasoning, nextBlock]} streaming renderMessageImages={renderMessageImages} />,
     )
-    expect(view.getByRole('button').getAttribute('aria-expanded')).toBe('true')
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(toggle)
     view.rerender(
       <AssistantMarkdown renderSlot={renderSlot} useDisclosure={useDisclosure} useGroupAction={useSearchableHidden}
         usePresentation={useDetailedPresentation}
         t={t} blocks={[reasoning, nextBlock]} streaming={false} renderMessageImages={renderMessageImages} />,
     )
-    expect(view.getByRole('button').getAttribute('aria-expanded')).toBe('true')
-    expect(view.getByText(/Check persistence/)).toBeTruthy()
-    fireEvent.click(view.getByText('思考'))
-    expect(view.getByRole('button').getAttribute('aria-expanded')).toBe('false')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(view.container.querySelector('[class*="thinkBody"]')?.textContent).toContain('Check persistence')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('advances on completed paragraph first lines, then restores the settled first line', () => {
@@ -143,7 +180,10 @@ describe('ReasoningRow', () => {
       />,
     )
     expect(view.getByText('运行中')).toBeTruthy()
-    expect(view.getByRole('button').getAttribute('aria-expanded')).toBe('false')
+    const toggle = view.getByRole('button')
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
     expect(view.getByText('Newest reasoning tokens').closest('[data-streaming]')?.getAttribute('data-streaming'))
       .toBe('true')
 
@@ -230,6 +270,7 @@ describe('ReasoningRow', () => {
       />,
     )
 
+    if (streaming) fireEvent.click(view.getByRole('button'))
     expect(view.getByText('Comparing checkout and merge bases')).toBeTruthy()
     expect(view.queryByText('**Comparing checkout and merge bases**')).toBeNull()
 
@@ -276,7 +317,6 @@ describe('ReasoningRow', () => {
         renderMessageImages={renderMessageImages}
       />,
     )
-    fireEvent.click(view.getByText('思考'))
     const heading = view.getByRole('heading', { name: 'Investigation' })
     const emphasis = view.getByText('Check persistence')
     const text = first + Array.from({ length: 8 }, (_, index) => `Paragraph ${index}.`).join('\n\n')

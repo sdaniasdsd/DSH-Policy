@@ -309,6 +309,10 @@
   font-weight: 600;
 }
 
+.maxTokensActions {
+  margin-top: 6px;
+}
+
 .attachmentRow {
   display: flex;
   flex-wrap: wrap;
