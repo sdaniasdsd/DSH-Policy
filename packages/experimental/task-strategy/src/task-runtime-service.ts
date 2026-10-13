@@ -34,7 +34,7 @@ declare module '@deepseek-ai/dsh-jobs' {
 
 /** Task state and original Job ownership, independent of author policies. */
 export default class TaskRuns extends Service {
-  static inject = ['agents', 'subagents', 'agentPresets', 'jobs', 'tools']
+  static inject = ['agents', 'sessions', 'subagents', 'agentPresets', 'jobs', 'tools']
   private closing = false
   private readonly executors = new ExecutorRegistry()
   constructor(ctx: Context) {
