@@ -19,6 +19,7 @@ import { JobId } from '@deepseek-ai/dsh-jobs'
 import type { JobView, JobRead } from '@deepseek-ai/dsh-jobs'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { publicJob, renderModelDelta, statusLine } from './render.ts'
 import type { PublicJobSnapshot } from './render.ts'
 declare module '@deepseek-ai/dsh-llm' {
@@ -335,6 +336,14 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const id = validateJobId(args.job_id)
+      const candidate = ctx.get('agents')?.get(SessionId(args.job_id))
+      if (candidate?.session.header.origin === 'subagent') {
+        throw new Error(
+          `"${args.job_id}" is a subagent session id, not a background job id. `
+          + 'For an already started subagent, wait for its runtime completion notice and do not start a duplicate. '
+          + 'For a future delegation whose result you need before answering, call `subagent` with `wait_for_result: true`.',
+        )
+      }
       const jobs = ctx.jobs
       if (args.wait === true) {
         // A settlement that releases this wait is reported `awaited`, so the

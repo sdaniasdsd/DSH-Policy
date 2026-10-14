@@ -27,7 +27,7 @@ Use `dsh-tool-jobs` to inspect and control background commands and PTY work thro
 
 Load this plugin in any composition where the agent should start, observe, and stop background jobs: it registers the three tools, attaches the controller producers need, and delivers completion notices. It requires the `ctx.tools`, `ctx.jobs`, and `ctx.systemPrompt` services from the composed harness; completion notices resolve their destination through `ctx.agents`, which every composition with owned jobs already provides.
 
-IDs returned by the model-facing `subagent` or `subagent_fork` tools identify child sessions, not background jobs. Their results arrive through the subagent runtime's completion notices; do not pass those IDs to `job_output`, `job_list`, or `job_kill`.
+IDs returned by the model-facing `subagent` or `subagent_fork` tools identify child sessions, not background jobs. Their results arrive through the subagent runtime's completion notices; do not pass those IDs to `job_output`, `job_list`, or `job_kill`. If `job_output` receives a live child session id, its error identifies the id type and directs the model to wait for the existing completion notice or use `wait_for_result: true` on a future delegation.
 
 ### The three tools
 
