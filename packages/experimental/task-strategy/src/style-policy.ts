@@ -119,8 +119,19 @@ function planner(config: StyleConfig): ExecutionPlan['stages'][number] {
 }
 
 function understand(config: StyleConfig): ExecutionPlan['stages'][number] {
-  return single({ ...task(config, 'understand', '先梳理用户目标、边界、验收条件、未知项及已有证据；只读取理解任务所需的项目上下文，不修改文件。', true),
-    tools: { allow: [...config.readTools] } })
+  return single({ ...task(config, 'understand', '先用一句话确定用户的主要目标，检查硬性要求之间是否冲突，并核对哪些信息缺失会阻止可靠执行。'
+    + '以 structured_output 提交 decision=proceed/blocked、goal 和 blocker；blocked 时只写一个最关键冲突，且后续不得规划或实施。'
+    + 'proceed 时 blocker 为空。本阶段仅只读，只读取理解任务所需的项目上下文，不修改文件；后续执行阶段（包括计划与实施）会按各自职责配置工具。'
+    + '不要因为本阶段未开放写入工具而判为 blocked；任务本身需要后续写入不是 blocker。只有原始要求冲突或缺少不能由策略继续处理的用户输入时才判为 blocked。', true),
+  tools: { allow: [...config.readTools] }, intakeOutput: true, maxTokens: Math.min(config.maxTokens, 1024) })
+}
+
+function finalSummary(config: StyleConfig): ExecutionPlan['stages'][number] {
+  return single({ ...task(config, 'final-summary', '这是唯一的最终答复收束步骤。只依据原始任务及已有计划、执行、验收、复核记录，不新增调查、不调用工具、不执行修改。'
+    + '以 structured_output 输出 status=resolved/partial/unverified/blocked、conclusion、evidence、blocker、nextStep。'
+    + 'conclusion 直接回答主要问题；evidence 最多三条，只保留决定结论的实测事实；多个限制或证据冲突时 status=blocked 或 unverified，并只写一个关键 blocker。'
+    + '没有阻塞项或后续动作时对应字段留空。不要复述过程、完整任务清单或所有子任务输出。', true),
+  tools: { allow: [] }, finalSummaryOutput: true, maxTokens: Math.min(config.maxTokens, 768) })
 }
 
 function workflowStages(pattern: StylePattern, config: StyleConfig, proposal: WorkflowProposal): ExecutionPlan['stages'] {
@@ -166,7 +177,7 @@ function costPlan(pattern: StylePattern, config: StyleConfig, maximum = false): 
     nodes: Array.from({ length: config.maxNodes }, (_, i) => ({ id: String(i), instruction: 'Execute one planned work node', dependencies: i === 0 ? [] : [String(i - 1)] })) }
   return { name: config.strategyId, stages: [...pattern === 'superpowers' ? [understand(config)] : config.tier === 'low' || pattern !== 'claude' ? [] : [single(task(config, 'explore', 'Read project context', true))],
     planner(config), ...workflowStages(pattern, config, proposal), verify(config, []),
-    ...pattern === 'superpowers' ? [review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。')] : [],
+    ...pattern === 'superpowers' ? [review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。'), finalSummary(config)] : [],
     ...maximum ? Array.from({ length: config.maxRepairs }, (_, i) => [single(task(config, `repair:${i + 1}`, 'Repair failed registered checks')),
       review(config, `review:${i + 1}`, 'Review repaired work'), verify(config, [], `verify:${i + 1}`)]).flat() : []] }
 }
@@ -188,6 +199,12 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
   const next = (_input: { preferences?: Readonly<Record<string, string>> }, snapshot: PolicySnapshot): StageDecision => {
     const config = resolve(_input)
     const proposal = snapshot.currentResults.find(row => row.workflow !== undefined)?.workflow
+    const intake = snapshot.currentResults.find(row => row.intake !== undefined)?.intake
+    const conclusion = snapshot.currentResults.findLast(row => row.finalSummary !== undefined)?.finalSummary
+    if (intake?.decision === 'blocked') return conclusion === undefined
+      ? { kind: 'stage', stage: finalSummary(config) }
+      : { kind: 'finish', reason: 'Task intake is blocked by conflicting requirements' }
+    if (conclusion !== undefined) return { kind: 'finish', reason: 'Final task summary is ready' }
     const explore = pattern === 'superpowers' || pattern === 'claude' && config.tier !== 'low'
     if (snapshot.nextStage === 0 && explore) return { kind: 'stage', stage: pattern === 'superpowers' ? understand(config)
       : single(task(config, 'explore', '只读收集完成任务所需的项目上下文，报告相关文件、限制和未知项。', true)) }
@@ -209,7 +226,10 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
     const reviews = fresh >= 0 ? [snapshot.currentResults[fresh]?.review]
       : snapshot.currentResults.filter(row => row.review !== undefined).map(row => row.review)
     const issues = reviews.flatMap(row => row?.status === 'issues' ? row.issues : [])
-    if (report?.status !== 'failed' && issues.length === 0) return { kind: 'finish', reason: report?.status === 'passed' ? 'Registered checks passed' : 'Execution ended; requirements remain unverified' }
+    if (report?.status !== 'failed' && issues.length === 0) {
+      if (pattern === 'superpowers') return { kind: 'stage', stage: finalSummary(config) }
+      return { kind: 'finish', reason: report?.status === 'passed' ? 'Registered checks passed' : 'Execution ended; requirements remain unverified' }
+    }
     const repairLimit = config.tier === 'low' ? 0 : config.maxRepairs
     if (repairs >= repairLimit) throw new Error('Artifact checks or supported review findings failed; repair limit reached')
     return { kind: 'stage', stage: single(task(config, `repair:${repairs + 1}`, recipes[proposal.domain]

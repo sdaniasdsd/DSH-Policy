@@ -1,10 +1,11 @@
 /** Model-produced workflow data is parsed once before the policy consumes it. */
 import { z } from 'zod'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
-import type { WorkflowProposal, ReviewReport } from './workflow-types.ts'
+import type { WorkflowProposal, ReviewReport, TaskIntakeAssessment, TaskConclusion } from './workflow-types.ts'
 import type { ReadEvidence } from './verification-types.ts'
 import { normalizeReadPath, observedFileText } from './verification.ts'
 export type { WorkflowProposal, WorkflowNode, ReviewReport } from './workflow-types.ts'
+export type { TaskIntakeAssessment, TaskConclusion } from './workflow-types.ts'
 
 /** A bounded work node; dependencies identify nodes, never executable host code. */
 
@@ -55,6 +56,44 @@ export const reviewOutputSchema: ObjectJsonSchema = {
     issues: { type: 'array', items: { type: 'object', properties: { description: { type: 'string' },
       path: { type: 'string' }, excerpt: { type: 'string' } }, required: ['description', 'path', 'excerpt'], additionalProperties: false } } },
   required: ['status', 'issues'], additionalProperties: false,
+}
+
+/** Bounded preflight schema; blocked assessment carries one actionable conflict. */
+export const intakeOutputSchema: ObjectJsonSchema = {
+  type: 'object', properties: {
+    decision: { type: 'string', enum: ['proceed', 'blocked'] },
+    goal: { type: 'string', description: 'One sentence stating the requested outcome, limited to 300 characters.' },
+    blocker: { type: 'string', description: 'Empty when proceeding; one decisive conflict when blocked, limited to 500 characters.' },
+  }, required: ['decision', 'goal', 'blocker'], additionalProperties: false,
+}
+
+/** Bounded user-facing conclusion; evidence is capped at three items. */
+export const finalSummaryOutputSchema: ObjectJsonSchema = {
+  type: 'object', properties: {
+    status: { type: 'string', enum: ['resolved', 'partial', 'unverified', 'blocked'] },
+    conclusion: { type: 'string', description: 'One concise answer to the user’s main request, limited to 500 characters.' },
+    evidence: { type: 'array', items: { type: 'string' }, description: 'At most three decisive facts from retained task results; each limited to 240 characters.' },
+    blocker: { type: 'string', description: 'Empty when there is no blocker; otherwise state the most important one, limited to 500 characters.' },
+    nextStep: { type: 'string', description: 'One concrete next action, or empty when none is needed, limited to 300 characters.' },
+  }, required: ['status', 'conclusion', 'evidence', 'blocker', 'nextStep'], additionalProperties: false,
+}
+
+/** Validate the preflight result before the strategy decides whether planning may start. */
+export function parseTaskIntakeAssessment(value: unknown): TaskIntakeAssessment {
+  const assessment = z.object({ decision: z.enum(['proceed', 'blocked']), goal: z.string().trim().min(1).max(300),
+    blocker: z.string().trim().max(500) }).strict().parse(value)
+  if (assessment.decision === 'blocked' && assessment.blocker.length === 0) throw new Error('Blocked intake must name its conflict')
+  if (assessment.decision === 'proceed' && assessment.blocker.length > 0) throw new Error('Proceeding intake cannot retain a blocker')
+  return assessment
+}
+
+/** Validate one concise conclusion and its evidence ceiling. */
+export function parseTaskConclusion(value: unknown): TaskConclusion {
+  const conclusion = z.object({ status: z.enum(['resolved', 'partial', 'unverified', 'blocked']),
+    conclusion: z.string().trim().min(1).max(500), evidence: z.array(z.string().trim().min(1).max(240)).max(3),
+    blocker: z.string().trim().max(500), nextStep: z.string().trim().max(300) }).strict().parse(value)
+  if (conclusion.status === 'blocked' && conclusion.blocker.length === 0) throw new Error('Blocked conclusion must name its blocker')
+  return conclusion
 }
 
 /**

@@ -20,7 +20,7 @@ import {
   assertSubagentMaxDepth,
   parentAgentOptionsForDelegation,
 } from '@deepseek-ai/dsh-subagent'
-import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import type { SubagentProvider, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import {
   assertAllowedModelSelection,
   hasConfiguredLlmSelection,
@@ -154,6 +154,14 @@ function providerWording(inheritsConversation: boolean): { description: string; 
   }
 }
 
+/** Flatten a completed child answer for the parent model's tool result. */
+function resultText(result: SubagentResult): string {
+  return result.output
+    .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text)
+    .join('\n')
+}
+
 /**
  * Install one delegation-tool composition.
  * @param ctx - Context that owns the registrations.
@@ -224,9 +232,11 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
         name: toolName,
         description: wording.description
           + ' This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes.'
+          + ' Set `wait_for_result: true` when your next response depends on the child answer; the tool will wait and return its final result.'
           + (subagentProvider.prepareContinuable !== undefined
             ? ' The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.'
             : ' The completion notice includes its final answer. This backend does not accept follow-up messages.')
+          + ' The returned id is a subagent id, not a job id; do not pass it to job tools. Treat only the runtime completion notice as the result; a successful `send_message` confirms delivery only. Do not start a duplicate for the same task while waiting for its completion notice.'
           + choiceDescription,
         parameters: {
           cwd: {
@@ -242,6 +252,10 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             type: 'string',
             required: true,
             description: wording.promptDescription,
+          },
+          wait_for_result: {
+            type: 'boolean',
+            description: 'Wait for completion and return the final answer when the main response depends on this child. Defaults to false for independent work.',
           },
           ...modelSelectionEnabled ? {
             provider: {
@@ -270,11 +284,19 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             type: 'object',
             additionalProperties: false,
             properties: {
-              kind: { type: 'string', required: true, const: 'activation' },
+              kind: { type: 'string', required: true, enum: ['activation', 'result'] },
               subagentId: { type: 'string', required: true },
+              stopReason: { type: 'string', enum: ['completed', 'aborted', 'error', 'max-tokens', 'refusal'] },
+              text: { type: 'string' },
+              diagnostic: { type: 'string' },
             },
           },
-          render: (_args, value) => [{ type: 'text', text: `started subagent ${value.subagentId}` }],
+          render: (_args, value) => [{
+            type: 'text',
+            text: value.kind === 'activation'
+              ? `started subagent ${value.subagentId}\nThis is a subagent session id, not a background job id. The runtime will deliver its result in a completion notice. Do not start a duplicate for this task while waiting for its completion notice.`
+              : `subagent result ${value.subagentId}\nstop_reason: ${value.stopReason}${value.diagnostic === undefined ? '' : `\ndiagnostic: ${value.diagnostic}`}\n${value.text || '(subagent returned no text)'}`,
+          }],
         },
         isConcurrencySafe: () => true,
         async execute(args, exec) {
@@ -336,8 +358,18 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             label: args.description,
             request,
             signal: exec.signal,
-            delivery: 'parent',
+            delivery: args.wait_for_result === true ? 'caller' : 'parent',
           })
+          if (args.wait_for_result === true) {
+            const result = await started.result
+            return {
+              kind: 'result' as const,
+              subagentId: started.childId,
+              stopReason: result.stopReason,
+              text: resultText(result),
+              ...result.diagnostic === undefined ? {} : { diagnostic: result.diagnostic },
+            }
+          }
           return { kind: 'activation' as const, subagentId: started.childId }
         },
       })
@@ -380,7 +412,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           .sort()
         if (visible[0] !== toolName) return ''
         const names = visible.map(name => `\`${name}\``).join(' or ')
-        return `Start independent delegations with ${names} together in one assistant message and continue useful work while they run.`
+        return `Start independent delegations with ${names} together in one assistant message and continue useful work while they run. Set \`wait_for_result: true\` when your next response depends on a child answer; otherwise use runtime completion notices. Child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.`
       },
     })
   }

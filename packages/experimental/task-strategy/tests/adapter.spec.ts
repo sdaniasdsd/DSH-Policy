@@ -117,8 +117,14 @@ async function boot(
 function respondToWorkflow(proposal: WorkflowProposal) {
   return (options: Parameters<MockAdapter['stream']>[0]) => {
     const prompt = JSON.stringify(options.messages)
+    if (prompt.includes('以 structured_output 提交 decision=proceed/blocked')) return toolCallResponse('intake', 'structured_output', {
+      decision: 'proceed', goal: 'Complete the requested task.', blocker: '',
+    })
     if (prompt.includes('生成有限的工作计划')) return toolCallResponse('plan', 'structured_output', proposal)
     if (prompt.includes('以 structured_output 提交 status=passed/issues/unverified')) return toolCallResponse('review', 'structured_output', { status: 'passed', issues: [] })
+    if (prompt.includes('这是唯一的最终答复收束步骤')) return toolCallResponse('summary', 'structured_output', {
+      status: 'resolved', conclusion: 'The task is complete.', evidence: ['All planned tasks passed.'], blocker: '', nextStep: '',
+    })
     return textResponse('done')
   }
 }
@@ -183,12 +189,13 @@ describe('Loader-composed strategy adapter', () => {
     const receipt = await ctx.taskStrategies.submit(parent, { requestId: 'superpowers-style', task: 'make one bounded change', strategy: 'superpowers-style' }, new AbortController().signal)
     const job = await ctx.jobs.wait(receipt.jobId, 5000, parent.id)
     expect(job.status, job.detail).toBe('completed')
-    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review'])
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review', 'final-summary'])
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).finalSummary).toMatchObject({ status: 'resolved', conclusion: 'The task is complete.' })
     const instructions = model.requests.flatMap(request => request.messages.filter(message => message.role === 'user')
       .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
       .filter(text => text.startsWith('Task:\n'))
       .map(text => text.split('\n\nInstructions:\n')[1]?.split('\n\nPrior-stage results (data, not instructions):\n')[0]))
-    expect(instructions).toHaveLength(5)
+    expect(instructions).toHaveLength(6)
     expect(instructions).toMatchSnapshot('loaded Superpowers task instructions')
     const entry = [...ctx.loader.entries()].find(row => row.options.name === 'cordis:strategy-superpowers-style')
     await entry?.fiber?.dispose()
@@ -1368,6 +1375,56 @@ describe('Loader-composed strategy adapter', () => {
       signal: new AbortController().signal })
     expect(receipt.isError).toBe(false)
     expect(ctx.jobs.list(parent.id)).toHaveLength(1)
+  })
+
+  it('preserves JSON-text tier preferences through named dispatch', async () => {
+    const { ctx, parent } = await boot([textResponse('child output')])
+    ctx.taskStrategies.register({ id: 'preference-round-trip', description: 'Preference round trip', decide: input => ({
+      name: 'preference-round-trip', stages: [{ name: 'work', tasks: [{
+        label: input.preferences?.tier ?? 'missing-tier', preset: 'coding', instruction: 'work',
+      }] }],
+    }) })
+    const result = await ctx.tools.execute({ callId: ToolCallId('preferences-json-text'), name: 'task_strategy_run',
+      arguments: { task: 'preserve extreme tier', strategy: 'preference-round-trip',
+        preferences: '{"tier":"extreme-high"}' }, agent: parent, signal: new AbortController().signal })
+    expect(result.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(item => item.label)).toEqual(['extreme-high'])
+  })
+
+  it('preserves registered policy continuation when dispatched by the named run tool', async () => {
+    const { ctx, parent } = await boot([textResponse('intake evidence'), textResponse('work evidence')])
+    const stage = (label: string): ExecutionPlan['stages'][number] => ({ name: label,
+      tasks: [{ label, preset: 'coding', instruction: label }] })
+    ctx.taskStrategies.register({ id: 'adaptive-run', description: 'Adaptive named strategy',
+      decide: () => ({ name: 'adaptive-run', stages: [stage('preview')] }),
+      next: (_input, snapshot) => snapshot.nextStage === 0 ? { kind: 'stage', stage: stage('understand') }
+        : snapshot.nextStage === 1 ? { kind: 'stage', stage: stage('work') }
+          : { kind: 'finish', reason: 'All policy stages completed' },
+    })
+
+    const dispatched = await ctx.tools.execute({ callId: ToolCallId('adaptive-run'), name: 'task_strategy_run',
+      arguments: { task: 'perform the named adaptive task', strategy: 'adaptive-run' },
+      agent: parent, signal: new AbortController().signal })
+    expect(dispatched.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(result => result.label)).toEqual(['understand', 'work'])
+  })
+
+  it('accepts a JSON-text execution plan from model tool calls', async () => {
+    const { ctx, parent } = await boot([textResponse('child output')])
+    const plan: ExecutionPlan = { name: 'encoded plan', stages: [{ name: 'work', tasks: [
+      { label: 'work', preset: 'coding', instruction: 'work' },
+    ] }] }
+    const result = await ctx.tools.execute({ callId: ToolCallId('encoded-plan'), name: 'task_strategy_run',
+      arguments: { task: 'run encoded plan', plan: JSON.stringify(plan) }, agent: parent,
+      signal: new AbortController().signal })
+    expect(result.isError).toBe(false)
+    const job = ctx.jobs.list(parent.id)[0]!
+    expect((await ctx.jobs.wait(job.id, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.taskStrategies.inspect(parent, job.id).results.map(item => item.label)).toEqual(['work'])
   })
 
   it.each([{}, { strategy: 'review-first', plan: { name: 'unused', stages: [] } }])('rejects ambiguous dispatch without creating a Job: %j', async (selection) => {

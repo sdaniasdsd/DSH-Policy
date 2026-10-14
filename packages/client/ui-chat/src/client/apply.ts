@@ -263,6 +263,12 @@ export function apply(ctx: Context): void {
             if (scope === undefined) return
             ctx.get('inputTriggers')?.sessionOf(scope).openReference('skill', { ref: `/${name}` })
           },
+          continueFromOutputLimit: async (prompt) => {
+            const scope = ctx.sessions.scope(sessionId)
+            const conversation = scope?.get('conversation')
+            if (conversation === undefined) throw new Error('ui-chat: Conversation is unavailable for this Session')
+            await conversation.send(prompt)
+          },
           openExternalLink: (url) => {
             if (linkOpening.getSnapshot() === 'sidebar' && ctx.get('sidebarRightTabs')?.get('browser') !== undefined) {
               ctx.sidebarRight.openTab('browser', { params: { url } })

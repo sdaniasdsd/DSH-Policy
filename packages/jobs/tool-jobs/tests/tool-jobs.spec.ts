@@ -46,6 +46,8 @@ interface FakeDelivery {
   followup?: (...args: unknown[]) => void
   /** Defaults to `running`, the lane that never wakes, so notice-content tests pin one lane. */
   status?: 'idle' | 'running'
+  /** Session origin used to reproduce a live child session id passed as a job id. */
+  origin?: 'subagent'
 }
 
 /**
@@ -61,7 +63,7 @@ async function fakeAgent(ctx: Context, sessionId: string, delivery: FakeDelivery
     inject: delivery.inject ?? (() => {}),
     followup: delivery.followup ?? (() => {}),
     status: delivery.status ?? 'running',
-    session: { id, header: { version: 0, id, createdAt: 0 } },
+    session: { id, header: { version: 0, id, createdAt: 0, ...delivery.origin === undefined ? {} : { origin: delivery.origin } } },
   } as unknown as Agent
   agentRegistryDisposers.set(agent, await ctx.agents.register(agent))
   agentScopeFibers.set(agent, scopeFiber)
@@ -137,6 +139,17 @@ async function settleTasks(ctx: Context, owner: Agent, count: number): Promise<v
 }
 
 describe('tool-jobs setup', () => {
+  it('distinguishes background job ids from subagent ids in model guidance', async () => {
+    const { ctx } = await setup()
+    const assembly = await ctx.systemPrompt.assemble()
+    const guidance = assembly.sections.find(section => section.name === 'tool:jobs')?.text ?? ''
+    expect(guidance).toContain('A subagent id from `subagent` or `subagent_fork` is not a background job id')
+    expect(guidance).toContain('use its runtime completion notice instead')
+    const schema = ctx.tools.schemas().find(tool => tool.name === 'job_output')!
+    const jobIdDescription = (schema.parameters as { properties: Record<string, { description?: string }> }).properties.job_id?.description
+    expect(jobIdDescription).toContain('Subagent ids from `subagent` or `subagent_fork` are not valid here')
+  })
+
   it('attaches the job controller on load and detaches it with the fiber', async () => {
     const { ctx, toolsFiber } = await setup()
     expect(() => ctx.jobs.start(producer().spec)).not.toThrow()
@@ -514,6 +527,18 @@ describe('job_output', () => {
     const unknown = await call(ctx, 'job_output', { job_id: 'bash-99' })
     expect(unknown.isError).toBe(true)
     expect(text(unknown)).toContain('unknown job bash-99')
+  })
+
+  it('explains that a live subagent session id must not be passed to job_output', async () => {
+    const { ctx } = await setup()
+    await fakeAgent(ctx, 'child-session-1', { origin: 'subagent' })
+
+    const result = await call(ctx, 'job_output', { job_id: 'child-session-1' })
+
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('"child-session-1" is a subagent session id, not a background job id')
+    expect(text(result)).toContain('wait_for_result: true')
+    expect(text(result)).toContain('do not start a duplicate')
   })
 })
 

@@ -310,6 +310,7 @@ export class ReactLoopAgent implements Agent {
     }
     phase.turn = turn
     let turnEnds: TurnEndReason | null = null
+    let stopping: StepEndReason | null = null
     let target: InboxTarget = 'next-turn'
     try {
       while (true) {
@@ -320,7 +321,7 @@ export class ReactLoopAgent implements Agent {
           turnEnds = { kind: 'blocked' }
           return false
         }
-        if (turnEnds && decision.messages.length === 0) break
+        if (stopping && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
         if (phase.step === 0 && decision.messages.length === 0) {
@@ -338,6 +339,9 @@ export class ReactLoopAgent implements Agent {
           // max-tokens is sticky: once any step hits the ceiling, later steps
           // that complete normally must not downgrade the turn outcome.
           const stepEnd = await this.step(decision)
+          // Step completion controls scheduling; the durable turn outcome can
+          // remain max-tokens while later steps still owe tool results.
+          stopping = stepEnd
           // max-tokens stays sticky: a later completed step must not
           // downgrade the turn outcome.
           if (turnEnds === null || turnEnds.kind !== 'max-tokens') turnEnds = stepEnd
@@ -358,11 +362,11 @@ export class ReactLoopAgent implements Agent {
           this.session.append('step/end', { turn, step })
         }
         signal.throwIfAborted()
-        if (turnEnds && this.inbox.nextStep.length === 0) {
+        if (stopping && this.inbox.nextStep.length === 0) {
           await this.dispatch.serial('agent/turn-stopping', { turn, signal })
           signal.throwIfAborted()
         }
-        if (turnEnds && this.inbox.nextStep.length === 0) break
+        if (stopping && this.inbox.nextStep.length === 0) break
         target = 'next-step'
       }
     } catch (error: unknown) {

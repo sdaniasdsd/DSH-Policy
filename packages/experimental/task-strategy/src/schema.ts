@@ -30,6 +30,8 @@ export const planSchema = z.object({
       provider: z.string(),
       workflowOutput: z.boolean(),
       reviewOutput: z.boolean(),
+      intakeOutput: z.boolean(),
+      finalSummaryOutput: z.boolean(),
       artifactChecks: z.union([z.const(undefined), z.array(z.object({
         id: z.string().required(), path: z.string().required(), contains: z.string(),
       }))]),
@@ -84,7 +86,11 @@ export const preferencesSchema = z.dict(z.string()).required()
  * @returns validated plan; rejects malformed fields.
  */
 export function parsePlan(value: unknown): ExecutionPlan {
-  return planSchema(value as ExecutionPlan)
+  if (typeof value !== 'string') return planSchema(value as ExecutionPlan)
+  let decoded: unknown
+  try { decoded = JSON.parse(value) }
+  catch { throw new Error('Execution plan text must be valid JSON') }
+  return planSchema(decoded as ExecutionPlan)
 }
 
 /**
@@ -93,7 +99,11 @@ export function parsePlan(value: unknown): ExecutionPlan {
  * @returns string-valued preference dictionary.
  */
 export function parsePreferences(value: unknown): Record<string, string> {
-  return preferencesSchema(structuredClone(value) as Record<string, string>)
+  if (typeof value !== 'string') return preferencesSchema(structuredClone(value) as Record<string, string>)
+  let decoded: unknown
+  try { decoded = JSON.parse(value) }
+  catch { throw new Error('Task preferences text must be valid JSON') }
+  return preferencesSchema(decoded as Record<string, string>)
 }
 
 /**

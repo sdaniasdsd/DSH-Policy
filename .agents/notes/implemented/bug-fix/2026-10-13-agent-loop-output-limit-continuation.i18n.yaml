@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-13-agent-loop-output-limit-continuation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-13-agent-loop-output-limit-continuation.md
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling:
+  en: c5be58fdb0b6b38d
+  zh: a2148e92d30d5940
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling/problem:
+  en: ad62794d075d46ce
+  zh: a4b842db221150ae
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling/decision:
+  en: 915c9c94669ea3aa
+  zh: 6792f6609bc76498
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling/alternatives-considered:
+  en: 95813ee891e69ada
+  zh: aaabb694c81dc0a7
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling/consequences:
+  en: 4eab94af94a60f53
+  zh: 3bdd25ebc98598af
+/agent-note-keep-output-limit-outcome-separate-from-step-scheduling/testing:
+  en: cc8774d063ff5380
+  zh: fed63fcae361f807
