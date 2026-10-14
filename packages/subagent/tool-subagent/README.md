@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give an agent a named tool that delegates work to a configured backend. Every call starts a managed activation and returns a child id; the runtime owns completion notices and cleanup. Local children support messages and restoration, while external backends execute one task and return their final answer through the completion notice. Supported backends can expose approved child LLM routes. Each instance can set child persona, tool access, and depth limits.
+Use this package to give an agent a named tool that delegates work to a configured backend. Each call starts a managed activation; independent work returns a child id and uses runtime completion notices, while `wait_for_result: true` waits for the final answer in the tool result. Local children support messages and restoration, while external backends execute one task. Supported backends can expose approved child LLM routes. Each instance can set child persona, tool access, and depth limits.
 
 ## Table of Contents
 
@@ -56,9 +56,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Managed delegation
 
-Every call returns `started subagent <childId>` after the runtime accepts the child, followed by a reminder that this is a child-session id rather than a background job id. It does not wait for the child's result. The activation owns the work independently of the completed tool call; the runtime sends a completion notice and releases execution resources.
+By default, a call returns `started subagent <childId>` after the runtime accepts the child, followed by a reminder that this is a child-session id rather than a background job id. The activation owns the work independently of the completed tool call; the runtime sends a completion notice and releases execution resources. Set `wait_for_result: true` when the parent needs the child's answer before continuing; the tool waits for cleanup and returns the final text and stop reason.
 
-Treat the returned id as a subagent id, not a background job id. A successful `send_message` only confirms delivery; use the runtime completion notice to collect the child's result before reporting it. Keep each child id assigned to its task and do not start duplicate work while waiting for its completion notice.
+Treat the returned id as a subagent id, not a background job id. A successful `send_message` only confirms delivery; in the default mode, use the runtime completion notice to collect the child's result before reporting it. Keep each child id assigned to its task and do not start duplicate work while waiting for its completion notice.
 
 Every backend’s completion notice carries its final answer. Local Spawn and Fork children can also send messages, accept more work through `send_message` while active, or resume after settling. Codex, Claude Code, ACP, and DSH SDK backends do not accept follow-up messages.
 
@@ -86,11 +86,11 @@ One instance is one provider plus one tool name. The plugin mirrors provider lif
 
 ### Activation ownership
 
-The tool calls `ctx.subagents.startActivation()` with parent delivery selected. The runtime owns startup cancellation, execution, outcome reporting, and cleanup. A startup failure is an errored tool result; failures after publication arrive through the completion notice, with diagnostics and partial output preserved by the runtime.
+The tool calls `ctx.subagents.startActivation()` with parent delivery for independent work or caller delivery when `wait_for_result` is true. The runtime owns startup cancellation, execution, outcome reporting, and cleanup. A startup failure is an errored tool result; failures after publication arrive through the completion notice or the awaited result, with diagnostics and partial output preserved by the runtime.
 
 ### Result acknowledgement
 
-The canonical tool result is `{ kind: 'activation', subagentId }`. It contains no execution Promise or final output; programmatic consumers that need to await results use the subagent service directly.
+The tool result is `{ kind: 'activation', subagentId }` by default and `{ kind: 'result', subagentId, stopReason, text, diagnostic? }` when `wait_for_result` is true. The runtime retains ownership of the execution Promise and cleanup.
 
 ### Context-sensitive wording
 
@@ -130,11 +130,11 @@ Read these pages when the package-level contract is not enough; they move from t
 
 #### What the model sees
 
-The generated default [`subagent` schema](../../../docs/tool-catalog.md#deepseek-aidsh-tool-subagent) appears under the configured tool name while its provider exists. An enabled Session policy adds `provider`, `model`, and `reasoning_effort` plus route guidance; the backend must support `agentOptions`. Context inheritance and continuation support determine the task and follow-up descriptions. A tool restriction removes both the schema and its `tool:<toolName>` guidance section.
+The generated default [`subagent` schema](../../../docs/tool-catalog.md#deepseek-aidsh-tool-subagent) appears under the configured tool name while its provider exists. `wait_for_result` selects whether the call returns an activation id or waits for the final answer; an enabled Session policy adds `provider`, `model`, and `reasoning_effort` plus route guidance, and the backend must support `agentOptions`. Context inheritance and continuation support determine the task and follow-up descriptions. A tool restriction removes both the schema and its `tool:<toolName>` guidance section.
 
 #### Token effect
 
-Fixed schema cost per parent request; model selection adds three parameters. Each tool instance adds one schema and one short system-prompt section.
+Fixed schema cost per parent request; model selection adds three parameters and result waiting adds one optional boolean. Each tool instance adds one schema and one short system-prompt section.
 
 #### KV Cache effect
 
@@ -163,7 +163,7 @@ Visible delegation tools share one guidance paragraph, listing tools in name ord
 ##### Tool-guidance section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run. Use runtime completion notices to collect results; a delivery acknowledgment is not the result, and child ids are not background job ids.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run. Set `wait_for_result: true` when your next response depends on a child answer; otherwise use runtime completion notices. Child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.
 ```
 
 #### Token effect
@@ -178,7 +178,7 @@ Prefix-stable while the visible tool names are unchanged; adding or removing a v
 
 #### What the model sees
 
-The call retains the task description and prompt. Success returns `started subagent <childId>` plus the child-id/completion-notice reminder; startup rejection returns an error. Child execution details are delivered separately from this acknowledgement.
+The call retains the task description and prompt. By default, success returns `started subagent <childId>` plus the child-id/completion-notice reminder; with `wait_for_result: true`, success returns the child's final text and stop reason. Startup rejection returns an error.
 
 #### Token effect
 
@@ -192,11 +192,11 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 #### What the model sees
 
-Answer delivery follows the managed delegation rules above. The returned child id identifies subsequent control and catalog operations; only backends with continuation support accept follow-up messages.
+In default mode, answer delivery follows the managed delegation rules above. In result-waiting mode, the answer arrives in the correlated tool result. The returned child id identifies subsequent control and catalog operations; only backends with continuation support accept follow-up messages.
 
 #### Token effect
 
-Messages and completion notices append to parent history independently of the start acknowledgement. The tool result itself contains no final output.
+Messages and completion notices append to parent history independently of the start acknowledgement in default mode. Result-waiting calls include final text and stop reason in the tool result.
 
 #### KV Cache effect
 
@@ -209,7 +209,7 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 These limits define what this tool does not return or enforce; they are current package constraints.
 
-- **This tool does not wait for results** — use the completion notice or child messages. Programmatic result waiting belongs to the subagent service.
+- **Waiting occupies the parent tool call** — use the default notification mode for independent work; reserve `wait_for_result: true` for child results that the parent needs before responding.
 - **Shipped fork tools cannot select a child LLM route** — they inherit the parent's provider and model to keep the copied conversation prefix eligible for KV Cache reuse. Re-enable selection only when route changes preserve reuse or expose a bounded recomputation cost.
 - **Non-routing child policy is fixed per instance** — another persona, tool filter, or depth cap requires another distinctly named tool. LLM selection requires an enabled per-Session preference and a provider that advertises `agentOptions`; both in-process providers and DSH SDK advertise it, while ACP, Codex, and Claude Code reject it rather than ignore it.
 

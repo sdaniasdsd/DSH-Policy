@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { ToolCallId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, ReasoningEffortId, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -15,7 +15,7 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentRuntime from '@deepseek-ai/dsh-subagent'
 import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { loadStoredSession } from '../../subagent/tests/persistence-helpers.ts'
 import * as mock from './scripted-provider.ts'
 import * as tool from '../src/index.ts'
@@ -44,7 +44,7 @@ async function delegationGuidance(ctx: Context, agent?: Agent): Promise<string[]
   return assembly.sections.map(section => section.text).filter(text => text.startsWith('Start independent delegations'))
 }
 
-const completionGuidance = ' Use runtime completion notices to collect results; a delivery acknowledgment is not the result, child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.'
+const completionGuidance = ' Set `wait_for_result: true` when your next response depends on a child answer; otherwise use runtime completion notices. Child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.'
 
 /**
  * Drives the REAL plugin body: mounts `dsh-tool-subagent` on a real
@@ -76,6 +76,53 @@ describe('dsh-tool-subagent', () => {
     expect(text(result)).toMatch(/^started subagent /)
   })
 
+  it('waits for and returns the child result when the main response depends on it', async () => {
+    const ctx = await setup({ provider: 'mock' }, { reply: 'child says hi' })
+
+    const result = await callSubagent(ctx, {
+      description: 'research answer',
+      prompt: 'Find the answer',
+      wait_for_result: true,
+    })
+
+    expect(result.isError).toBe(false)
+    expect(text(result)).toContain('subagent result')
+    expect(text(result)).toContain('child says hi')
+    expect(text(result)).toContain('stop_reason: completed')
+  })
+
+  it('returns the waited child answer to the parent model under the original tool call id', async () => {
+    const ctx = await setup({ provider: 'mock' }, { reply: 'child evidence' })
+    const adapter = new MockAdapter([
+      (request) => {
+        const schema = request.tools?.find(candidate => candidate.name === 'subagent')
+        expect(schema?.parameters).toMatchObject({ properties: { wait_for_result: { type: 'boolean' } } })
+        return toolCallResponse(
+          'waited-child-call',
+          'subagent',
+          { description: 'collect evidence', prompt: 'Find evidence', wait_for_result: true },
+        )
+      },
+      textResponse('Parent incorporated the child evidence.'),
+    ])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const parent = await ctx.agentLoop.create(SessionId('waited-child-parent'), { provider: 'mock', model: 'mock' })
+    const idle = new Promise<void>((resolve) => {
+      const dispose = ctx.on('agent/status', ({ agent, status }) => {
+        if (agent === parent && status === 'idle') { dispose(); resolve() }
+      })
+    })
+
+    parent.followup(createUserMessage({ content: [{ type: 'text', text: 'Delegate and synthesize the answer.' }], source: { kind: 'user' } }))
+    await idle
+
+    const returnedTool = adapter.requests[1]!.messages.find(message => message.role === 'tool')
+    expect(returnedTool).toMatchObject({ toolCallId: 'waited-child-call', isError: false })
+    expect(returnedTool?.content).toEqual([{ type: 'text', text: expect.stringContaining('child evidence') }])
+    expect(parent.session.snapshotEvents().some(event =>
+      event.type === 'assistant/message' && event.data.message.content.some(block => block.type === 'text' && block.text === 'Parent incorporated the child evidence.'))).toBe(true)
+  })
+
   it('resolves an explicit child directory without changing the parent directory', async () => {
     let childCwd: string | undefined
     const ctx = await setup({ provider: 'mock' }, {
@@ -105,6 +152,7 @@ describe('dsh-tool-subagent', () => {
       'cwd',
       'description',
       'prompt',
+      'wait_for_result',
     ])
     expect(schema!.description).not.toContain('job_output')
   })
