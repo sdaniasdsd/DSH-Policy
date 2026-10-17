@@ -1,4 +1,5 @@
 /** Model controls carry caller ownership; automatic dispatch is host-owned. */
+import { randomUUID } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type TaskStrategies from './cordis.ts'
@@ -32,20 +33,24 @@ export function entryTools(service: TaskStrategies, prefix: string, maxBytes: nu
         if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
         service.cancelEntry({ sessionId: exec.agent.id, requestId: args.requestId }); return Promise.resolve('Cancellation requested')
       } }),
-    defineTool({ name: `${prefix}_switch`, description: 'Reserve a strategy replacement at the next stage boundary, using the binding epoch from task status.',
+    defineTool({ name: `${prefix}_switch`, description: 'Reserve a strategy replacement at the next stage boundary, using the binding epoch from task status. Reuse one commandId when retrying the same replacement.',
       parameters: { requestId: { type: 'string', required: true }, strategy: { type: 'string', required: true },
-        expectedBindingEpoch: { type: 'number', required: true } }, output,
+        expectedBindingEpoch: { type: 'number', required: true }, commandId: { type: 'string' } }, output,
       execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
-        service.switchEntry({ sessionId: exec.agent.id, requestId: args.requestId,
-          request: { strategy: args.strategy, expectedBindingEpoch: args.expectedBindingEpoch } })
-        return Promise.resolve('Replacement reserved; inspect status for commitment')
+        const outcome = service.switchEntry({ sessionId: exec.agent.id, requestId: args.requestId,
+          request: { commandId: args.commandId ?? randomUUID(), strategy: args.strategy,
+            expectedBindingEpoch: args.expectedBindingEpoch } })
+        return Promise.resolve(boundText(JSON.stringify(outcome), maxBytes))
       } }),
-    defineTool({ name: `${prefix}_resume`, description: 'Resume the retained strategy after a rejected replacement, using its observed binding epoch.',
-      parameters: { requestId: { type: 'string', required: true }, epoch: { type: 'number', required: true } }, output,
+    defineTool({ name: `${prefix}_resume`, description: 'Resume the retained strategy after a rejected replacement, using its observed binding epoch. Reuse one commandId when retrying the same resume.',
+      parameters: { requestId: { type: 'string', required: true }, epoch: { type: 'number', required: true },
+        commandId: { type: 'string' } }, output,
       execute(args, exec) {
         if (exec.agent === undefined) throw new Error('Task entry requires a calling Agent')
-        service.resumeEntry({ sessionId: exec.agent.id, requestId: args.requestId, epoch: args.epoch }); return Promise.resolve('Task resumed')
+        const outcome = service.resumeEntry({ sessionId: exec.agent.id, requestId: args.requestId,
+          commandId: args.commandId ?? randomUUID(), epoch: args.epoch })
+        return Promise.resolve(boundText(JSON.stringify(outcome), maxBytes))
       } }),
   ]
 }

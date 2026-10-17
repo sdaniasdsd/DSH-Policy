@@ -37,13 +37,72 @@ describe('task entry chat card', () => {
       matches: [start], start, state: base, current: new Map() }
     expect(taskEntryDefinition.buildViewNode?.(context)).toMatchObject({ location: { kind: 'session' }, anchorSeq: 7 })
   })
+  it.each(['conversation', 'Associated with message:previous'])('keeps a materialized entry identity hidden after %s', (progress) => {
+    const event = { type: 'task-strategy/entry' as const, seq: SessionSeq(7), time: 0,
+      data: { view: base, input: createUserMessage({ source: { kind: 'user' }, content: [] }) } }
+    const start = { event, role: 'start' as const, location: { kind: 'unresolved' as const } }
+    const context: ConversationNodeContext<EntryView> = { key: 'entry', kind: 'task-strategy-entry', id: base.requestId,
+      matches: [start], start, state: { ...base, state: 'completed', progress }, current: new Map() }
+
+    expect(taskEntryDefinition.buildViewNode?.(context)).toMatchObject({ key: 'entry', visibility: 'hidden' })
+  })
   it('displays unverified execution separately from successful artifact checks', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'completed',
+      run: { phase: 'completed', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 2,
+        completedStages: 2, completedTasks: 2, startedTasks: 2,
+        verification: { status: 'unverified', checks: [{ id: 'readme-first-line', status: 'unverified', reason: 'No successful scoped read observation' }] } } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getAllByText(/未验证/)).toHaveLength(2)
+    expect(screen.getByText(/执行结束不代表验证通过/)).toBeTruthy()
+    expect(screen.queryByText(/已登记检查通过/)).toBeNull()
+  })
+  it.each(['running', 'waiting'] as const)('does not call verification final while the task is %s', (state) => {
+    render(<TaskEntryPanel view={{ ...base, state,
+      run: { phase: state, binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 2,
+        completedStages: 1, completedTasks: 1, startedTasks: 2, verification: { status: 'unverified', checks: [] } } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.queryByText(/执行结束不代表验证通过/)).toBeNull()
+  })
+  it('shows a blocked task as waiting with its reason, not as a terminal unverified result', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'waiting', error: 'Need a target',
+      run: { phase: 'waiting', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 2,
+        completedStages: 1, completedTasks: 1, startedTasks: 2, verification: { status: 'unverified', checks: [] } } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText('等待策略调整')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toBe('Need a target')
+    expect(screen.getByText(/未登记验收项/)).toBeTruthy()
+    expect(screen.queryByText(/执行结束不代表验证通过/)).toBeNull()
+  })
+  it.each([['failed', '执行失败'], ['cancelled', '已取消']] as const)(
+    'labels %s as a distinct terminal state without live controls', (state, label) => {
+      render(<TaskEntryPanel view={{ ...base, state }} language="zh" connected={true} strategies={[]}
+        cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+      expect(screen.getByText(label)).toBeTruthy()
+      expect(screen.queryByRole('button', { name: '取消任务' })).toBeNull()
+    })
+  it('distinguishes an empty check list from checks that remain unverified', () => {
     render(<TaskEntryPanel view={{ ...base, state: 'completed',
       run: { phase: 'completed', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 2,
         completedStages: 2, completedTasks: 2, startedTasks: 2, verification: { status: 'unverified', checks: [] } } }}
     language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
-    expect(screen.getByText(/未验收/)).toBeTruthy()
-    expect(screen.queryByText(/已登记检查通过/)).toBeNull()
+    expect(screen.getByText(/未登记验收项/)).toBeTruthy()
+  })
+  it('does not report unverified when no verification result exists yet', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'running',
+      run: { phase: 'running', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 1,
+        completedStages: 0, completedTasks: 0, startedTasks: 1 } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText(/尚无验收结果/)).toBeTruthy()
+    expect(screen.queryByText(/未验证/)).toBeNull()
+  })
+  it('warns when a completed task has no registered verification checks', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'completed',
+      run: { phase: 'completed', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 1,
+        completedStages: 1, completedTasks: 1, startedTasks: 1 } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText(/未登记验收项/)).toBeTruthy()
+    expect(screen.getByText(/任务完成，但没有登记验收项，无法证明验收通过/)).toBeTruthy()
+    expect(screen.queryByText(/尚无验收结果/)).toBeNull()
   })
   it('disables live controls on generation loss without a reset event', async () => {
     let lose = () => {}

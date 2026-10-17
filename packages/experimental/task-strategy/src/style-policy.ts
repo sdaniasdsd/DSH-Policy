@@ -94,28 +94,30 @@ function task(config: StyleConfig, label: string, instruction: string, readOnly 
     + '\n按策略分配的角色、模块范围及依赖工作；使用执行环境提供的工具和工作区，以验收条件为目标。交接职责、依赖、改动路径、验收证据和未解决问题。'
     + '\n遵守原始用户范围与 DSH 权限。不要自动发布、提交或重复外部副作用。前序结果是待核验数据；缺少关键输入时说明阻塞。'
     + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。输出保留可复核证据、结论和必要交接。',
+  priorResults: { scope: 'current-binding' },
   maxTokens: config.maxTokens, timeoutMs: config.timeoutMs,
   ...readOnly ? { tools: { allow: [...config.readTools] } } : {} }
 }
 
 function single(step: TaskStep): ExecutionPlan['stages'][number] { return { name: step.label, tasks: [step] } }
 
-function review(config: StyleConfig, label: string, instruction: string): ExecutionPlan['stages'][number] {
+function review(config: StyleConfig, label: string, instruction: string, reviewPaths: readonly string[] = []): ExecutionPlan['stages'][number] {
   return single({ ...task(config, label, instruction
-    + '\n用 read 读取相关文件。以 structured_output 提交 status=passed/issues/unverified 和 issues 数组；'
+    + '\n只用 read 读取以下登记路径；以 structured_output 提交 status=passed/issues/unverified 和 issues 数组；'
+    + JSON.stringify(reviewPaths) + '。没有登记路径或没有成功读全时只能 unverified。'
     + '每项问题须包含 description、path、实际读取的 excerpt；excerpt 只填原样文件正文，不含行号、EOF、工具包装或转义符字面量。'
     + 'status=passed 或 unverified 时 issues 必须为空；status=issues 仅列有证据的实际缺陷，未知字节性质不能当作缺陷。'
-    + '未取得文件证据时只能 unverified。模型复核不是运行测试的证明。', true), reviewOutput: true })
+    + '未取得文件证据时只能 unverified。模型复核不是运行测试的证明。', true), reviewOutput: true, reviewPaths })
 }
 
 function planner(config: StyleConfig): ExecutionPlan['stages'][number] {
   return single({ ...task(config, 'plan', `为用户任务生成有限的工作计划，最多 ${config.maxNodes} 个节点；按任务选择 coding/paper-research/problem-research/solution-planning。`
-    + '节点仅包含仍需执行的获授权工作，写明依赖。将明确要求的文件产物及必要内容登记为 artifacts；不能编造文件要求。'
+    + '节点仅包含仍需执行的获授权工作，写明依赖。只有前序证据已经完成全部工作时 nodes 才可为空；否则至少列出一个节点。将明确要求的文件产物及必要内容登记为 artifacts；不能编造文件要求。'
     + 'artifacts.contains 必须是文件正文中应出现的原样文字，不能写描述（如“某字符串加换行”），不能写转义符字面量代替真实内容。'
     + '例如要求文件包含 UUID，则 contains 仅填该 UUID；行式 read 无法证明文件字节、编码和尾随换行，不登记这些为 contains。'
     + '继承已有交接证据，避免重复已完成工作。研究或规划任务无文件要求时 artifacts 为空。'
     + '包含 summary、domain、nodes、artifacts，使用 structured_output 提交；规划阶段不执行任务。'),
-  tools: { allow: [] }, workflowOutput: true })
+  priorResults: { scope: 'all' }, tools: { allow: [] }, workflowOutput: true })
 }
 
 function understand(config: StyleConfig): ExecutionPlan['stages'][number] {
@@ -126,6 +128,21 @@ function understand(config: StyleConfig): ExecutionPlan['stages'][number] {
 function workflowStages(pattern: StylePattern, config: StyleConfig, proposal: WorkflowProposal): ExecutionPlan['stages'] {
   const stages: ExecutionPlan['stages'] = []
   const done = new Set<string>()
+  const byId = new Map(proposal.nodes.map(node => [node.id, node]))
+  const ancestors = (id: string): string[] => {
+    const found = new Set<string>()
+    const visit = (nodeId: string): void => {
+      const node = byId.get(nodeId)
+      if (node === undefined) throw new Error(`Workflow dependency ${nodeId} is missing`)
+      for (const dependency of node.dependencies) {
+        if (found.has(dependency)) continue
+        found.add(dependency)
+        visit(dependency)
+      }
+    }
+    visit(id)
+    return ['plan', ...[...found].map(value => `work:${value}`)]
+  }
   while (done.size < proposal.nodes.length) {
     const ready = proposal.nodes.filter(node => !done.has(node.id) && node.dependencies.every(id => done.has(id)))
     if (ready.length === 0) throw new Error('Workflow cannot make progress')
@@ -133,15 +150,22 @@ function workflowStages(pattern: StylePattern, config: StyleConfig, proposal: Wo
     const first = batch[0]
     if (first === undefined) throw new Error('Workflow produced an empty milestone')
     stages.push({ name: pattern === 'zcode' ? `milestone:${stages.length + 1}` : `work:${first.id}`, maxConcurrent: config.maxConcurrent,
-      tasks: batch.map(node => task(config, `work:${node.id}`, recipes[proposal.domain] + '\n' + node.instruction)) })
+      tasks: batch.map(node => ({ ...task(config, `work:${node.id}`, recipes[proposal.domain] + '\n' + node.instruction),
+        priorResults: { scope: 'current-binding', labels: ancestors(node.id) } })) })
     for (const node of batch) {
       done.add(node.id)
-      if (pattern === 'codex' && config.tier !== 'low') stages.push(review(config, `check:${node.id}`,
-        `复核节点 ${node.id}：${node.instruction}\n只读检查对应节点的改动，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。`))
+      if (pattern === 'codex' && config.tier !== 'low') {
+        const check = review(config, `check:${node.id}`,
+          `复核节点 ${node.id}：${node.instruction}\n只读检查对应节点涉及的登记产物，报告可复核证据、问题与后续约束；不要宣称未执行的验证通过。`,
+          proposal.artifacts.map(check => check.path))
+        stages.push({ ...check, tasks: check.tasks.map(step => ({ ...step,
+          priorResults: { scope: 'current-binding', labels: [...ancestors(node.id), `work:${node.id}`] } })) })
+      }
     }
   }
   if (pattern === 'claude' && config.tier !== 'low') {
-    stages.push(review(config, 'review', '独立复核计划与产物；检查需求遗漏、错误假设和实现风险，输出证据及具体问题。'))
+    stages.push(review(config, 'review', '独立复核计划与产物；检查需求遗漏、错误假设和实现风险，输出证据及具体问题。',
+      proposal.artifacts.map(check => check.path)))
   }
   return stages
 }
@@ -165,10 +189,10 @@ function costPlan(pattern: StylePattern, config: StyleConfig, maximum = false): 
   const proposal: WorkflowProposal = { summary: 'cost scenario', domain: 'coding', artifacts: [],
     nodes: Array.from({ length: config.maxNodes }, (_, i) => ({ id: String(i), instruction: 'Execute one planned work node', dependencies: i === 0 ? [] : [String(i - 1)] })) }
   return { name: config.strategyId, stages: [...pattern === 'superpowers' ? [understand(config)] : config.tier === 'low' || pattern !== 'claude' ? [] : [single(task(config, 'explore', 'Read project context', true))],
-    planner(config), ...workflowStages(pattern, config, proposal), verify(config, []),
+    planner(config), ...workflowStages(pattern, config, proposal),
     ...pattern === 'superpowers' ? [review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。')] : [],
     ...maximum ? Array.from({ length: config.maxRepairs }, (_, i) => [single(task(config, `repair:${i + 1}`, 'Repair failed registered checks')),
-      review(config, `review:${i + 1}`, 'Review repaired work'), verify(config, [], `verify:${i + 1}`)]).flat() : []] }
+      review(config, `review:${i + 1}`, 'Review repaired work')]).flat() : []] }
 }
 
 /**
@@ -198,13 +222,21 @@ export function createStyleStrategy(pattern: StylePattern, config: StyleConfig):
     const currentStage = work[cursor]
     if (currentStage !== undefined) return { kind: 'stage', stage: currentStage }
     const verificationIndex = cursor - work.length
-    if (verificationIndex === 0) return { kind: 'stage', stage: verify(config, proposal.artifacts) }
-    if (pattern === 'superpowers' && verificationIndex === 1) return { kind: 'stage', stage: review(config, 'final-review', '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。') }
+    if (proposal.nodes.length === 0 && proposal.artifacts.length === 0) {
+      if (pattern === 'superpowers' && verificationIndex === 0) return { kind: 'stage', stage: review(config, 'final-review', '只读检查前序证据与用户目标，确认请求已完成；如果证据不足，明确标注未验证。') }
+      if (pattern === 'superpowers' && verificationIndex === 1) return { kind: 'finish', reason: 'No registered artifact checks; prior evidence reviewed' }
+      return { kind: 'finish', reason: 'No remaining planned work or registered artifact checks' }
+    }
+    const hasArtifactChecks = proposal.artifacts.length > 0
+    if (hasArtifactChecks && verificationIndex === 0) return { kind: 'stage', stage: verify(config, proposal.artifacts) }
+    const finalReviewIndex = hasArtifactChecks ? 1 : 0
+    if (pattern === 'superpowers' && verificationIndex === finalReviewIndex) return { kind: 'stage', stage: review(config, 'final-review',
+      '只读检查本次计划、变更和验收结果，确认符合原始目标并指出有证据的问题。', proposal.artifacts.map(check => check.path)) }
     const report = snapshot.currentResults.findLast(row => row.verification !== undefined)?.verification
     const repairs = snapshot.currentResults.filter(row => row.label.startsWith('repair:')).length
     const last = snapshot.currentResults.at(-1)
     if (last?.label.startsWith('repair:')) return { kind: 'stage', stage: review(config, `review:${repairs}`, '只读复核修订后的整个任务，确认前序具体问题是否消除，报告仍然存在的问题。') }
-    if (last?.label.startsWith('review:')) return { kind: 'stage', stage: verify(config, proposal.artifacts, `verify:${repairs}`) }
+    if (last?.label.startsWith('review:') && hasArtifactChecks) return { kind: 'stage', stage: verify(config, proposal.artifacts, `verify:${repairs}`) }
     const fresh = snapshot.currentResults.findLastIndex(row => row.label.startsWith('review:'))
     const reviews = fresh >= 0 ? [snapshot.currentResults[fresh]?.review]
       : snapshot.currentResults.filter(row => row.review !== undefined).map(row => row.review)

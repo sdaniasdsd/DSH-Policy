@@ -23,7 +23,7 @@ import { adapterSchema } from './schema.ts'
 import type { ResolvedAdapterConfig } from './schema.ts'
 import { strategyTools } from './tools.ts'
 import type { AdapterConfig, AuthorStrategy, ExecutionPlan, StrategyInput, StrategyCatalogEntry } from './types.ts'
-import type { CapturedStrategy, TaskMessageRequest, TaskMessageReceipt,
+import type { CapturedStrategy, TaskCommandOutcome, TaskCommandWaitResult, TaskMessageRequest, TaskMessageReceipt,
   TaskReceipt, TaskRunView, TaskSubmission, TaskSwitch } from './runtime-types.ts'
 import type { TaskIntakeRequest, WorkflowDecision } from './selection-types.ts'
 import { resolveSelection } from './selection.ts'
@@ -129,7 +129,6 @@ export default class TaskStrategies extends TypertRemoteService {
    */
   register(strategy: AuthorStrategy): () => void {
     if (this.closing) throw new Error('Strategy component is closing')
-    // oxlint-disable-next-line typescript/no-misused-promises -- preserve the Cordis effect disposer for registration ownership
     return this.ctx.effect(() => this.registry.register(strategy))
   }
 
@@ -162,7 +161,6 @@ export default class TaskStrategies extends TypertRemoteService {
   registerOrchestration(mode: OrchestrationMode, executor?: string, check: () => void = () => {}): () => void {
     if (this.closing) throw new Error('Strategy component is closing')
     const captured = structuredClone(mode)
-    // oxlint-disable-next-line typescript/no-misused-promises -- retain Cordis registration disposal ownership
     return this.ctx.effect(() => this.orchestrationModes.register(captured, () => {
       if (!this.entryConfig.enabled.get()) throw new Error('Enable task strategy entry first')
       if (executor !== undefined) {
@@ -272,20 +270,23 @@ export default class TaskStrategies extends TypertRemoteService {
 
   /**
    * Reserve an owned task replacement at the next stage boundary.
-   * @param args - live root, owned request and replacement with observed binding epoch.
+   * @param args - live root, owned request and replacement with command identity and observed binding epoch.
+   * @returns recorded outcome for that command identity.
    */
   @Remote
-  switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): void {
-    this.entry.switch(this.entryOwner(args.sessionId), args.requestId, args.request)
+  switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): TaskCommandOutcome {
+    return this.entry.switch(this.entryOwner(args.sessionId), args.requestId, args.request)
   }
 
   /**
    * Resume an owned waiting binding using the observed epoch.
-   * @param args - live root, owned request and observed retained binding epoch.
+   * @param args - live root, owned request, command identity and observed retained binding epoch.
+   * @returns recorded outcome for that command identity.
    */
   @Remote
-  resumeEntry(args: { sessionId: SessionId; requestId: string; epoch: number }): void {
-    this.entry.resume(this.entryOwner(args.sessionId), args.requestId, args.epoch)
+  resumeEntry(args: { sessionId: SessionId; requestId: string; commandId: string; epoch: number }): TaskCommandOutcome {
+    return this.entry.resume(this.entryOwner(args.sessionId), args.requestId,
+      { commandId: args.commandId, expectedBindingEpoch: args.epoch })
   }
 
   /**
@@ -467,10 +468,10 @@ export default class TaskStrategies extends TypertRemoteService {
    * Reserve replacement by a current named strategy at the next stage barrier.
    * @param parent - exact live Agent owning the Job.
    * @param jobId - accepted task identity.
-   * @param request - target strategy, observed binding epoch, preferences and optional explicit stage cursor.
-   * @returns reservation command number; inspect state or Job output for commitment or failure.
+   * @param request - target strategy, command identity, observed binding epoch, preferences and optional explicit stage cursor.
+   * @returns recorded outcome for that command identity; inspect state or Job output for commitment or failure.
    */
-  requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number {
+  requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): TaskCommandOutcome {
     if (this.closing) throw new Error('Strategy component is closing')
     const captured = structuredClone(request)
     // Registry.decide captures the registration synchronously, before reload can remove it.
@@ -487,10 +488,26 @@ export default class TaskStrategies extends TypertRemoteService {
    * Continue the retained strategy after a rejected replacement.
    * @param parent - exact live Agent owning the Job.
    * @param jobId - waiting task identity.
-   * @param expectedBindingEpoch - binding epoch observed by the caller; stale expectations cannot resume a different binding.
+   * @param request - command identity and binding epoch observed by the caller; stale expectations cannot resume a different binding.
+   * @returns recorded outcome for that command identity.
    */
-  resume(parent: Agent, jobId: JobId, expectedBindingEpoch: number): void {
-    this.ctx.taskRuns.resume(parent, jobId, expectedBindingEpoch)
+  resume(parent: Agent, jobId: JobId,
+    request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome {
+    return this.ctx.taskRuns.resume(parent, jobId, request)
+  }
+
+  /**
+   * Await one submitted replacement command's settled outcome.
+   * @param parent - exact live Agent owning the Job.
+   * @param jobId - accepted task identity.
+   * @param commandId - identity already submitted for this task.
+   * @param timeoutMs - bounded wait in milliseconds.
+   * @param signal - caller cancellation.
+   * @returns the settled outcome, or a timeout marker when the command stays queued.
+   */
+  waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number,
+    signal: AbortSignal): Promise<TaskCommandWaitResult> {
+    return this.ctx.taskRuns.waitCommand(parent, jobId, commandId, timeoutMs, signal)
   }
 
   private isLiveOwner(parent: Agent): boolean {

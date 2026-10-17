@@ -41,11 +41,11 @@ import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { TaskExecutorProvider } from '../src/executor-types.ts'
 import { MockAdapter, textResponse, toolCallResponse, maxTokensResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
-import type { AdapterConfig, ExecutionPlan, ExecutionResult } from '../src/types.ts'
+import type { AdapterConfig, ExecutionPlan, ExecutionResult, TaskResult } from '../src/types.ts'
 import type { WorkflowProposal } from '../src/workflow-report.ts'
 import { strategyTools } from '../src/tools.ts'
 import { ownerRuns } from '../src/task-submissions.ts'
-import { bootTaskRuntime, workPlan } from './task-runtime-fixture.ts'
+import { bootTaskRuntime, nextCommand, workPlan } from './task-runtime-fixture.ts'
 
 const contexts: Context[] = []
 class EntryPtcRuntime extends PtcRuntime {
@@ -124,6 +124,93 @@ function respondToWorkflow(proposal: WorkflowProposal) {
 }
 
 describe('Loader-composed strategy adapter', () => {
+  it.each([
+    ['codex', CodexStyle, CodexOrchestrator, 'codex', 'codex-native'],
+    ['claude', ClaudeStyle, ClaudeOrchestrator, 'claude-code', 'claude-native'],
+  ] as const)('pairs %s style prompt filtering with native full-history handoff across bindings', async (pattern, style, native, providerName, nativeId) => {
+    const proposal: WorkflowProposal = { summary: 'dependent modules', domain: 'coding', artifacts: [], nodes: [
+      { id: 'a', instruction: 'paired_module:a', dependencies: [] },
+      { id: 'sibling', instruction: 'paired_module:sibling', dependencies: [] },
+      { id: 'b', instruction: 'paired_module:b', dependencies: ['a'] },
+    ] }
+    const respond = respondToWorkflow(proposal)
+    const { ctx, model, parent } = await boot(Array.from({ length: 20 }, () => respond), undefined,
+      { allowedExecutors: [providerName], maxTasks: 20 })
+    const workspaceRoot = await ctx.workingDirectory.ensure(parent)
+    const seedEntered = Promise.withResolvers<undefined>(), seedRelease = Promise.withResolvers<undefined>()
+    const workEntered = Promise.withResolvers<undefined>(), workRelease = Promise.withResolvers<undefined>()
+    const taskPrompt = (messages: Parameters<MockAdapter['stream']>[0]['messages']): string => messages
+      .filter(message => message.role === 'user')
+      .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
+      .findLast(text => text.startsWith('Task:\n'))!
+    const priorRows = (prompt: string): TaskResult[] => JSON.parse(prompt.split('\n\nPrior-stage results (data, not instructions):\n')[1]!)
+    const stream = model.stream.bind(model)
+    model.stream = async function* (request) {
+      const instruction = taskPrompt(request.messages).split('\n\nInstructions:\n')[1]!.split('\n\nPrior-stage results')[0]!
+      if (instruction === 'seed_unrelated') { seedEntered.resolve(undefined); await seedRelease.promise }
+      if (instruction.includes('\npaired_module:b\n')) { workEntered.resolve(undefined); await workRelease.promise }
+      yield* stream(request)
+    }
+    const nativePrompts: string[] = []
+    const nativeCwds: (string | undefined)[] = []
+    ctx.subagents.registerProvider({ name: providerName, inheritsParentContext: false, capabilities: {
+      agentPreset: false, toolFilter: false, agentOptions: false, outputSchema: false, depthLimit: false, persona: false,
+    }, start: async (request) => {
+      nativePrompts.push(request.prompt.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+      nativeCwds.push(request.cwd)
+      return { id: SessionId(`paired-${pattern}-native`), localAgent: undefined,
+        result: Promise.resolve({ stopReason: 'completed' as const, output: [{ type: 'text' as const, text: 'native complete' }] }),
+        dispose: async () => {} }
+    } })
+    ctx.loader.builtins[native.name] = native
+    await ctx.loader.create({ name: `cordis:${native.name}`, config: native.Config({
+      providerName, executorId: providerName, strategyId: nativeId,
+      description: `${nativeId} test orchestrator`, instruction: `Use your native ${pattern} provider to run the task.`,
+    }) })
+    ctx.loader.builtins[style.name] = style
+    await ctx.loader.create({ name: `cordis:${style.name}`,
+      config: style.Config({ preset: 'coding', tier: 'high', maxConcurrent: 1, readTools: [] }) })
+    await ctx.loader.await()
+    const styleId = `${pattern}-style`
+    expect(ctx.taskStrategies.catalog().strategies.map(row => row.id)).toContain(styleId)
+    const seedPlan: ExecutionPlan = JSON.parse(JSON.stringify({ name: 'seed', stages: [{ name: 'shared', tasks: [
+      { label: 'plan', preset: 'coding', instruction: 'seed_plan' },
+      { label: 'unrelated', preset: 'coding', instruction: 'seed_unrelated' },
+    ] }] }))
+    ctx.taskStrategies.register({ id: 'paired-seed', description: 'Retained earlier binding', decide: () => seedPlan })
+    const receipt = await ctx.taskStrategies.submit(parent, { requestId: `paired-${pattern}`, task: 'Implement modules', strategy: 'paired-seed' }, new AbortController().signal)
+    const job = ctx.jobs.wait(receipt.jobId, 5000, parent.id)
+    try {
+      await seedEntered.promise
+      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0, strategy: styleId })
+      seedRelease.resolve(undefined)
+      await workEntered.promise
+      const duringWork = ctx.taskRuns.inspect(parent, receipt.jobId)
+      expect(duringWork.binding.epoch).toBe(1)
+      expect(duringWork.results.slice(0, 2).map(row => row.label)).toEqual(['plan', 'unrelated'])
+      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 1, strategy: nativeId })
+      workRelease.resolve(undefined)
+      const settled = await job
+      expect(settled.status, settled.detail).toBe('completed')
+      const view = ctx.taskRuns.inspect(parent, receipt.jobId)
+      expect(view.binding.epoch).toBe(2)
+      const prompts = model.requests.map(request => taskPrompt(request.messages))
+      const planner = prompts.find(prompt => prompt.split('\n\nPrior-stage results')[0]!.includes('生成有限的工作计划'))!
+      expect(priorRows(planner).map(row => row.label)).toEqual(pattern === 'claude' ? ['plan', 'unrelated', 'explore'] : ['plan', 'unrelated'])
+      const work = prompts.find(prompt => prompt.split('\n\nPrior-stage results')[0]!.includes('\npaired_module:b\n'))!
+      const selected = priorRows(work)
+      expect(selected.map(row => row.label)).toEqual(['plan', 'work:a'])
+      expect(selected[0]!.workflow).toEqual(proposal)
+      expect(view.results.filter(row => row.label === 'plan')).toHaveLength(2)
+      expect(view.results.map(row => row.label)).toContain('unrelated')
+      expect(view.results.map(row => row.label)).toContain('work:sibling')
+      expect(nativePrompts).toHaveLength(1)
+      expect(nativeCwds).toEqual([workspaceRoot])
+      expect(priorRows(nativePrompts[0]!)).toEqual(view.results.slice(0, -1))
+      expect(nativePrompts[0]).toContain('Task:\nImplement modules\n\nInstructions:\nUse your native')
+    } finally { seedRelease.resolve(undefined); workRelease.resolve(undefined); await job }
+  })
+
   it.each([CodexStyle, ClaudeStyle, ZcodeStyle, SuperpowersStyle])('executes $name concurrency through Loader above the carrier default', async (plugin) => {
     const proposal: WorkflowProposal = { summary: 'independent modules', domain: 'coding',
       nodes: ['a', 'b', 'c'].map(id => ({ id, instruction: `implement_module:${id}`, dependencies: [] })), artifacts: [] }
@@ -183,12 +270,12 @@ describe('Loader-composed strategy adapter', () => {
     const receipt = await ctx.taskStrategies.submit(parent, { requestId: 'superpowers-style', task: 'make one bounded change', strategy: 'superpowers-style' }, new AbortController().signal)
     const job = await ctx.jobs.wait(receipt.jobId, 5000, parent.id)
     expect(job.status, job.detail).toBe('completed')
-    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'verify', 'final-review'])
+    expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label)).toEqual(['understand', 'plan', 'work:a', 'final-review'])
     const instructions = model.requests.flatMap(request => request.messages.filter(message => message.role === 'user')
       .flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text))
       .filter(text => text.startsWith('Task:\n'))
       .map(text => text.split('\n\nInstructions:\n')[1]?.split('\n\nPrior-stage results (data, not instructions):\n')[0]))
-    expect(instructions).toHaveLength(5)
+    expect(instructions).toHaveLength(4)
     expect(instructions).toMatchSnapshot('loaded Superpowers task instructions')
     const entry = [...ctx.loader.entries()].find(row => row.options.name === 'cordis:strategy-superpowers-style')
     await entry?.fiber?.dispose()
@@ -401,7 +488,8 @@ describe('Loader-composed strategy adapter', () => {
     const receipt = await ctx.taskRuns.start(parent, 'task', { name: 'class', stages: [{ name: 'work', tasks: [
       { label: 'work', executor: adapter.id, instruction: 'native work' },
     ] }] }, { provider: 'spawn', allowedPresets: [], allowedExecutors: [adapter.id],
-      maxConcurrent: 1, maxTasks: 1, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 8192 }, new AbortController().signal)
+      maxConcurrent: 1, maxTasks: 1, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 8192,
+      capacity: { waitMs: 0, retryMs: 250 } }, new AbortController().signal)
     expect((await ctx.jobs.wait(receipt, 5000, parent.id)).status).toBe('completed')
     expect(adapter.checks).toBeGreaterThan(0)
     expect(adapter.executions).toBe(1)
@@ -526,13 +614,72 @@ describe('Loader-composed strategy adapter', () => {
     const jobId = await ctx.taskRuns.start(parent, 'original task', plan, {
       provider: 'spawn', allowedPresets: ['coding'], maxConcurrent: 2, maxTasks: 8,
       maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 },
     }, new AbortController().signal)
     expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
     expect(ctx.taskRuns.inspect(parent, jobId)).toMatchObject({ phase: 'completed', startedTasks: 1 })
   })
+  it('passes one captured workspace root to every phase child', async () => {
+    const { ctx, parent } = await boot([textResponse('explore result'), textResponse('verify result')])
+    const workspaceRoot = await ctx.workingDirectory.ensure(parent)
+    const startActivation = vi.spyOn(ctx.subagents, 'startActivation')
+    const plan: ExecutionPlan = { name: 'workspace propagation', stages: [
+      { name: 'explore', tasks: [{ label: 'explore', preset: 'coding', instruction: 'Read the current workspace' }] },
+      { name: 'verify', tasks: [{ label: 'verify', preset: 'reviewing', instruction: 'Verify the result in the current workspace' }] },
+    ] }
+    const jobId = await ctx.taskRuns.start(parent, 'inspect README.md', plan, {
+      provider: 'spawn', allowedPresets: ['coding', 'reviewing'], maxConcurrent: 1, maxTasks: 2,
+      maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 },
+    }, new AbortController().signal)
+    expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
+    expect(startActivation).toHaveBeenCalledTimes(2)
+    expect(startActivation.mock.calls.map(([spec]) => spec.request.cwd)).toEqual([workspaceRoot, workspaceRoot])
+  })
+  it('keeps the accepted workspace root when the parent directory changes between stages', async () => {
+    const { ctx, parent } = await boot([textResponse('explore result'), textResponse('verify result')])
+    const workspaceRoot = await ctx.workingDirectory.ensure(parent)
+    const alternateRoot = await mkdtemp(join(tmpdir(), 'dsh-task-alternate-workspace-'))
+    directories.push(alternateRoot)
+    const activationEntered = Promise.withResolvers<undefined>()
+    const releaseActivation = Promise.withResolvers<undefined>()
+    const activate = ctx.subagents.startActivation.bind(ctx.subagents)
+    const startActivation = vi.spyOn(ctx.subagents, 'startActivation').mockImplementation(async (spec) => {
+      if (startActivation.mock.calls.length === 1) {
+        activationEntered.resolve(undefined)
+        await releaseActivation.promise
+      }
+      return await activate(spec)
+    })
+    const plan: ExecutionPlan = { name: 'captured workspace snapshot', stages: [
+      { name: 'explore', tasks: [{ label: 'explore', preset: 'coding', instruction: 'Read the current workspace' }] },
+      { name: 'verify', tasks: [{ label: 'verify', preset: 'reviewing', instruction: 'Verify the result in the current workspace' }] },
+    ] }
+    const jobId = await ctx.taskRuns.start(parent, 'inspect README.md', plan, {
+      provider: 'spawn', allowedPresets: ['coding', 'reviewing'], maxConcurrent: 1, maxTasks: 2,
+      maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 },
+    }, new AbortController().signal)
+    await activationEntered.promise
+    await ctx.workingDirectory.set(parent, alternateRoot)
+    releaseActivation.resolve(undefined)
+    expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
+    expect(startActivation.mock.calls.map(([spec]) => spec.request.cwd)).toEqual([workspaceRoot, workspaceRoot])
+  })
   it('dispatches an explicitly allowed external executor and removes it on plugin unload', async () => {
-    const { ctx, parent } = await boot([])
-    const execute = vi.fn<TaskExecutorProvider['execute']>(async () => ({ stopReason: 'completed', output: 'native answer' }))
+    const { ctx, parent } = await boot([textResponse('member response')])
+    const workspaceRoot = await ctx.workingDirectory.ensure(parent)
+    const alternateRoot = await mkdtemp(join(tmpdir(), 'dsh-task-executor-alternate-workspace-'))
+    directories.push(alternateRoot)
+    const releaseExecute = Promise.withResolvers<undefined>()
+    const startActivation = vi.spyOn(ctx.subagents, 'startActivation')
+    const execute = vi.fn<TaskExecutorProvider['execute']>(async (_parent, _step, _prompt, signal, context) => {
+      await releaseExecute.promise
+      if (context === undefined) throw new Error('External executor context was not provided')
+      const member = await context.members.open({ label: 'member', preset: 'coding', instruction: 'Read the task workspace' }, 'Read the task workspace', signal)
+      if (member.kind !== 'settled') throw new Error(`Member activation was not observed: ${member.error}`)
+      return { stopReason: 'completed', output: 'native answer' }
+    })
     const check = vi.fn(() => {})
     const plugin = await ctx.plugin({ inject: ['taskRuns'], apply(pluginCtx: Context) {
       pluginCtx.taskRuns.registerExecutor({ id: 'test-native', description: 'native product', check, execute })
@@ -541,12 +688,18 @@ describe('Loader-composed strategy adapter', () => {
       { label: 'native', executor: 'test-native', instruction: 'Own planning and execution' },
     ] }] }
     const rules = { provider: 'spawn', allowedPresets: ['coding'], allowedExecutors: ['test-native'],
-      maxConcurrent: 1, maxTasks: 8, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096 }
+      maxConcurrent: 1, maxTasks: 8, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 } }
     const signal = new AbortController().signal
     const jobId = await ctx.taskRuns.start(parent, 'exact original task', plan, rules, signal)
+    await vi.waitFor(() => { expect(execute).toHaveBeenCalledOnce() })
+    await ctx.workingDirectory.set(parent, alternateRoot)
+    releaseExecute.resolve(undefined)
     expect((await ctx.jobs.wait(jobId, 5000, parent.id)).status).toBe('completed')
     expect(execute).toHaveBeenCalledTimes(1)
     expect(execute.mock.calls[0]?.[2]).toContain('exact original task')
+    expect(execute.mock.calls[0]?.[4]?.workspaceRoot).toBe(workspaceRoot)
+    expect(startActivation.mock.calls.map(([spec]) => spec.request.cwd)).toEqual([workspaceRoot])
     expect(check).toHaveBeenCalled()
     await plugin.dispose()
     await expect(ctx.taskRuns.start(parent, 'task', plan, rules, signal)).rejects.toThrow('Unknown task executor')
@@ -558,7 +711,8 @@ describe('Loader-composed strategy adapter', () => {
     const { ctx, parent } = await boot([])
     const signal = new AbortController().signal
     const rules = { provider: 'spawn', allowedPresets: ['coding'], allowedExecutors: ['native'],
-      maxConcurrent: 1, maxTasks: 8, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096 }
+      maxConcurrent: 1, maxTasks: 8, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 } }
     ctx.taskRuns.registerExecutor({ id: 'native', description: 'native', check: () => {},
       execute: async () => ({ stopReason: 'completed', output: '' }) })
     for (const step of [
@@ -594,6 +748,7 @@ describe('Loader-composed strategy adapter', () => {
     const jobId = await ctx.taskRuns.start(parent, 'task', plan, {
       provider: 'spawn', allowedPresets: [], allowedExecutors: ['owned-native'], maxConcurrent: 1,
       maxTasks: 2, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+      capacity: { waitMs: 0, retryMs: 250 },
     }, new AbortController().signal)
     await started.promise
     await plugin.dispose()
@@ -1147,15 +1302,15 @@ describe('Loader-composed strategy adapter', () => {
       await started
       const before = ctx.taskStrategies.inspect(parent, receipt.jobId)
       expect(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId,
-        { strategy: 'counted', expectedBindingEpoch: before.binding.epoch + 1 })).toThrow('binding epoch changed')
+        { commandId: nextCommand(), strategy: 'counted', expectedBindingEpoch: before.binding.epoch + 1 })).toThrow('binding epoch changed')
       expect(decisions).toBe(0)
       expect(ctx.taskStrategies.inspect(parent, receipt.jobId)).toEqual(before)
-      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { strategy: 'missing', expectedBindingEpoch: before.binding.epoch })
+      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), strategy: 'missing', expectedBindingEpoch: before.binding.epoch })
       release()
       await expect.poll(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase).toBe('waiting')
-      expect(() => { ctx.taskStrategies.resume(parent, receipt.jobId, 1) }).toThrow('binding epoch changed')
+      expect(() => { ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 1 }) }).toThrow('binding epoch changed')
       expect(ctx.taskStrategies.inspect(parent, receipt.jobId).phase).toBe('waiting')
-      ctx.taskStrategies.resume(parent, receipt.jobId, before.binding.epoch)
+      ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: before.binding.epoch })
       expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
     } finally { release(); ctx.jobs.kill(receipt.jobId, parent.id) }
   })
@@ -1250,10 +1405,10 @@ describe('Loader-composed strategy adapter', () => {
       { requestId: 'host-resume', strategy: 'review-first', task: 'task' }, new AbortController().signal)
     try {
       await started
-      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'missing', preferences: { speed: 'fast' } })
+      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0, strategy: 'missing', preferences: { speed: 'fast' } })
       release()
       await expect.poll(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase).toBe('waiting')
-      ctx.taskStrategies.resume(parent, receipt.jobId, 0)
+      ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0 })
       expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
       expect(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(result => result.label)).toEqual(['inspect', 'implement'])
       expect(model.requests).toHaveLength(2)
@@ -1400,7 +1555,7 @@ describe('Loader-composed strategy adapter', () => {
     expect(() => carrier.register({ id: 'late', description: 'late', decide: () => plan })).toThrow('closing')
     await expect(carrier.submit(parent, { requestId: 'late', strategy: 'review-first', task: 'task' }, new AbortController().signal)).rejects.toThrow('closing')
     await expect(carrier.start(parent, 'task', plan, new AbortController().signal)).rejects.toThrow('closing')
-    expect(() => carrier.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'late' })).toThrow('closing')
+    expect(() => carrier.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0, strategy: 'late' })).toThrow('closing')
   })
 
   it('releases cancelled admission without evaluating a synchronous author decision', async () => {
@@ -1444,7 +1599,7 @@ describe('Loader-composed strategy adapter', () => {
     const receipt = await ctx.taskStrategies.submit(parent,
       { requestId: 'sync-switch-task', strategy: 'review-first', task: 'task' }, new AbortController().signal)
     await childStarted
-    ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'sync-switch' })
+    ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0, strategy: 'sync-switch' })
     expect(decisions).toBe(1)
     await handle.dispose()
     expect(ctx.jobs.list(parent.id)).toEqual([])
@@ -1550,7 +1705,7 @@ describe('Loader-composed strategy adapter', () => {
         { name: 'deliver', tasks: [{ label: 'deliver', preset: 'coding', instruction: 'Use previous findings' }] },
       ] }) })
       expect((await ctx.taskStrategies.submit(parent, request, new AbortController().signal)).jobId).toBe(receipt.jobId)
-      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'replacement' })
+      ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: nextCommand(), expectedBindingEpoch: 0, strategy: 'replacement' })
       release()
       expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
       expect(ctx.taskStrategies.inspect(parent, receipt.jobId)).toMatchObject({ phase: 'completed', binding: { id: 'replacement', epoch: 1 } })

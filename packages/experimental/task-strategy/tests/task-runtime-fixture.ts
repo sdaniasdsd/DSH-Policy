@@ -57,7 +57,13 @@ afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) awai
 export const taskRules: TaskRuntimeRules = {
   provider: 'spawn', allowedPresets: ['coding', 'reviewing'], allowedExecutors: [],
   maxConcurrent: 2, maxTasks: 8, maxPlanBytes: 8192, maxResultBytes: 8192, maxOutputBytes: 4096,
+  capacity: { waitMs: 0, retryMs: 250 },
 }
+
+let commands = 0
+
+/** Distinct identity per host control command; a repeated id would replay its first recorded outcome. */
+export const nextCommand = (): string => `cmd-${++commands}`
 
 export const workPlan: ExecutionPlan = {
   name: 'work', stages: [{ name: 'work', tasks: [{ label: 'worker', preset: 'coding', instruction: 'do the work' }] }],

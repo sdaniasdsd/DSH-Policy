@@ -22,6 +22,10 @@ export const planSchema = z.object({
       preset: z.string(),
       executor: z.string(),
       instruction: z.string().required(),
+      priorResults: z.union([z.const(undefined), z.object({
+        scope: z.union([z.const('all'), z.const('current-binding')]).required(),
+        labels: z.union([z.const(undefined), z.array(z.string())]),
+      })]),
       tools: z.union([z.const(undefined), z.object({
         allow: z.union([z.const(undefined), z.array(z.string())]),
         deny: z.union([z.const(undefined), z.array(z.string())]),
@@ -30,6 +34,7 @@ export const planSchema = z.object({
       provider: z.string(),
       workflowOutput: z.boolean(),
       reviewOutput: z.boolean(),
+      reviewPaths: z.union([z.const(undefined), z.array(z.string())]),
       artifactChecks: z.union([z.const(undefined), z.array(z.object({
         id: z.string().required(), path: z.string().required(), contains: z.string(),
       }))]),
@@ -73,6 +78,11 @@ export const adapterSchema = z.object({
   maxPlanBytes: z.natural().min(1).default(65536),
   maxResultBytes: z.natural().min(1).default(65536),
   maxOutputBytes: z.natural().min(512).default(32768),
+  capacity: z.object({
+    // Zero keeps today's fail-fast admission; a positive bound lets one admission wait for a slot.
+    waitMs: z.natural().max(2147483647).default(0),
+    retryMs: z.natural().min(1).max(2147483647).default(250),
+  }).default({}),
 }) as z<AdapterConfig, ResolvedAdapterConfig>
 
 /** Validate string-valued author preferences at the tool JSON input. */

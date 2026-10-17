@@ -4,17 +4,51 @@ import { errorText } from './errors.ts'
 import { validateTask } from './task-input.ts'
 import { copyBinding, selectStage } from './static-plan.ts'
 import { createPolicySnapshot, projectRunResults } from './run-projection.ts'
-import type { CapturedStrategy, TaskRunEvent, TaskRunOptions, TaskRunView, TaskSwitch } from './runtime-types.ts'
+import type { CapacityObservation, CapacityResource } from './capacity-types.ts'
+import type { PolicySignal } from './policy-types.ts'
+import type { CapturedStrategy, TaskCommandOutcome, TaskCommandWaitResult, TaskRunEvent, TaskRunOptions,
+  TaskRunView, TaskSwitch } from './runtime-types.ts'
 import type { ExecutionResult, TaskExecutor, TaskResult } from './types.ts'
 
 type StagePlan = NonNullable<ReturnType<typeof selectStage>>
 
 type Resolution = { readonly strategy: CapturedStrategy } | { readonly error: string }
 interface PendingSwitch {
-  readonly command: number
+  readonly record: CommandRecord
   readonly stage: number
   readonly resolution: Promise<Resolution>
 }
+
+/** One command's recorded fate; a queued record is the switch the pump will commit. */
+interface CommandRecord {
+  readonly commandId: string
+  readonly command: number
+  status: TaskCommandOutcome['status']
+  epoch: number | undefined
+  effectiveAt: string | undefined
+  error: string | undefined
+  readonly waiters: Set<CommandWaiter>
+}
+
+interface CommandWaiter {
+  readonly resolve: (result: TaskCommandWaitResult) => void
+  readonly reject: (error: unknown) => void
+  readonly signal: AbortSignal
+  readonly abort: () => void
+  readonly timer: ReturnType<typeof setTimeout>
+}
+
+/** Capacity facts accumulated for one resource across the run. */
+interface CapacityTally {
+  readonly resource: CapacityResource
+  readonly code: string
+  waits: number
+  waitedMs: number
+  exhausted: boolean
+}
+
+/** Largest wait a caller may request, matching the schedulable timer range. */
+const MAX_WAIT_MS = 2_147_483_647
 
 /** A run requires nonblank task text and owns cancellation and results; its executor drains resources before settling. */
 export class TaskRun {
@@ -32,6 +66,8 @@ export class TaskRun {
   private pending: PendingSwitch | undefined
   private activeConcurrency: number
   private command = 0
+  private readonly commands = new Map<string, CommandRecord>()
+  private readonly capacities = new Map<CapacityResource, CapacityTally>()
   private wake: (() => void) | undefined
   private done: Promise<ExecutionResult> | undefined
 
@@ -61,38 +97,106 @@ export class TaskRun {
   /**
    * Reserve one switch before evaluating the target; current children continue to their barrier.
    * @param load - synchronously returns plain target-plan data; no asynchronous work or execution resources.
-   * @param request - observed binding epoch and optional zero-based target cursor; stale expectations reject without mutation.
-   * @returns command number indicating reservation, not successful binding replacement.
+   * @param request - command identity, observed binding epoch and optional zero-based target cursor.
+   * @returns the queued outcome, or the first outcome recorded for a repeated command identity.
    */
-  requestSwitch(load: () => CapturedStrategy, request: Pick<TaskSwitch, 'expectedBindingEpoch' | 'startStage'>): number {
-    const { expectedBindingEpoch, startStage = 0 } = request
+  requestSwitch(load: () => CapturedStrategy,
+    request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch' | 'startStage'>): TaskCommandOutcome {
+    const { commandId, expectedBindingEpoch, startStage = 0 } = request
+    this.assertCommandId(commandId)
+    const recorded = this.commands.get(commandId)
+    if (recorded !== undefined) return this.outcomeOf(recorded)
     this.assertBinding(expectedBindingEpoch)
     if (this.pending !== undefined) throw new Error('A strategy switch is already pending')
     if (!Number.isSafeInteger(startStage) || startStage < 0) throw new Error('Switch stage must be a nonnegative safe integer')
     const command = ++this.command
+    const record: CommandRecord = { commandId, command, status: 'queued', epoch: undefined,
+      effectiveAt: undefined, error: undefined, waiters: new Set() }
+    this.commands.set(commandId, record)
     const resolution = Promise.withResolvers<Resolution>()
-    this.pending = { command, stage: startStage, resolution: resolution.promise }
+    this.pending = { record, stage: startStage, resolution: resolution.promise }
     if (this.phase === 'waiting') this.phase = 'boundary'
     // Reserve first, then capture the registry entry in this call before a synchronous unload.
     try {
       const strategy = load()
       resolution.resolve({ strategy: copyBinding(strategy) })
     } catch (error) { resolution.resolve({ error: errorText(error) }) }
-    this.emit({ type: 'switch-pending', command })
+    this.emit({ type: 'switch-pending', command, commandId })
     this.wake?.()
-    return command
+    return this.outcomeOf(record)
   }
 
   /**
    * Resume the retained strategy after a rejected switch; previously completed stages stay completed.
-   * @param expectedBindingEpoch - nonnegative safe integer from the caller's view; stale expectations preserve waiting and its error.
+   * @param request - command identity and nonnegative binding epoch from the caller's view.
+   * @returns the applied outcome, or the first outcome recorded for a repeated command identity.
    */
-  resume(expectedBindingEpoch: number): void {
+  resume(request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome {
+    const { commandId, expectedBindingEpoch } = request
+    this.assertCommandId(commandId)
+    const recorded = this.commands.get(commandId)
+    if (recorded !== undefined) return this.outcomeOf(recorded)
     this.assertBinding(expectedBindingEpoch)
     if (this.phase !== 'waiting' || this.pending !== undefined) throw new Error('Task is not waiting for a resume command')
+    const record: CommandRecord = { commandId, command: ++this.command, status: 'applied', epoch: this.epoch,
+      effectiveAt: new Date().toISOString(), error: undefined, waiters: new Set() }
+    this.commands.set(commandId, record)
     this.error = undefined
     this.phase = 'boundary'
     this.wake?.()
+    return this.outcomeOf(record)
+  }
+
+  /**
+   * Await one submitted command's settled outcome.
+   * @param commandId - identity already submitted to this run.
+   * @param timeoutMs - bounded wait in milliseconds; a positive safe integer within the timer range.
+   * @param signal - caller cancellation.
+   * @returns the settled outcome, or a timeout marker when the command stays queued.
+   */
+  waitCommand(commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult> {
+    const record = this.commands.get(commandId)
+    if (record === undefined) return Promise.reject(new Error(`Unknown task command: ${commandId}`))
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_WAIT_MS) {
+      return Promise.reject(new Error('Command wait timeout must be a bounded positive safe integer'))
+    }
+    if (record.status !== 'queued') return Promise.resolve({ timedOut: false, outcome: this.outcomeOf(record) })
+    signal.throwIfAborted()
+    return new Promise<TaskCommandWaitResult>((resolve, reject) => {
+      const abort = (): void => {
+        record.waiters.delete(waiter)
+        clearTimeout(waiter.timer)
+        const reason: unknown = signal.reason
+        reject(reason instanceof Error ? reason : new Error('Task command wait cancelled'))
+      }
+      const timer = setTimeout(() => {
+        record.waiters.delete(waiter)
+        signal.removeEventListener('abort', abort)
+        resolve({ timedOut: true })
+      }, timeoutMs)
+      const waiter: CommandWaiter = { resolve, reject, signal, abort, timer }
+      record.waiters.add(waiter)
+      signal.addEventListener('abort', abort, { once: true })
+    })
+  }
+
+  /**
+   * Record one capacity observation from this run's child admission.
+   * The task runtime owns the wait, so only its own admission path reports here.
+   * @param observation - facts from the admission that lacked a free resource.
+   */
+  reportCapacity(observation: CapacityObservation): void {
+    this.emit({ type: 'capacity', ...observation })
+    if (observation.kind === 'waiting') return
+    const tally = this.capacities.get(observation.resource)
+    if (tally === undefined) {
+      this.capacities.set(observation.resource, { resource: observation.resource, code: observation.code, waits: 1,
+        waitedMs: observation.waitedMs, exhausted: observation.kind === 'exhausted' })
+      return
+    }
+    tally.waits++
+    tally.waitedMs += observation.waitedMs
+    tally.exhausted ||= observation.kind === 'exhausted'
   }
 
   /**
@@ -111,13 +215,15 @@ export class TaskRun {
    * @returns task state including cumulative usage and the currently committed binding.
    */
   inspect(): TaskRunView {
+    const signals = this.signals()
     return structuredClone({
       phase: this.phase,
       binding: { id: this.strategy.id, revision: this.strategy.revision, epoch: this.epoch },
       nextStage: this.stage, completedStages: this.completedStages, startedTasks: this.startedTasks,
       results: this.results,
       ...projectRunResults(this.results, this.bindingStartResult),
-      ...this.pending === undefined ? {} : { pendingSwitch: this.pending.command },
+      ...this.pending === undefined ? {} : { pendingSwitch: this.pending.record.command },
+      ...signals.length === 0 ? {} : { signals },
       ...this.error === undefined ? {} : { error: this.error },
     })
   }
@@ -151,7 +257,8 @@ export class TaskRun {
     currentResults = this.results.slice(this.bindingStartResult)): StagePlan | undefined {
     if (strategy.next === undefined) return selectStage(strategy, index)
     const decision = strategy.next(createPolicySnapshot({ nextStage: index, completedStages: this.completedStages,
-      remainingTasks: this.options.maxTasks - this.startedTasks, bindingEpoch: this.epoch }, this.results, currentResults))
+      remainingTasks: this.options.maxTasks - this.startedTasks, bindingEpoch: this.epoch, signals: this.signals() },
+    this.results, currentResults))
     switch (decision.kind) {
       case 'stage': return { name: strategy.plan.name, stages: [structuredClone(decision.stage)] }
       case 'finish': return undefined
@@ -186,6 +293,39 @@ export class TaskRun {
     if (expectedBindingEpoch !== this.epoch) {
       throw new Error(`Task binding epoch changed: expected ${expectedBindingEpoch}, current ${this.epoch}`)
     }
+  }
+
+  private assertCommandId(commandId: string): void {
+    if (!commandId.trim()) throw new Error('Task command id must not be empty')
+  }
+
+  private outcomeOf(record: CommandRecord): TaskCommandOutcome {
+    return { commandId: record.commandId, command: record.command, status: record.status,
+      ...record.epoch === undefined ? {} : { epoch: record.epoch },
+      ...record.effectiveAt === undefined ? {} : { effectiveAt: record.effectiveAt },
+      ...record.error === undefined ? {} : { error: record.error } }
+  }
+
+  /** Settle one reserved command and release its waiters; the pump settles each reservation at most once. */
+  private settleCommand(record: CommandRecord, patch: Pick<TaskCommandOutcome, 'status'>
+    & Partial<Pick<TaskCommandOutcome, 'epoch' | 'effectiveAt' | 'error'>>): void {
+    record.status = patch.status
+    record.epoch = patch.epoch
+    record.effectiveAt = patch.effectiveAt
+    record.error = patch.error
+    const outcome = this.outcomeOf(record)
+    for (const waiter of [...record.waiters]) {
+      record.waiters.delete(waiter)
+      clearTimeout(waiter.timer)
+      waiter.signal.removeEventListener('abort', waiter.abort)
+      waiter.resolve({ timedOut: false, outcome })
+    }
+  }
+
+  /** Capacity facts accumulated for this run, one signal per exhausted resource. */
+  private signals(): PolicySignal[] {
+    return [...this.capacities.values()].map(tally => ({ kind: 'capacity' as const, resource: tally.resource,
+      code: tally.code, waits: tally.waits, waitedMs: tally.waitedMs, exhausted: tally.exhausted }))
   }
 
   private emit(event: TaskRunEvent): void {
@@ -227,9 +367,10 @@ export class TaskRun {
             await this.options.prepare(structuredClone(target.plan), this.controller.signal)
             this.controller.signal.throwIfAborted()
             // A blocked target cannot mutate the retained binding or its wait reason.
-            plan = this.decideStage(target, pending.stage, false, [])
-            if (plan === undefined) throw new Error('Switch target must contain an unstarted stage')
-            await this.prepare(plan)
+            const decided = this.decideStage(target, pending.stage, false, [])
+            if (decided === undefined) throw new Error('Switch target must contain an unstarted stage')
+            await this.prepare(decided)
+            plan = decided
             this.strategy = target
             this.bindingStartResult = this.results.length
             this.stage = pending.stage
@@ -237,13 +378,16 @@ export class TaskRun {
             this.pending = undefined
             this.error = undefined
             this.phase = 'boundary'
-            this.emit({ type: 'switch-committed', command: pending.command, strategy: target.id, revision: target.revision, epoch: this.epoch })
+            this.settleCommand(pending.record, { status: 'applied', epoch: this.epoch, effectiveAt: new Date().toISOString() })
+            this.emit({ type: 'switch-committed', command: pending.record.command, commandId: pending.record.commandId,
+              strategy: target.id, revision: target.revision, epoch: this.epoch })
           } catch (error) {
             if (this.cancelled()) break
             this.pending = undefined
             this.error = errorText(error)
             this.phase = 'waiting'
-            this.emit({ type: 'switch-rejected', command: pending.command, error: this.error })
+            this.settleCommand(pending.record, { status: 'rejected', error: this.error })
+            this.emit({ type: 'switch-rejected', command: pending.record.command, commandId: pending.record.commandId, error: this.error })
             if (this.waiting()) this.emit({ type: 'waiting', error: this.error })
             continue
           }
@@ -275,7 +419,7 @@ export class TaskRun {
           }, {
             ...this.limits(), signal: this.controller.signal,
             onEvent: (event) => { this.emit(event) },
-          })
+          }, this.bindingStartResult)
         } finally { this.activeConcurrency = this.options.maxConcurrent }
         this.results = result.results
         if (this.cancelled()) break
@@ -297,6 +441,12 @@ export class TaskRun {
     this.phase = status
     this.pending = undefined
     this.error = error
+    // A reservation the pump never committed cannot apply to a settled run; settle it so no waiter hangs.
+    for (const record of [...this.commands.values()]) {
+      if (record.status === 'queued') {
+        this.settleCommand(record, { status: 'rejected', error: 'Task ended before the replacement was committed' })
+      }
+    }
     this.emit({ type: 'terminal', status })
     return structuredClone({ status, results: this.results, ...error === undefined ? {} : { error } })
   }

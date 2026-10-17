@@ -14,6 +14,8 @@ import { ownerRuns } from './task-submissions.ts'
 import { boundText } from './schema.ts'
 import { ExecutorRegistry } from './executor-registry.ts'
 import { executeDshChild } from './dsh-child.ts'
+import { startCancellableActivation } from './subagent-activation.ts'
+import { awaitCapacityAdmission } from './capacity.ts'
 import { createMemberSessions } from './member-sessions.ts'
 import { createTaskCoordination } from './task-coordination.ts'
 import { createHash } from 'node:crypto'
@@ -22,8 +24,8 @@ import type { ExecutionPlan, TaskExecutor } from './types.ts'
 import type { TaskExecutorProvider } from './executor-types.ts'
 import type { TaskCoordination } from './coordination-types.ts'
 import type { TaskRecordWaitResult, TaskSharedRecord } from './coordination-types.ts'
-import type { CapturedStrategy, TaskMemberView, TaskMessageRequest, TaskMessageReceipt,
-  TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
+import type { CapturedStrategy, TaskCommandOutcome, TaskCommandWaitResult, TaskMemberView, TaskMessageRequest,
+  TaskMessageReceipt, TaskRunView, TaskRuntimeRules, TaskSwitch } from './runtime-types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { taskRuns: TaskRuns }
@@ -49,7 +51,6 @@ export default class TaskRuns extends Service {
    */
   registerExecutor(provider: TaskExecutorProvider): () => void {
     this.assertOpen()
-    // oxlint-disable-next-line typescript/no-misused-promises -- Cordis effects own registration removal
     return this.ctx.effect(() => this.executors.register(provider))
   }
 
@@ -101,6 +102,7 @@ export default class TaskRuns extends Service {
     if (this.closing) throw new Error('Strategy component is closing')
     this.assertLiveOwner(parent)
     const captured = copyBinding(strategy)
+    const workspaceRoot = this.ctx.get('workingDirectory')?.get(parent.session) ?? parent.session.header.cwd
     const modelRoute = parentAgentOptionsForDelegation(parent)
     const summary = { provider: config.provider, ...modelRoute.model === undefined ? {} : { model: modelRoute.model },
       ...modelRoute.provider === undefined ? {} : { modelProvider: modelRoute.provider },
@@ -141,6 +143,7 @@ export default class TaskRuns extends Service {
       childSignal.throwIfAborted()
       if (step.executor !== undefined) {
         const members = createMemberSessions({ ctx: this.ctx, parent, rules: config,
+          ...workspaceRoot === undefined ? {} : { workspaceRoot },
           route: modelRoute, signal: AbortSignal.any([childSignal, lifetime.signal]), checkChild,
           assertOwner: () => { this.assertOpen(); this.assertLiveOwner(parent) },
           admitTurn: () => {
@@ -158,7 +161,7 @@ export default class TaskRuns extends Service {
           const coordination = coordinationRef.current
           if (coordination === undefined) throw new Error('Task coordination was not initialized')
           return await executors.resolve(step, config.allowedExecutors ?? []).execute(parent, step, prompt, childSignal,
-            { members, coordination })
+            { members, coordination, ...workspaceRoot === undefined ? {} : { workspaceRoot } })
         }
         finally { await members.close() }
       }
@@ -169,7 +172,8 @@ export default class TaskRuns extends Service {
       }, prompt, childSignal, config.maxResultBytes, (id) => {
         activeMembers.set(id, { sessionId: id, label: step.label })
         return () => { activeMembers.delete(id) }
-      }) } finally { releaseTurn() }
+      }, spec => awaitCapacityAdmission(() => startCancellableActivation(subagents, spec), config.capacity,
+        spec.signal, (observation) => { runtime.reportCapacity(observation) }), workspaceRoot) } finally { releaseTurn() }
     }
     let runtime!: TaskRun
     const jobId = jobs.start({
@@ -312,11 +316,11 @@ export default class TaskRuns extends Service {
    * @param parent - exact live owner.
    * @param jobId - original Job identity.
    * @param resolve - synchronous policy capture from the unchanged task text.
-   * @param request - observed binding epoch and optional target cursor.
-   * @returns reservation command number.
+   * @param request - command identity, observed binding epoch and optional target cursor.
+   * @returns first recorded outcome for that command identity.
    */
   requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy,
-    request: Pick<TaskSwitch, 'expectedBindingEpoch' | 'startStage'>): number {
+    request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch' | 'startStage'>): TaskCommandOutcome {
     this.assertOpen()
     const owned = this.ownedRun(parent, jobId)
     return owned.run.requestSwitch(() => resolve(owned.task), request)
@@ -326,9 +330,28 @@ export default class TaskRuns extends Service {
    * Resume a retained waiting binding.
    * @param parent - exact live owner.
    * @param jobId - original Job identity.
-   * @param epoch - observed binding epoch.
+   * @param request - command identity and observed binding epoch.
+   * @returns first recorded outcome for that command identity.
    */
-  resume(parent: Agent, jobId: JobId, epoch: number): void { this.ownedRun(parent, jobId).run.resume(epoch) }
+  resume(parent: Agent, jobId: JobId,
+    request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome {
+    this.assertOpen()
+    return this.ownedRun(parent, jobId).run.resume(request)
+  }
+
+  /**
+   * Await one submitted control command's settled outcome.
+   * @param parent - exact live owner.
+   * @param jobId - original Job identity.
+   * @param commandId - identity already submitted to this run.
+   * @param timeoutMs - bounded wait in milliseconds.
+   * @param signal - caller cancellation.
+   * @returns the settled outcome, or a timeout marker when the command stays queued.
+   */
+  waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number,
+    signal: AbortSignal): Promise<TaskCommandWaitResult> {
+    return this.ownedRun(parent, jobId).run.waitCommand(commandId, timeoutMs, signal)
+  }
 
   private ownedRun(parent: Agent, jobId: JobId) {
     this.assertLiveOwner(parent)

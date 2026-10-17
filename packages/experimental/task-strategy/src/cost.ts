@@ -1,4 +1,5 @@
 /** Explainable strategy-child estimates; no model calls or author callbacks. */
+import { selectPriorResults } from './execution-data.ts'
 import { taskPrompt } from './task-prompt.ts'
 import type { ExecutionPlan, StrategyTokenCost, TokenCostAssumptions, TokenCostUnknown } from './types.ts'
 
@@ -26,10 +27,11 @@ export function estimatePlanCost(
   const prior: { stage: string; label: string; stopReason: string; output: string }[] = []
   for (const stage of plan.stages) {
     for (const step of stage.tasks) {
-      const measured = measure(taskPrompt(task, step.instruction, JSON.stringify(prior)))
+      const selected = selectPriorResults(prior, step.priorResults)
+      const measured = measure(taskPrompt(task, step.instruction, JSON.stringify(selected)))
       if (!Number.isSafeInteger(measured) || measured < 0) throw new Error('Token cost estimate exceeds safe integer range')
       knownInputTokens += measured
-      transferredOutputs += prior.length
+      transferredOutputs += selected.length
       tasks++
     }
     for (const step of stage.tasks) prior.push({ stopReason: 'completed', output: '', stage: stage.name, label: step.label })

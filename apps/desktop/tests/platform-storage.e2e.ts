@@ -5,7 +5,7 @@
  * workspace dependencies from this checkout's node_modules.
  */
 import { createServer } from 'node:http'
-import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +21,7 @@ const hasDisplay = process.platform !== 'linux' || Boolean(process.env.DISPLAY |
 
 // Linux Electron needs a display server; the test runs under xvfb in headless environments.
 it.skipIf(!hasDisplay)('retains dismissed notices across view and process restarts without sharing accounts', { retry: 0 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-platform-storage-'))
+  const root = await mkdtemp(join(tmpdir(), 'dps-'))
   const server = createServer((_request, response) => {
     response.setHeader('content-type', 'text/html')
     response.end(`<!doctype html><html><body><script>
@@ -44,14 +44,15 @@ it.skipIf(!hasDisplay)('retains dismissed notices across view and process restar
     if (address === null || typeof address === 'string') throw new Error('missing Platform fixture listener')
     const origin = `http://127.0.0.1:${String(address.port)}`
     if (!existsSync(builtView)) throw new Error(`missing built Platform view ${builtView}; run pnpm run build:lib:host`)
-    const userData = join(root, 'browser')
-    await mkdir(userData)
+    // Keep the persistent partition's Windows storage path short; Chromium CacheStorage may fail
+    // when the long account partition hash is nested under the default-length temp directory.
+    const userData = root
     const electron: unknown = require('electron')
     if (typeof electron !== 'string') throw new Error('Electron executable is unavailable')
     const fixture = fileURLToPath(new URL('./fixtures/platform-storage-smoke.mjs', import.meta.url))
     const observed: string[] = []
     for (const phase of ['first', 'restart']) {
-      const result = await execa(electron, [fixture, builtView, userData, origin, phase], {
+      const result = await execa(electron, [fixture, builtView, userData, phase, origin], {
         // The unbundled tsc artifact reads the client version from the environment; the packaged
         // build inlines the same value at bundle time.
         env: { ELECTRON_RUN_AS_NODE: undefined, DSH_CLIENT_VERSION: '1.2.3' },

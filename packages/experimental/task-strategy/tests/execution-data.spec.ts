@@ -6,6 +6,19 @@ const row = (label: string, output = label): TaskResult => ({ stage: 'work', lab
 const bytes = (results: readonly TaskResult[]): number => Buffer.byteLength(JSON.stringify(results), 'utf8')
 
 describe('shared stage execution data', () => {
+  it('selects stable labels within a binding while retaining complete byte accounting', () => {
+    const prior = [row('plan', 'old'), row('plan', 'new'), row('work:a'), row('work:sibling')]
+    const data = createStageExecutionData('task', prior, bytes([...prior, row('next')]) - 1, 1)
+    const outputs = (prompt: string) => JSON.parse(prompt.split('instructions):\n')[1]!).map((r: TaskResult) => r.output)
+    expect(outputs(data.prompt('act', { scope: 'current-binding', labels: ['plan', 'work:a'] }))).toEqual(['new', 'work:a'])
+    expect(outputs(data.prompt('act', { scope: 'all', labels: ['plan'] }))).toEqual(['old', 'new'])
+    expect(outputs(data.prompt('act', { scope: 'current-binding' }))).toEqual(['new', 'work:a', 'work:sibling'])
+    expect(outputs(data.prompt('act', { scope: 'all', labels: [] }))).toEqual([])
+    expect(data.prompt('act', { scope: 'all' })).toBe(data.prompt('act'))
+    expect(data.retain(0, row('next'))).toBe(false)
+    expect(prior).toHaveLength(4)
+  })
+
   it('preserves task whitespace, instructions and complete prior-result JSON in prompts', () => {
     const prior = [{ ...row('previous', '中😀\n"quoted"'), sessionId: 'previous-session' }]
     const data = createStageExecutionData('  original task\n', prior, 4096)

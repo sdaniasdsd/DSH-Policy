@@ -24,6 +24,7 @@ interface MemberSessionOptions {
     readonly subagents: Pick<Context['subagents'], 'startActivation' | 'continueActivation'>
   }
   readonly parent: Agent
+  readonly workspaceRoot?: string
   readonly rules: TaskRuntimeRules
   readonly route?: Pick<TaskStep, 'model' | 'provider'>
   readonly signal: AbortSignal
@@ -75,7 +76,7 @@ export function createMemberSessions(options: MemberSessionOptions): TaskMemberS
                 } })
             accepted = ownActivation(receipt, spec.signal)
             return accepted
-          })
+          }, options.workspaceRoot)
         if (accepted === undefined) throw new Error('Member observation completed without an accepted activation')
         const outcome: TaskMemberTurnOutcome = { kind: 'settled', sessionId: member.id, messageId: accepted.messageId, result }
         if (Buffer.byteLength(JSON.stringify(outcome), 'utf8') > rules.maxResultBytes) {

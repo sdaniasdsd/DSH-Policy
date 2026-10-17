@@ -2,7 +2,8 @@
 import type { JobId } from '@deepseek-ai/dsh-jobs'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { MessageId } from '@deepseek-ai/dsh-llm'
-import type { StagePolicy } from './policy-types.ts'
+import type { CapacityObservation } from './capacity-types.ts'
+import type { PolicySignal, StagePolicy } from './policy-types.ts'
 import type { VerificationReport } from './verification-types.ts'
 import type { ReviewReport } from './workflow-types.ts'
 import type { ObservedUsage, StyleTier } from './types.ts'
@@ -46,6 +47,8 @@ export interface TaskRunView {
   /** Runtime inspection supplies active local members; pure policy views may omit them. */
   readonly activeMembers?: readonly TaskMemberView[]
   readonly pendingSwitch?: number
+  /** Capacity facts the runtime observed for this run; omitted before the first rejection. */
+  readonly signals?: readonly PolicySignal[]
   readonly error?: string
   /** Latest artifact check findings, independent of execution completion. */
   readonly verification?: VerificationReport
@@ -67,9 +70,10 @@ export interface TaskRunView {
 
 /** Best-effort observations emitted after the corresponding state change. */
 export type TaskRunEvent = ExecutionEvent
-  | { readonly type: 'switch-pending'; readonly command: number }
-  | { readonly type: 'switch-committed'; readonly command: number; readonly strategy: string; readonly revision: string; readonly epoch: number }
-  | { readonly type: 'switch-rejected'; readonly command: number; readonly error: string }
+  | { readonly type: 'switch-pending'; readonly command: number; readonly commandId: string }
+  | { readonly type: 'switch-committed'; readonly command: number; readonly commandId: string; readonly strategy: string; readonly revision: string; readonly epoch: number }
+  | { readonly type: 'switch-rejected'; readonly command: number; readonly commandId: string; readonly error: string }
+  | ({ readonly type: 'capacity' } & CapacityObservation)
   | { readonly type: 'waiting'; readonly error: string }
   | { readonly type: 'terminal'; readonly status: 'completed' | 'failed' | 'cancelled' }
 
@@ -100,6 +104,11 @@ export interface TaskReceipt {
 /** Switch to a newly captured named plan at the next drained stage boundary. */
 export interface TaskSwitch {
   readonly strategy: string
+  /**
+   * Caller identity for this replacement. Resubmitting an id returns its first
+   * outcome instead of reserving again, so a retried request cannot switch twice.
+   */
+  readonly commandId: string
   /** Binding epoch observed by the caller; a mismatch rejects before author evaluation. */
   readonly expectedBindingEpoch: number
   readonly preferences?: Readonly<Record<string, string>>
@@ -107,5 +116,27 @@ export interface TaskSwitch {
   readonly startStage?: number
 }
 
+/** Where one control command stands; `queued` is the only unsettled state. */
+export type TaskCommandStatus = 'queued' | 'applied' | 'rejected'
+
+/** Correlated result of one accepted control command. */
+export interface TaskCommandOutcome {
+  readonly commandId: string
+  /** Reservation number in this run; the same value a view reports as `pendingSwitch`. */
+  readonly command: number
+  readonly status: TaskCommandStatus
+  /** Binding epoch after a committed replacement. */
+  readonly epoch?: number
+  /** ISO time of the commit that applied this command. */
+  readonly effectiveAt?: string
+  readonly error?: string
+}
+
+/** Result of waiting for one command to leave `queued`. */
+export interface TaskCommandWaitResult {
+  readonly timedOut: boolean
+  readonly outcome?: TaskCommandOutcome
+}
+
 /** Explicit rules captured by each accepted task; policy selection remains outside the runtime. */
-export type TaskRuntimeRules = Pick<AdapterConfig, 'provider' | 'allowedPresets' | 'allowedExecutors' | 'maxConcurrent' | 'maxTasks' | 'maxPlanBytes' | 'maxResultBytes' | 'maxOutputBytes'>
+export type TaskRuntimeRules = Pick<AdapterConfig, 'provider' | 'allowedPresets' | 'allowedExecutors' | 'maxConcurrent' | 'maxTasks' | 'maxPlanBytes' | 'maxResultBytes' | 'maxOutputBytes' | 'capacity'>

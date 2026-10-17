@@ -15,15 +15,20 @@ const plan: ExecutionPlan = { name: 'plan', stages: [{ name: 'work', tasks: [
 const options: TaskRunOptions = { maxConcurrent: 1, maxTasks: 3, maxResultBytes: 4096, prepare: async () => {} }
 const complete: TaskExecutor = async () => ({ stopReason: 'completed', output: 'done' })
 const capture = () => captureStrategy('policy', plan)
+let commands = 0
+/** Distinct identity per reservation; a repeated id would replay its first recorded outcome. */
+const nextCommand = (): string => `cmd-${++commands}`
 
 describe('strategy white-box lifecycle paths', () => {
   it('settles a switch reservation even when the author throws an unprintable object', async () => {
     let rejection: string | undefined
     const run = new TaskRun('task', capture(), complete, { ...options, onEvent: (event) => {
       if (event.type === 'switch-rejected') rejection = event.error
-      if (event.type === 'waiting') run.resume(0)
+      if (event.type === 'waiting') run.resume({ commandId: nextCommand(), expectedBindingEpoch: 0 })
     } })
-    expect(() => run.requestSwitch(() => { throw Object.create(null) }, { expectedBindingEpoch: 0 })).not.toThrow()
+    expect(() => run.requestSwitch(() => { throw Object.create(null) }, {
+      commandId: nextCommand(), expectedBindingEpoch: 0,
+    })).not.toThrow()
     expect((await run.start()).status).toBe('completed')
     expect(rejection).toContain('Unprintable error')
     expect(run.inspect().pendingSwitch).toBeUndefined()
@@ -81,7 +86,7 @@ describe('strategy white-box lifecycle paths', () => {
   it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects an invalid command cursor before evaluating its policy: %s', (index) => {
     let decisions = 0
     const run = new TaskRun('task', capture(), complete, options)
-    expect(() => run.requestSwitch(() => { decisions++; return capture() }, { expectedBindingEpoch: 0, startStage: index })).toThrow('nonnegative safe integer')
+    expect(() => run.requestSwitch(() => { decisions++; return capture() }, { commandId: nextCommand(), expectedBindingEpoch: 0, startStage: index })).toThrow('nonnegative safe integer')
     expect(decisions).toBe(0)
     expect(run.inspect().pendingSwitch).toBeUndefined()
   })
@@ -90,9 +95,9 @@ describe('strategy white-box lifecycle paths', () => {
     const events: TaskRunEvent[] = []
     const run = new TaskRun('task', capture(), complete, { ...options, onEvent: (event) => {
       events.push(event)
-      if (event.type === 'waiting') run.requestSwitch(capture, { expectedBindingEpoch: 0 })
+      if (event.type === 'waiting') run.requestSwitch(capture, { commandId: nextCommand(), expectedBindingEpoch: 0 })
     } })
-    run.requestSwitch(() => { throw new Error('decision unavailable') }, { expectedBindingEpoch: 0 })
+    run.requestSwitch(() => { throw new Error('decision unavailable') }, { commandId: nextCommand(), expectedBindingEpoch: 0 })
     expect((await run.start()).status).toBe('completed')
     expect(events.filter(event => event.type === 'switch-committed')).toHaveLength(1)
     expect(run.inspect()).toMatchObject({ binding: { epoch: 1 }, startedTasks: 1 })
@@ -102,9 +107,9 @@ describe('strategy white-box lifecycle paths', () => {
     const events: TaskRunEvent[] = []
     const run = new TaskRun('task', capture(), complete, { ...options, onEvent: (event) => {
       events.push(event)
-      if (event.type === 'switch-rejected') run.resume(0)
+      if (event.type === 'switch-rejected') run.resume({ commandId: nextCommand(), expectedBindingEpoch: 0 })
     } })
-    run.requestSwitch(capture, { expectedBindingEpoch: 0, startStage: 1 })
+    run.requestSwitch(capture, { commandId: nextCommand(), expectedBindingEpoch: 0, startStage: 1 })
     expect((await run.start()).results.map(result => result.label)).toEqual(['child'])
     expect(run.inspect().binding.epoch).toBe(0)
     expect(events.some(event => event.type === 'waiting')).toBe(false)
@@ -115,7 +120,7 @@ describe('strategy white-box lifecycle paths', () => {
     const run = new TaskRun('task', capture(), async (...args) => { starts++; return complete(...args) }, {
       ...options, onEvent: (event) => { if (event.type === 'switch-committed') run.cancel('cancelled at boundary') },
     })
-    run.requestSwitch(capture, { expectedBindingEpoch: 0 })
+    run.requestSwitch(capture, { commandId: nextCommand(), expectedBindingEpoch: 0 })
     expect((await run.start()).status).toBe('cancelled')
     expect(starts).toBe(0)
     expect(run.inspect().binding.epoch).toBe(1)
@@ -124,9 +129,9 @@ describe('strategy white-box lifecycle paths', () => {
   it('cancels a queued task without execution and leaves terminal state unchanged on repeated cancellation', async () => {
     let starts = 0
     const run = new TaskRun('task', capture(), async (...args) => { starts++; return complete(...args) }, options)
-    expect(() => { run.resume(0) }).toThrow('not waiting')
+    expect(() => { run.resume({ commandId: nextCommand(), expectedBindingEpoch: 0 }) }).toThrow('not waiting')
     run.cancel('queued cancellation')
-    expect(() => run.requestSwitch(capture, { expectedBindingEpoch: 0 })).toThrow('stopping')
+    expect(() => run.requestSwitch(capture, { commandId: nextCommand(), expectedBindingEpoch: 0 })).toThrow('stopping')
     expect((await run.start()).status).toBe('cancelled')
     run.cancel('late cancellation')
     expect(run.inspect().phase).toBe('cancelled')

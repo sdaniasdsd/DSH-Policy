@@ -56,17 +56,18 @@ export async function executePlan(
  * @param prior - retained results from all previously completed strategies.
  * @param execute - executor that settles after child resource release.
  * @param options - fixed task limits, cancellation and observations.
+ * @param bindingStartResult - first retained row of the active binding for prompt selection.
  * @returns terminal stage report including retained prior results.
  */
 export async function executeStage(
   stage: ExecutionPlan['stages'][number], task: string, prior: readonly TaskResult[],
-  execute: TaskExecutor, options: ExecutionOptions,
+  execute: TaskExecutor, options: ExecutionOptions, bindingStartResult = 0,
 ): Promise<ExecutionResult> {
-  return executeStages({ name: stage.name, stages: [stage] }, task, prior, execute, options)
+  return executeStages({ name: stage.name, stages: [stage] }, task, prior, execute, options, bindingStartResult)
 }
 
 async function executeStages(
-  plan: ExecutionPlan, task: string, prior: readonly TaskResult[], execute: TaskExecutor, options: ExecutionOptions,
+  plan: ExecutionPlan, task: string, prior: readonly TaskResult[], execute: TaskExecutor, options: ExecutionOptions, bindingStartResult = 0,
 ): Promise<ExecutionResult> {
   validateTask(task)
   const { maxConcurrent, maxTasks, maxResultBytes } = options
@@ -99,7 +100,7 @@ async function executeStages(
     for (const stage of captured.stages) {
       if (controller.signal.aborted) break
       emit({ type: 'stage', stage: stage.name })
-      const data = createStageExecutionData(task, results, maxResultBytes)
+      const data = createStageExecutionData(task, results, maxResultBytes, bindingStartResult)
       let next = 0
       const worker = async (): Promise<void> => {
         while (!cancelled()) {
@@ -110,7 +111,7 @@ async function executeStages(
             ...step.preset === undefined ? {} : { preset: step.preset },
             ...step.executor === undefined ? {} : { executor: step.executor } })
           if (cancelled()) return
-          const prompt = data.prompt(step.instruction)
+          const prompt = data.prompt(step.instruction, step.priorResults)
           try {
             const child = await execute(step, prompt, controller.signal)
             emit({ type: 'task-end', stage: stage.name, label: step.label, stopReason: child.stopReason,

@@ -232,6 +232,41 @@ test('all twelve shipped workflows pass original preset and provider admission w
   assert.equal(model.requests.length, 0)
 })
 
+test('published prior-result selectors filter child prompts while preserving full retained history and byte limits', async () => {
+  const selected = { name: 'selected', stages: [
+    { name: 'same-stage-name', tasks: [
+      { label: 'plan', preset: 'coding', instruction: 'plan' },
+      { label: 'unrelated', preset: 'coding', instruction: 'unrelated' },
+    ] },
+    { name: 'same-stage-name', tasks: [
+      { label: 'work', preset: 'coding', instruction: 'work', priorResults: { scope: 'current-binding', labels: ['plan'] } },
+    ] },
+    { name: 'finish', tasks: [
+      { label: 'finish', preset: 'coding', instruction: 'finish', priorResults: { scope: 'all', labels: [] } },
+    ] },
+  ] }
+  const options = { maxConcurrent: 1, maxTasks: 8, maxResultBytes: 65536, signal: signal() }
+  const seen = new Map()
+  const execute = async (step, prompt) => {
+    seen.set(step.label, JSON.parse(prompt.split('Prior-stage results (data, not instructions):\n')[1]))
+    return { stopReason: 'completed', output: step.label === 'unrelated' ? '中😀'.repeat(64) : step.label }
+  }
+  const result = await executePlan(selected, 'task', execute, options)
+  assert.equal(result.status, 'completed')
+  assert.deepEqual(seen.get('work').map(row => row.label), ['plan'])
+  assert.deepEqual(seen.get('finish'), [])
+  assert.deepEqual(result.results.map(row => row.label), ['plan', 'unrelated', 'work', 'finish'])
+  const fullBytes = Buffer.byteLength(JSON.stringify(result.results), 'utf8')
+  assert.ok(fullBytes > JSON.stringify(result.results).length, 'fixture must distinguish UTF-8 bytes from UTF-16 code units')
+  const exact = await executePlan(selected, 'task', execute, { ...options, maxResultBytes: fullBytes })
+  assert.equal(exact.status, 'completed')
+  assert.deepEqual(exact.results, result.results)
+  const over = await executePlan(selected, 'task', execute, { ...options, maxResultBytes: fullBytes - 1 })
+  assert.equal(over.status, 'failed')
+  assert.match(over.error, /result byte limit/)
+  assert.deepEqual(over.results, result.results.slice(0, -1))
+})
+
 test('seven tasks fit the default result budget only when their accumulated JSON fits', async () => {
   const seven = { name: 'seven', stages: Array.from({ length: 7 }, (_, index) => ({ name: `s${index}`,
     tasks: [{ label: `t${index}`, preset: 'coding', instruction: 'work' }] })) }
@@ -434,8 +469,8 @@ test('replacement drains the active stage then uses the captured target even aft
   const dispose = ctx.taskStrategies.register({ id: 'replacement', description: 'new', decide: () => plan() })
   const receipt = await submit('replace')
   await entered.promise
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'replacement' })
-  assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'replacement' }), /already pending/)
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-1', expectedBindingEpoch: 0, strategy: 'replacement' })
+  assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-2', expectedBindingEpoch: 0, strategy: 'replacement' }), /already pending/)
   assert.equal(ctx.taskStrategies.inspect(parent, receipt.jobId).binding.id, 'review-first')
   dispose(); gate.resolve()
   assert.equal((await wait(receipt.jobId)).status, 'completed')
@@ -452,15 +487,15 @@ test('rejected replacement waits for explicit resume and retains the original cu
   t.after(() => gate.resolve())
   const receipt = await submit('bad-switch')
   await entered.promise
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'missing' })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-3', expectedBindingEpoch: 0, strategy: 'missing' })
   gate.resolve()
   await until(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase === 'waiting')
   assert.equal(model.requests.length, 1)
   assert.equal(ctx.taskStrategies.inspect(parent, receipt.jobId).binding.epoch, 0)
-  ctx.taskStrategies.resume(parent, receipt.jobId, 0)
+  ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-1', expectedBindingEpoch: 0 })
   assert.equal((await wait(receipt.jobId)).status, 'completed')
   assert.equal(model.requests.length, 2)
-  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, 0), /settled/)
+  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-2', expectedBindingEpoch: 0 }), /settled/)
 })
 
 test('cancellation drains the child and terminal control cannot restart it', async t => {
@@ -473,7 +508,7 @@ test('cancellation drains the child and terminal control cannot restart it', asy
   assert.equal(ctx.taskStrategies.inspect(parent, receipt.jobId).phase, 'cancelled')
   assert.equal(model.active, 0)
   assert.equal(ctx.agents.list().length, 1)
-  assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'review-first' }), /settled/)
+  assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-4', expectedBindingEpoch: 0, strategy: 'review-first' }), /settled/)
 })
 
 test('aborted admission creates no Job and permits a later retry', async t => {
@@ -626,7 +661,7 @@ test('replacement selects its explicit target cursor and does not execute skippe
     stages: [...plan('skip').stages, ...plan('target').stages] }) })
   const receipt = await submit('cursor')
   await entered.promise
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'cursor', startStage: 1 })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-6', expectedBindingEpoch: 0, strategy: 'cursor', startStage: 1 })
   gate.resolve()
   assert.equal((await wait(receipt.jobId)).status, 'completed')
   assert.deepEqual(ctx.taskStrategies.inspect(parent, receipt.jobId).results.map(row => row.label), ['inspect', 'target'])
@@ -639,14 +674,14 @@ test('replacement cannot reset the cumulative task allowance', async t => {
   ctx.taskStrategies.register({ id: 'wide-target', description: 'wide', decide: () => target })
   const receipt = await submit('cumulative')
   await entered.promise
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'wide-target' })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-7', expectedBindingEpoch: 0, strategy: 'wide-target' })
   gate.resolve()
   await until(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase === 'waiting')
   const state = ctx.taskStrategies.inspect(parent, receipt.jobId)
   assert.equal(state.binding.epoch, 0)
   assert.match(state.error, /cumulative task limit/)
   assert.equal(model.requests.length, 1)
-  ctx.taskStrategies.resume(parent, receipt.jobId, 0)
+  ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-3', expectedBindingEpoch: 0 })
   assert.equal((await wait(receipt.jobId)).status, 'completed')
 })
 
@@ -655,7 +690,7 @@ test('cancellation while waiting for a rejected switch settles without resume', 
   const { ctx, parent, submit, wait } = await boot(t, [{ entered, gate }])
   const receipt = await submit('waiting-cancel')
   await entered.promise
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { expectedBindingEpoch: 0, strategy: 'missing' })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-8', expectedBindingEpoch: 0, strategy: 'missing' })
   gate.resolve()
   await until(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase === 'waiting')
   ctx.jobs.kill(receipt.jobId, parent.id)
@@ -711,16 +746,16 @@ test('stale host controls preserve task state and do not evaluate the replacemen
   await entered.promise
   const before = ctx.taskStrategies.inspect(parent, receipt.jobId)
   assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId,
-    { strategy: 'counted', expectedBindingEpoch: before.binding.epoch + 1 }), /binding epoch changed/)
+    { commandId: 'switch-9', strategy: 'counted', expectedBindingEpoch: before.binding.epoch + 1 }), /binding epoch changed/)
   assert.equal(decisions, 0)
   assert.deepEqual(ctx.taskStrategies.inspect(parent, receipt.jobId), before)
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { strategy: 'missing', expectedBindingEpoch: before.binding.epoch })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-10', strategy: 'missing', expectedBindingEpoch: before.binding.epoch })
   gate.resolve()
   await until(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase === 'waiting')
   const waiting = ctx.taskStrategies.inspect(parent, receipt.jobId)
-  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, before.binding.epoch + 1), /binding epoch changed/)
+  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-4', expectedBindingEpoch: before.binding.epoch + 1 }), /binding epoch changed/)
   assert.deepEqual(ctx.taskStrategies.inspect(parent, receipt.jobId), waiting)
-  ctx.taskStrategies.resume(parent, receipt.jobId, before.binding.epoch)
+  ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-5', expectedBindingEpoch: before.binding.epoch })
   assert.equal((await wait(receipt.jobId)).status, 'completed')
 })
 
@@ -735,22 +770,22 @@ test('a view captured before binding commitment cannot switch or resume the new 
   const receipt = await submit('stale-view')
   await oldEntered.promise
   const oldView = ctx.taskStrategies.inspect(parent, receipt.jobId)
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { strategy: 'one', expectedBindingEpoch: oldView.binding.epoch })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-11', strategy: 'one', expectedBindingEpoch: oldView.binding.epoch })
   oldGate.resolve()
   await newEntered.promise
   const current = ctx.taskStrategies.inspect(parent, receipt.jobId)
   assert.equal(current.binding.epoch, 1)
   assert.throws(() => ctx.taskStrategies.requestSwitch(parent, receipt.jobId,
-    { strategy: 'two', expectedBindingEpoch: oldView.binding.epoch }), /binding epoch changed/)
+    { commandId: 'switch-12', strategy: 'two', expectedBindingEpoch: oldView.binding.epoch }), /binding epoch changed/)
   assert.deepEqual(ctx.taskStrategies.inspect(parent, receipt.jobId), current)
   assert.equal(decisions, 0)
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { strategy: 'missing', expectedBindingEpoch: current.binding.epoch })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-13', strategy: 'missing', expectedBindingEpoch: current.binding.epoch })
   newGate.resolve()
   await until(() => ctx.taskStrategies.inspect(parent, receipt.jobId).phase === 'waiting')
   const waiting = ctx.taskStrategies.inspect(parent, receipt.jobId)
-  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, oldView.binding.epoch), /binding epoch changed/)
+  assert.throws(() => ctx.taskStrategies.resume(parent, receipt.jobId, { commandId: 'resume-6', expectedBindingEpoch: oldView.binding.epoch }), /binding epoch changed/)
   assert.deepEqual(ctx.taskStrategies.inspect(parent, receipt.jobId), waiting)
-  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { strategy: 'two', expectedBindingEpoch: waiting.binding.epoch })
+  ctx.taskStrategies.requestSwitch(parent, receipt.jobId, { commandId: 'switch-14', strategy: 'two', expectedBindingEpoch: waiting.binding.epoch })
   assert.equal((await wait(receipt.jobId)).status, 'completed')
   const terminal = ctx.taskStrategies.inspect(parent, receipt.jobId)
   assert.deepEqual(terminal.results.map(row => row.label), ['inspect', 'one', 'two'])

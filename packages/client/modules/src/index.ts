@@ -33,7 +33,7 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
-import { exactPackageSpecifier, parseDshClient, stripClientSuffix } from './client/manifest.ts'
+import { parseDshClient, stripClientSuffix } from './client/manifest.ts'
 import type { WebBootBatch, WebBootBatchPhase, WebBootEntry, WebBootGraph } from './client/manifest.ts'
 
 export { stripClientSuffix } from './client/manifest.ts'
@@ -75,6 +75,7 @@ interface PkgMeta extends WebBootRowFields {
 
 interface ResolvedPkgMeta {
   packageName: string
+  manifestPath: string
   meta: PkgMeta
 }
 
@@ -90,6 +91,15 @@ interface ClientPackageSource extends ResolvedPkgMeta {
 
 /** Recovery instruction shared by grouped startup and steady-state bundle diagnostics. */
 const CLIENT_BUNDLE_BUILD_INSTRUCTION = 'run `pnpm run build` before launch'
+
+/** Return the owning package name for a bare package root or subpath entry. */
+function packageRootSpecifier(specifier: string): string | undefined {
+  if (specifier.includes(':') || specifier.startsWith('.') || specifier.startsWith('/')) return undefined
+  const parts = specifier.split('/')
+  if (parts.some(part => part.length === 0)) return undefined
+  if (parts[0]?.startsWith('@')) return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : undefined
+  return parts[0]
+}
 
 /** Missing built client export, retained as structured data for activation-error grouping. */
 class MissingClientBundleError extends Error {
@@ -852,7 +862,7 @@ export class ClientModuleRegistry extends Service {
       external: decl.external ?? [],
       immediately: decl.immediately === true,
     }
-    const resolved = { packageName, meta }
+    const resolved = { packageName, manifestPath: pkgPath, meta }
     this.pkgMeta.set(sourceKey, resolved)
     return resolved
   }
@@ -871,7 +881,7 @@ export class ClientModuleRegistry extends Service {
   private locatePkgJson(loaderName: string, baseUrl: string): { path: string; packageName: string } | undefined {
     if (loaderName.startsWith('cordis:')) return undefined
     const pathLike = loaderName.startsWith('.') || loaderName.startsWith('file:') || isAbsolute(loaderName)
-    const expectedPackageName = pathLike ? undefined : exactPackageSpecifier(loaderName)
+    const expectedPackageName = pathLike ? undefined : packageRootSpecifier(loaderName)
     if (!pathLike && expectedPackageName === undefined) return undefined
     const internal = this.ctx.loader.internal
     if (internal === undefined || typeof Reflect.get(internal, 'resolveSync') !== 'function') {
@@ -1015,7 +1025,10 @@ export class ClientModuleRegistry extends Service {
     }
     const resolved = this.resolveMeta(loaderName, baseUrl)
     if (resolved === null) return undefined
-    return { ...resolved, loaderName, baseUrl, sourceKey: this.sourceKey(loaderName, baseUrl) }
+    const sourceKey = packageRootSpecifier(loaderName) === undefined
+      ? this.sourceKey(loaderName, baseUrl)
+      : `${baseUrl}\0${resolved.manifestPath}`
+    return { ...resolved, loaderName, baseUrl, sourceKey }
   }
 
   private reconcilePackage(packageName: string): boolean {

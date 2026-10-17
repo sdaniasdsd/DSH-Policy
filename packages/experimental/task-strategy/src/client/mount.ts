@@ -64,13 +64,13 @@ function registerUi(ctx: Context): void {
     },
     switchStrategy: async (view, strategy, epoch) => {
       const result = await ctx.remote.taskStrategies.switchEntry({ sessionId: view.sessionId, requestId: view.requestId,
-        request: { strategy, expectedBindingEpoch: epoch } })
+        request: { commandId: globalThis.crypto.randomUUID(), strategy, expectedBindingEpoch: epoch } })
       if (!result.ok) throw result.error
     },
     resume: async (view) => {
       if (view.run === undefined) throw new Error('Task binding is unavailable')
       const result = await ctx.remote.taskStrategies.resumeEntry({
-        sessionId: view.sessionId, requestId: view.requestId, epoch: view.run.binding.epoch,
+        sessionId: view.sessionId, requestId: view.requestId, commandId: globalThis.crypto.randomUUID(), epoch: view.run.binding.epoch,
       })
       if (!result.ok) throw result.error
     },

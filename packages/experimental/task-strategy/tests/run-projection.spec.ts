@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { createPolicySnapshot, projectRunResults } from '../src/run-projection.ts'
+import type { PolicySnapshot } from '../src/policy-types.ts'
 import type { TaskResult } from '../src/types.ts'
 import type { VerificationReport } from '../src/verification-types.ts'
 import type { ReviewReport } from '../src/workflow-types.ts'
 
 const row = (label: string): TaskResult => ({ stage: 'work', label, stopReason: 'completed', output: label })
-const progress = { nextStage: 2, completedStages: 3, remainingTasks: 7, bindingEpoch: 1 }
+const progress: Omit<PolicySnapshot, 'results' | 'currentResults'> = {
+  nextStage: 2, completedStages: 3, remainingTasks: 7, bindingEpoch: 1, signals: [],
+}
 const verification: VerificationReport = { status: 'passed', checks: [] }
 const review: ReviewReport = { status: 'passed', issues: [] }
 
@@ -68,7 +71,7 @@ describe('shared task result projections', () => {
     Object.assign(snapshot.currentResults[0]!.verification!, { status: 'failed' })
     expect(results[1]!.output).toBe('current')
     expect(results[1]!.verification!.status).toBe('passed')
-    expect(progress).toEqual({ nextStage: 2, completedStages: 3, remainingTasks: 7, bindingEpoch: 1 })
+    expect(progress).toEqual({ nextStage: 2, completedStages: 3, remainingTasks: 7, bindingEpoch: 1, signals: [] })
   })
 
   it('retains total history but gives a replacement policy an empty current history', () => {

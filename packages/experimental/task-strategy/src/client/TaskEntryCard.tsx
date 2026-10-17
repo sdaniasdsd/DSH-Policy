@@ -66,7 +66,14 @@ export function TaskEntryPanel(props: {
         <p>{copy.permissionAuthority}: <code>{run.execution.permissionAuthority}</code></p>
         <p className={css.note}>{copy.permissionNote}</p>
       </details> : null}
-      <p>{copy.verification}: {copy[run.verification?.status ?? 'unverified']}</p>
+      <p>{copy.verification}: {run.verification === undefined
+        ? view.state === 'completed' ? copy.noRegisteredChecks : copy.noVerificationResult
+        : run.verification.status === 'unverified' && run.verification.checks.length === 0
+          ? copy.noRegisteredChecks : copy[run.verification.status]}</p>
+      {run.verification === undefined && view.state === 'completed'
+        ? <p className={css.note}>{copy.noVerificationOnCompletionNote}</p> : null}
+      {run.verification?.status === 'unverified' && ['completed', 'failed', 'cancelled', 'interrupted'].includes(view.state)
+        ? <p className={css.note}>{copy.unverifiedNote}</p> : null}
       {run.verification?.checks.map(check => <p key={check.id}><code>{check.id}</code> · {copy[check.status]}</p>)}
       {run.review ? <p>{copy.review}: {run.review.status === 'passed' ? copy.reviewPassed : run.review.status === 'issues' ? copy.reviewIssues : copy.reviewUnverified}</p> : null}
       {run.review?.issues.map((issue, index) => <p key={index}><code>{issue.path}</code> · {issue.description}</p>)}

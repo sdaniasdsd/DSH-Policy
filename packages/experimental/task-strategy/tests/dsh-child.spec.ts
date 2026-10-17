@@ -9,7 +9,10 @@ it('normalizes Windows read separators and isolates each child evidence budget',
   const child = Session.create(SessionId('child'), undefined, { ...parent.session.header, id: SessionId('child'), parentSession: parent.id })
   const sibling = Session.create(SessionId('sibling'), undefined, { ...parent.session.header, id: SessionId('sibling'), parentSession: parent.id })
   const dispose = vi.fn(async () => {})
-  const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: { startActivation: async () => {
+  let startedCwd: string | undefined
+  const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: { startActivation: async (
+    spec: { request: { cwd?: string } }) => {
+    startedCwd = spec.request.cwd
     for (const session of [sibling, child]) {
       const event = session.append('tool/ptc-dispatch', {
         rootCallId: ToolCallId('root'), parentCallId: ToolCallId('root'), subCallId: ToolCallId('read'),
@@ -30,6 +33,7 @@ it('normalizes Windows read separators and isolates each child evidence budget',
     label: 'verify', preset: 'standard', instruction: 'read', artifactChecks: [{ id: 'file', path: 'out\\gate.md', contains: 'observed' }],
   }, 'read', new AbortController().signal, 65536)
   expect(result.verification?.status).toBe('passed')
+  expect(startedCwd).toBe(ctx.get('workingDirectory')?.get(parent.session) ?? parent.session.header.cwd)
   expect(result.usage).toEqual({ modelCalls: 1, reportedCalls: 1, observedTokens: 18 })
   expect(dispose).toHaveBeenCalledOnce()
 })

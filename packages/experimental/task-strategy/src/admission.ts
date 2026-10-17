@@ -58,6 +58,7 @@ export function createAdmission(
       if (step.tools !== undefined && !provider.capabilities.toolFilter) throw new Error('Strategy provider does not support tool restrictions')
       if ((step.workflowOutput === true || step.reviewOutput === true) && !provider.capabilities.outputSchema) throw new Error('Strategy provider does not support structured workflow output')
       if (step.workflowOutput === true && step.reviewOutput === true) throw new Error('A child cannot produce both a plan and a review')
+      if (step.reviewPaths !== undefined && step.reviewOutput !== true) throw new Error('Review paths require structured review output')
       if (step.reviewOutput === true && (step.tools?.allow === undefined || step.tools.allow.some(name => !['read', 'glob', 'grep'].includes(name)))) {
         throw new Error('Workflow review requires original read-only tools')
       }

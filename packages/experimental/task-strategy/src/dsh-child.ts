@@ -31,7 +31,7 @@ function readPath(value: unknown): string | undefined {
  */
 export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subagents: Pick<Context['subagents'], 'startActivation'> }, parent: Agent, provider: string, step: TaskStep,
   prompt: string, signal: AbortSignal, maxEvidenceBytes: number, onActive?: (id: SessionId) => () => void,
-  activate?: (spec: SubagentActivationSpec) => Promise<SubagentActivation>): Promise<ChildResult> {
+  activate?: (spec: SubagentActivationSpec) => Promise<SubagentActivation>, workspaceRoot?: string): Promise<ChildResult> {
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
   const timer = step.timeoutMs === undefined ? undefined
@@ -39,10 +39,11 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
   const observations = new Map<SessionId, Map<string, ReadEvidence>>()
   const calls = new Map<SessionId, Map<string, string>>()
   const usages = new Map<SessionId, ObservedUsage>()
-  const cwd = ctx.get('workingDirectory')?.get(parent.session) ?? parent.session.header.cwd
+  const cwd = workspaceRoot ?? ctx.get('workingDirectory')?.get(parent.session) ?? parent.session.header.cwd
   const bytes = new Map<SessionId, number>()
   const overflow = new Set<SessionId>()
-  const acceptsPath = (path: string) => step.reviewOutput === true
+  const acceptsPath = (path: string) => (step.reviewOutput === true
+    && step.reviewPaths?.some(required => normalizeReadPath(required, cwd) === normalizeReadPath(path, cwd)) === true)
     || step.artifactChecks?.some(check => normalizeReadPath(check.path, cwd) === normalizeReadPath(path, cwd)) === true
   const recordRead = (id: SessionId, args: unknown, isError: boolean, text: string) => {
     const path = readPath(args)
@@ -96,7 +97,7 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...step.maxTokens === undefined ? {} : { maxTokens: step.maxTokens } }
     const start = activate ?? ((spec: SubagentActivationSpec) => startCancellableActivation(ctx.subagents, spec))
     const run = await start({ provider, label: step.label, signal: combined, delivery: 'caller', request: {
-      parent, prompt: [{ type: 'text', text: prompt }],
+      parent, prompt: [{ type: 'text', text: prompt }], ...cwd === undefined ? {} : { cwd },
       ...step.preset === undefined ? {} : { agentPreset: step.preset },
       ...step.tools === undefined ? {} : { toolFilter: {
         ...step.tools.allow === undefined ? {} : { allow: step.tools.allow },
@@ -117,7 +118,7 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
           : { workflow: parseWorkflowProposal(result.structured) },
         ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
           review: parseReviewReport(result.structured,
-            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
+            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd, step.reviewPaths ?? []) },
         ...step.artifactChecks === undefined ? {} : {
           verification: verifyArtifacts(step.artifactChecks,
             overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
