@@ -2,7 +2,15 @@
 
 [English](README.md) | 中文
 
-本仓库是独立维护的 DeepSeek Harness 实验性 fork，不是 DeepSeek 官方发行版。它在原版 DSH 执行层上增加了由作者控制的任务策略层。源码镜像：[GitHub](https://github.com/sdaniasdsd/dsh-change) 和 [Gitee](https://gitee.com/chunyouzhidi/dsh-policy-version)。
+[![CI](https://github.com/sdaniasdsd/DSH-Policy/actions/workflows/ci-master.yml/badge.svg?branch=main)](https://github.com/sdaniasdsd/DSH-Policy/actions/workflows/ci-master.yml)
+
+[![GitHub release](https://img.shields.io/github/v/release/sdaniasdsd/DSH-Policy?include_prereleases)](https://github.com/sdaniasdsd/DSH-Policy/releases)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[![GitHub issues](https://img.shields.io/github/issues/sdaniasdsd/DSH-Policy)](https://github.com/sdaniasdsd/DSH-Policy/issues)
+
+本仓库是独立维护的 DeepSeek Harness 实验性 fork，不是 DeepSeek 官方发行版。它在原版 DSH 执行层上增加了由作者控制的任务策略层。正式源码仓库为 [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy)。
 
 DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
 
@@ -14,9 +22,9 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 当前源码构建在策略版工作流 bundle 中开启自动根任务入口。普通工作在原版 DSH 子任务执行之前，通过有界意图分类及策略选择。聊天卡片展示策略、子任务 Token 场景估算和阶段进度；插件页可以关闭未来输入的自动入口。见[入口指南](docs/upgrade-guide/v0.2.0-rc.2/task-strategy-default-entry/guide.zh.md)。
 
-### Policy Edition 0.1.0 安装包
+### Windows 预览版安装包
 
-从 [GitHub Releases](https://github.com/sdaniasdsd/dsh-change/releases) 下载 Windows x64 预览版安装包。 该独立构建未签名，沿用上游运行时版本 `0.2.1-alpha.2`。 内置策略插件 UI、可选 LLM 选择、阶段边界控制、可解释 Token 估算，以及十二个可配置工作流： 编程、论文调研、问题研究、方案规划，每类都有低、中、高三档。 估算描述子任务执行场景，不是账单或 Token 硬上限。安装后需自行配置供应商和模型。 默认数据目录为 `~/.dsh-policy`；显式 `DSH_HOME` 仍优先。 该版不接入官方自动更新源或强制更新服务，桌面壳也关闭强制更新遮罩。后续策略版通过下载安装包手动升级。
+从 [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases) 下载 Windows x64 预览版安装包。 该独立构建未签名，沿用上游运行时版本 `0.2.1-alpha.3`。 内置策略插件 UI、可选 LLM 选择、阶段边界控制、可解释 Token 估算，以及十二个可配置工作流： 编程、论文调研、问题研究、方案规划，每类都有低、中、高三档。 估算描述子任务执行场景，不是账单或 Token 硬上限。安装后需自行配置供应商和模型。 默认数据目录为 `~/.dsh-policy`；显式 `DSH_HOME` 仍优先。 该版不接入官方自动更新源或强制更新服务，桌面壳也关闭强制更新遮罩。后续策略版通过下载安装包手动升级。
 
 复现未签名构建时，创建被 Git 忽略的 `apps/desktop/.env.windows`：
 
@@ -72,8 +80,8 @@ npx @deepseek-ai/dsh web
 如需从仓库源码运行：
 
 ```sh
-git clone https://github.com/sdaniasdsd/dsh-change.git dsh-policy-version
-cd dsh-policy-version
+git clone https://github.com/sdaniasdsd/DSH-Policy.git
+cd DSH-Policy
 pnpm install
 pnpm run build
 pnpm dsh web
@@ -81,11 +89,11 @@ pnpm dsh web
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
 
-上面的命令不会加载策略层。如需启用，请按[策略部件的源码试用说明](packages/experimental/task-strategy/README.zh.md#use-this-package)加载附带的源码补丁；启动命令和配置细节以该节为准。[Gitee 镜像](https://gitee.com/chunyouzhidi/dsh-policy-version)包含相同的增强版源码。
+上面的命令不会加载策略层。如需启用，请按[策略部件的源码试用说明](packages/experimental/task-strategy/README.zh.md#use-this-package)加载附带的源码补丁；启动命令和配置细节以该节为准。GitHub 仓库是本 fork 的正式源码来源。
 
 ## 社区与支持
 
-- 策略增强版的问题请提交到[本 fork 的问题追踪器](https://github.com/sdaniasdsd/dsh-change/issues)；上游反馈请提交到 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions)。
+- 策略增强版的问题请提交到[本 fork 的问题追踪器](https://github.com/sdaniasdsd/DSH-Policy/issues)；上游反馈请提交到 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions)。
 - 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
 - 欢迎加入 DeepSeek Harness 企微群！扫描下方二维码填写入群问卷，小助手会定期发送入群邀请。
 
