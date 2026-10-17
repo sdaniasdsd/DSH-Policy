@@ -28,11 +28,11 @@
 | `TaskRecordWaitResult` | 新记录或有界超时结果 |
 | `TaskCoordination` | 向执行器提供的通用记录与保留发送者身份的成员消息 |
 
-任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
+任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。收件箱接受后，取消不会撤回消息，发送方仍会收到收据。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
 
 根模型工具 `task_strategy_inspect(jobId)`、`task_strategy_message(jobId, childId, text)` 和 `task_strategy_record_{read,list,write,wait}` 使用同一套归属检查，名称跟随 `toolPrefix`。记录由原始 Job 隔离；`write` 按 `expectedRevision` 比较并交换，`wait` 等待版本变化或超时。记录 key 和 JSON value 的语义由调用方定义。自动根入口开启时工具可用，载体卸载时移除；执行子任务保留原有工具。DSH 只提供通用基础能力与统一 LLM 工具入口，不新增插件专属适配，不决定策略命令格式或业务流程。
 
-宿主调用方可通过 `ctx.taskRuns` 与 `ctx.taskStrategies` 的 `recordRead`、`recordList`、`recordWrite` 和 `recordWait` 操作记录；执行器回调可通过 `TaskExecutorContext.coordination` 使用同一组能力。记录写入在返回前持久化新版本；旧 `expectedRevision` 会因版本冲突失败。记录作为 owner Session 插件记录跨载体重挂保留，但运行时 API 要求原 Job 仍处于活动期。
+宿主调用方可通过 `ctx.taskRuns` 与 `ctx.taskStrategies` 的 `recordRead`、`recordList`、`recordWrite` 和 `recordWait` 操作记录；执行器回调可通过 `TaskExecutorContext.coordination` 使用同一组能力。记录写入在返回前持久化新版本；事件追加后到达的取消不会隐藏通过持久化校验的版本收据。旧 `expectedRevision` 会因版本冲突失败。记录作为 owner Session 插件记录跨载体重挂保留，但运行时 API 要求原 Job 仍处于活动期。
 
 在保留同一模块和 Jobs 服务时重新挂载载体会保留活跃任务，进程重启不会。已接收任务的部署规则保持固定，提供方和预设的可用性则在准入时检查。执行恢复限制见包文档的[限制说明](../../packages/experimental/task-strategy/README.zh.md#known-limitations-and-deferred-work)。
 
