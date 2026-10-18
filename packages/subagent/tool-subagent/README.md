@@ -56,7 +56,9 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Managed delegation
 
-Every call returns `started subagent <childId>` after the runtime accepts the child. It does not wait for the child's result. The activation owns the work independently of the completed tool call; the runtime sends a completion notice and releases execution resources.
+Every call waits for its child and returns the final text, stop reason, and child id to the calling Agent. Failed runs remain marked as failed and include any available diagnostic. Caller-only delivery avoids sending the same completion a second time through the parent inbox. This is the generic `tool-subagent` behavior and does not depend on the task-strategy plugin.
+
+For local DSH children, the tool removes every visible subagent delegation tool from the child's tools. The provider must support `toolFilter`; otherwise the package fails at load time. Independent process backends do not inherit the DSH tool context. Ask workers to list suggested follow-up tasks in their final answer, then let the caller dispatch independent siblings.
 
 Every backend’s completion notice carries its final answer. Local Spawn and Fork children can also send messages, accept more work through `send_message` while active, or resume after settling. Codex, Claude Code, ACP, and DSH SDK backends do not accept follow-up messages.
 
@@ -161,7 +163,7 @@ Visible delegation tools share one guidance paragraph, listing tools in name ord
 ##### Tool-guidance section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message. Each call returns its final result before your next model step; ask workers to report any follow-up tasks so you can dispatch them as siblings.
 ```
 
 #### Token effect

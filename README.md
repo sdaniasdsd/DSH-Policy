@@ -10,7 +10,7 @@ English | [中文](README.zh.md)
 
 [![GitHub issues](https://img.shields.io/github/issues/sdaniasdsd/DSH-Policy)](https://github.com/sdaniasdsd/DSH-Policy/issues)
 
-This repository is an independently maintained experimental fork of DeepSeek Harness, not an official DeepSeek release. It adds an author-controlled task strategy layer above the original DSH execution layer. The canonical source repository is [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy).
+This repository is an independently maintained fork of DeepSeek Harness, not an official DeepSeek release. Policy Edition 1.0.0 is built from the DSH 0.2.1-alpha.3 source line and adds an author-controlled task strategy layer above the original DSH execution layer. The canonical source repository is [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy).
 
 DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
 
@@ -24,7 +24,7 @@ Current source builds enable automatic root task entry in the policy workflow bu
 
 ### Windows preview installer
 
-Download the Windows x64 preview installer from [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases). This independent build is unsigned and uses the upstream runtime version `0.2.1-alpha.3`. It includes the strategy plugin UI, optional LLM selection, stage-boundary controls, explainable token estimates, and twelve configurable workflows: coding, paper research, problem research and solution planning, each with low, medium and high tiers. Estimates describe child-task scenarios, not billing or a hard token limit. Configure your own provider and model after installation. The default data directory is `~/.dsh-policy`; an explicit `DSH_HOME` still takes precedence. It has no official automatic-update feed or mandatory-update service, and the shell disables the mandatory-update overlay. Install later fork releases manually.
+Download the unsigned Windows x64 Policy Edition 1.0.0 installer from [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases). It includes the complete DSH Web interface, the strategy plugin UI, automatic or manual strategy selection, stage-boundary controls, explainable token estimates, and twelve configurable workflows: coding, paper research, problem research and solution planning, each with low, medium and high tiers. Estimates describe child-task scenarios, not billing or a hard token limit. Configure your own provider and model after installation. The default data directory is `~/.dsh-policy`; an explicit `DSH_HOME` still takes precedence. It has no official automatic-update feed or mandatory-update service, and the shell disables the mandatory-update overlay. Install later fork releases manually.
 
 To reproduce the unsigned build, create the Git-ignored `apps/desktop/.env.windows` with:
 

@@ -10,7 +10,7 @@
 
 [![GitHub issues](https://img.shields.io/github/issues/sdaniasdsd/DSH-Policy)](https://github.com/sdaniasdsd/DSH-Policy/issues)
 
-本仓库是独立维护的 DeepSeek Harness 实验性 fork，不是 DeepSeek 官方发行版。它在原版 DSH 执行层上增加了由作者控制的任务策略层。正式源码仓库为 [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy)。
+本仓库是独立维护的 DeepSeek Harness fork，不是 DeepSeek 官方发行版。策略增强版 1.0.0 基于 DSH 0.2.1-alpha.3 对应的源码，并在原版 DSH 执行层上增加了由作者控制的任务策略层。正式源码仓库为 [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy)。
 
 DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
 
@@ -24,7 +24,7 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 ### Windows 预览版安装包
 
-从 [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases) 下载 Windows x64 预览版安装包。 该独立构建未签名，沿用上游运行时版本 `0.2.1-alpha.3`。 内置策略插件 UI、可选 LLM 选择、阶段边界控制、可解释 Token 估算，以及十二个可配置工作流： 编程、论文调研、问题研究、方案规划，每类都有低、中、高三档。 估算描述子任务执行场景，不是账单或 Token 硬上限。安装后需自行配置供应商和模型。 默认数据目录为 `~/.dsh-policy`；显式 `DSH_HOME` 仍优先。 该版不接入官方自动更新源或强制更新服务，桌面壳也关闭强制更新遮罩。后续策略版通过下载安装包手动升级。
+从 [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases) 下载未签名的 Windows x64 策略增强版 1.0.0 安装包。 它包含完整 DSH 浏览器界面、策略插件 UI、自动或手动策略选择、阶段边界控制、可解释 Token 估算，以及十二个可配置工作流： 编程、论文调研、问题研究、方案规划，每类都有低、中、高三档。 估算描述子任务执行场景，不是账单或 Token 硬上限。安装后需自行配置供应商和模型。 默认数据目录为 `~/.dsh-policy`；显式 `DSH_HOME` 仍优先。 该版不接入官方自动更新源或强制更新服务，桌面壳也关闭强制更新遮罩。后续策略版通过下载安装包手动升级。
 
 复现未签名构建时，创建被 Git 忽略的 `apps/desktop/.env.windows`：
 

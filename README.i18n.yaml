@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
 /deepseek-harness-policy-edition:
-  en: 2b16a3120d577898
-  zh: f0aa6be7543a2e4b
+  en: 42aea733fdb75fc4
+  zh: 2b84b6abccbaacca
 /deepseek-harness-policy-edition/policy-edition-our-changes:
   en: 62cce2b65b0c9904
   zh: bedac70827aa564c
 /deepseek-harness-policy-edition/policy-edition-our-changes/windows-preview-installer:
-  en: 35561a2d67e4c580
-  zh: 710af9a1ebd4984e
+  en: 563f98e444459692
+  zh: c7b05e33dcb791aa
 /deepseek-harness-policy-edition/developer-preview:
   en: 4ef4d8a71ac143f0
   zh: 1bfc3149ba8e5543

@@ -179,18 +179,30 @@ cancel(parent: Agent, jobId: JobId, reason?: string): 'requested' | 'already-fin
  * @param parent - exact live owner.
  * @param jobId - original Job identity.
  * @param resolve - synchronous policy capture from the unchanged task text.
- * @param request - observed binding epoch and optional target cursor.
- * @returns reservation command number.
+ * @param request - command identity, observed binding epoch and optional target cursor.
+ * @returns first recorded outcome for that command identity.
  */
-requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, 'expectedBindingEpoch' | 'startStage'>): number
+requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch' | 'startStage'>): TaskCommandOutcome
 
 /**
  * Resume a retained waiting binding.
  * @param parent - exact live owner.
  * @param jobId - original Job identity.
- * @param epoch - observed binding epoch.
+ * @param request - command identity and observed binding epoch.
+ * @returns first recorded outcome for that command identity.
  */
-resume(parent: Agent, jobId: JobId, epoch: number): void
+resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome
+
+/**
+ * Await one submitted control command's settled outcome.
+ * @param parent - exact live owner.
+ * @param jobId - original Job identity.
+ * @param commandId - identity already submitted to this run.
+ * @param timeoutMs - bounded wait in milliseconds.
+ * @param signal - caller cancellation.
+ * @returns the settled outcome, or a timeout marker when the command stays queued.
+ */
+waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>
 ```
 
 Types: [Agent](core.zh.md) · [JobId](jobs.zh.md)
@@ -297,15 +309,17 @@ captureOrchestrationPreferences(owner: Agent): Readonly<Record<string, string>>
 
 /**
  * Reserve an owned task replacement at the next stage boundary.
- * @param args - live root, owned request and replacement with observed binding epoch.
+ * @param args - live root, owned request and replacement with command identity and observed binding epoch.
+ * @returns recorded outcome for that command identity.
  */
-@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): void
+@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): TaskCommandOutcome
 
 /**
  * Resume an owned waiting binding using the observed epoch.
- * @param args - live root, owned request and observed retained binding epoch.
+ * @param args - live root, owned request, command identity and observed retained binding epoch.
+ * @returns recorded outcome for that command identity.
  */
-@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; epoch: number }): void
+@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; commandId: string; epoch: number }): TaskCommandOutcome
 
 /**
  * Evaluate an author policy and validate its execution choices.
@@ -396,18 +410,30 @@ recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, time
  * Reserve replacement by a current named strategy at the next stage barrier.
  * @param parent - exact live Agent owning the Job.
  * @param jobId - accepted task identity.
- * @param request - target strategy, observed binding epoch, preferences and optional explicit stage cursor.
- * @returns reservation command number; inspect state or Job output for commitment or failure.
+ * @param request - target strategy, command identity, observed binding epoch, preferences and optional explicit stage cursor.
+ * @returns recorded outcome for that command identity; inspect state or Job output for commitment or failure.
  */
-requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number
+requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): TaskCommandOutcome
 
 /**
  * Continue the retained strategy after a rejected replacement.
  * @param parent - exact live Agent owning the Job.
  * @param jobId - waiting task identity.
- * @param expectedBindingEpoch - binding epoch observed by the caller; stale expectations cannot resume a different binding.
+ * @param request - command identity and binding epoch observed by the caller; stale expectations cannot resume a different binding.
+ * @returns recorded outcome for that command identity.
  */
-resume(parent: Agent, jobId: JobId, expectedBindingEpoch: number): void
+resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome
+
+/**
+ * Await one submitted replacement command's settled outcome.
+ * @param parent - exact live Agent owning the Job.
+ * @param jobId - accepted task identity.
+ * @param commandId - identity already submitted for this task.
+ * @param timeoutMs - bounded wait in milliseconds.
+ * @param signal - caller cancellation.
+ * @returns the settled outcome, or a timeout marker when the command stays queued.
+ */
+waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>
 
 /**
  * Start an original DSH owned job from an upper-authored or policy-authored plan.

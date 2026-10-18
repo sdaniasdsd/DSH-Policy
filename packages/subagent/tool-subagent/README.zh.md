@@ -56,7 +56,9 @@ kind: "package-reference"
 
 ### 受管理的委派
 
-运行时接受子任务后，每次调用都会返回 `started subagent <childId>`，不等待子任务结果。activation 独立于已完成的工具调用拥有这项工作；运行时发送完成通知并释放执行资源。
+每次调用都会等待子任务，并把最终文本、停止原因和子任务编号交回调用它的 Agent。失败结果会明确标为失败，并带回可用诊断。结果只交给当前调用者，不会再重复进入父 Agent 收件箱。这是通用的 `tool-subagent` 行为，不依赖任务策略插件。
+
+对于本地 DSH 成员，该工具会从子成员可用工具中移除所有可见的子 agent 委派工具。提供方必须支持 `toolFilter`，否则包会在加载时失败。独立进程后端不会继承 DSH 工具上下文。可以要求成员在最终回答中列出建议的后续任务，再由主管决定是否派成同级任务。
 
 所有后端的完成通知都会附带最终回答。本地 Spawn 和 Fork 子任务还可以发送消息，在活跃期间通过 `send_message` 接受更多工作，或在结束后恢复。Codex、Claude Code、ACP 与 DSH SDK 后端不接受后续消息。
 
@@ -161,7 +163,7 @@ Session 携带策略的 settings 控制实例会公开子级 LLM 选择字段与
 ##### 工具指导 section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message. Each call returns its final result before your next model step; ask workers to report any follow-up tasks so you can dispatch them as siblings.
 ```
 
 #### Token 影响
