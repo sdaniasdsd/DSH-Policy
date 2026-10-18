@@ -14,7 +14,7 @@ import { ownerRuns } from './task-submissions.ts'
 import { boundText } from './schema.ts'
 import { ExecutorRegistry } from './executor-registry.ts'
 import { executeDshChild } from './dsh-child.ts'
-import { startCancellableActivation } from './subagent-activation.ts'
+import { ownActivation, startCancellableActivation } from './subagent-activation.ts'
 import { awaitCapacityAdmission } from './capacity.ts'
 import { createMemberSessions } from './member-sessions.ts'
 import { createTaskCoordination } from './task-coordination.ts'
@@ -173,7 +173,15 @@ export default class TaskRuns extends Service {
         activeMembers.set(id, { sessionId: id, label: step.label })
         return () => { activeMembers.delete(id) }
       }, spec => awaitCapacityAdmission(() => startCancellableActivation(subagents, spec), config.capacity,
-        spec.signal, (observation) => { runtime.reportCapacity(observation) }), workspaceRoot) } finally { releaseTurn() }
+        spec.signal, (observation) => { runtime.reportCapacity(observation) }), workspaceRoot,
+      spec => awaitCapacityAdmission(async () => ownActivation(await subagents.continueActivation(
+        parent, spec.childId, spec.request.prompt, {
+          signal: spec.signal, resume: {
+            ...spec.request.agentOptions?.maxTokens === undefined ? {} : { maxTokens: spec.request.agentOptions.maxTokens },
+            ...spec.request.outputSchema === undefined ? {} : { outputSchema: spec.request.outputSchema },
+          },
+        }), spec.signal), config.capacity, spec.signal, (observation) => { runtime.reportCapacity(observation) }))
+      } finally { releaseTurn() }
     }
     let runtime!: TaskRun
     const jobId = jobs.start({

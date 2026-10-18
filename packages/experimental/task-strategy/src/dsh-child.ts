@@ -16,6 +16,24 @@ function readPath(value: unknown): string | undefined {
   return value.file_path
 }
 
+/** Merge exact retransmitted suffix/prefix text at a continuation boundary in linear time. */
+function mergeContinuationText(previous: string, next: string): string {
+  if (!previous || !next) return previous + next
+  const prefixes = new Uint32Array(next.length)
+  for (let index = 1; index < next.length; index++) {
+    let matched = prefixes[index - 1] ?? 0
+    while (matched > 0 && next[index] !== next[matched]) matched = prefixes[matched - 1] ?? 0
+    if (next[index] === next[matched]) matched++
+    prefixes[index] = matched
+  }
+  let overlap = 0
+  for (let index = Math.max(0, previous.length - next.length); index < previous.length; index++) {
+    while (overlap > 0 && (overlap === next.length || previous[index] !== next[overlap])) overlap = prefixes[overlap - 1] ?? 0
+    if (previous[index] === next[overlap]) overlap++
+  }
+  return previous + next.slice(overlap)
+}
+
 /**
  * Execute one preset task through original Subagents and capture only its actual read observations.
  * @param ctx - captured runtime services; never an author plugin's mutable state.
@@ -27,11 +45,14 @@ function readPath(value: unknown): string | undefined {
  * @param maxEvidenceBytes - cumulative evidence memory bound.
  * @param onActive - optional task-owned registration, released after child cleanup even when cleanup fails.
  * @param activate - optional task-owned turn admission using the same observation and cleanup path.
+ * @param workspaceRoot - captured task workspace, when supplied by the runtime.
+ * @param continueRun - runtime-owned same-session admission after an output-token limit; omitted for explicitly managed members.
  * @returns settled child result after temporary listeners, timer and child have been released.
  */
 export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subagents: Pick<Context['subagents'], 'startActivation'> }, parent: Agent, provider: string, step: TaskStep,
   prompt: string, signal: AbortSignal, maxEvidenceBytes: number, onActive?: (id: SessionId) => () => void,
-  activate?: (spec: SubagentActivationSpec) => Promise<SubagentActivation>, workspaceRoot?: string): Promise<ChildResult> {
+  activate?: (spec: SubagentActivationSpec) => Promise<SubagentActivation>, workspaceRoot?: string,
+  continueRun?: (spec: SubagentActivationSpec & { readonly childId: SessionId }) => Promise<SubagentActivation>): Promise<ChildResult> {
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
   const timer = step.timeoutMs === undefined ? undefined
@@ -96,7 +117,7 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
         ...step.provider === undefined ? {} : { provider: step.provider },
         ...step.maxTokens === undefined ? {} : { maxTokens: step.maxTokens } }
     const start = activate ?? ((spec: SubagentActivationSpec) => startCancellableActivation(ctx.subagents, spec))
-    const run = await start({ provider, label: step.label, signal: combined, delivery: 'caller', request: {
+    const spec: SubagentActivationSpec = { provider, label: step.label, signal: combined, delivery: 'caller', request: {
       parent, prompt: [{ type: 'text', text: prompt }], ...cwd === undefined ? {} : { cwd },
       ...step.preset === undefined ? {} : { agentPreset: step.preset },
       ...step.tools === undefined ? {} : { toolFilter: {
@@ -105,14 +126,28 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
       ...Object.keys(agentOptions).length === 0 ? {} : { agentOptions },
       ...step.workflowOutput === true ? { outputSchema: workflowOutputSchema }
         : step.reviewOutput === true ? { outputSchema: reviewOutputSchema } : {},
-    } })
+    } }
+    let run = await start(spec)
     let releaseMember: (() => void) | undefined
     try {
       releaseMember = onActive?.(run.childId)
-      const result = await run.result
+      let result = await run.result
+      let output = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+      while (result.stopReason === 'max-tokens' && continueRun !== undefined && !combined.aborted) {
+        // Resume the accepted session after teardown; replaying the task could repeat completed effects.
+        await run.dispose()
+        combined.throwIfAborted()
+        run = await continueRun({ ...spec, childId: run.childId, request: { ...spec.request, prompt: [{ type: 'text',
+          text: 'The previous response reached the model output limit. Continue the same task from the existing conversation and completed tool results. '
+            + 'Do not restart the task or repeat completed actions or text. Continue from the cutoff and finish the remaining work. '
+            + 'If a structured result is required, submit a complete concise value through structured_output.',
+        }] } })
+        result = await run.result
+        output = mergeContinuationText(output, result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+      }
       return { sessionId: run.childId, stopReason: result.stopReason,
         usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
-        output: result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'),
+        output,
         ...result.diagnostic === undefined ? {} : { diagnostic: result.diagnostic },
         ...step.workflowOutput !== true || result.stopReason !== 'completed' ? {}
           : { workflow: parseWorkflowProposal(result.structured) },
