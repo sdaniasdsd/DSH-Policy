@@ -40,6 +40,8 @@ export interface Config {
   structured?: unknown
   /** Observes each start; the child's result additionally waits for the returned promise. */
   onStart?: (request: SubagentStartRequest) => Promise<void> | void
+  /** Observes exact activation cleanup. */
+  onDispose?: () => Promise<void> | void
 }
 
 /** Scripted provider whose result aborts if its signal or disposer wins first. */
@@ -59,6 +61,7 @@ class ScriptedSubagentProvider implements SubagentProvider {
   async start(request: SubagentStartRequest): Promise<SubagentRun> {
     if (request.signal.aborted) throw new Error('scripted subagent start aborted before publication')
     const reply = this.config.reply ?? 'scripted subagent reply'
+    const thisConfig = this.config
     const output: ContentBlock[] = [{ type: 'text', text: reply }]
     const wantsStructured = request.outputSchema !== undefined && this.capabilities.outputSchema
     const stopReason = this.config.stopReason ?? 'completed'
@@ -91,11 +94,11 @@ class ScriptedSubagentProvider implements SubagentProvider {
     return {
       id: SessionId(`scripted-subagent:${this.name}:${request.parent.id}:${++this.started}`),
       result,
-      dispose(): Promise<void> {
+      async dispose(): Promise<void> {
         state.cancelled = true
         cancelled.resolve(undefined)
         request.signal.removeEventListener('abort', onAbort)
-        return Promise.resolve()
+        await thisConfig.onDispose?.()
       },
     }
   }

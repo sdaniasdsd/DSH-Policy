@@ -1,8 +1,8 @@
 /**
  * Model-facing delegation through one configured `ctx.subagents` provider.
  * Provider lifecycle controls tool registration and context-sensitive schema
- * wording. Every delegation starts a managed activation and returns its child
- * id; the subagent runtime owns result delivery and resource cleanup.
+ * wording. Every delegation waits for and returns its managed activation's
+ * final outcome; the subagent runtime owns result delivery and cleanup.
  * @module @deepseek-ai/dsh-tool-subagent
  */
 
@@ -21,6 +21,7 @@ import {
   parentAgentOptionsForDelegation,
 } from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider } from '@deepseek-ai/dsh-subagent'
+import type { SubagentResult, SubagentStopReason } from '@deepseek-ai/dsh-subagent'
 import {
   assertAllowedModelSelection,
   hasConfiguredLlmSelection,
@@ -116,6 +117,20 @@ export const Config: z<Config> = z.object({
   maxDepth: z.union([z.natural().max(Number.MAX_SAFE_INTEGER), z.const('provider-managed' as const)]),
 })
 
+interface SupervisorResult {
+  kind: 'supervisor-result'
+  subagentId: string
+  status: 'completed' | 'failed'
+  stopReason: SubagentStopReason
+  output: string
+  diagnostic?: string
+}
+
+function resultText(result: SubagentResult): string {
+  return result.output.filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text).join('\n')
+}
+
 /**
  * Model-facing wording from the provider's conversation-history descriptor
  * ({@link SubagentProvider.inheritsParentContext}).
@@ -174,6 +189,15 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
+    if (subagentProvider.prepareContinuable !== undefined && !subagentProvider.capabilities.toolFilter) {
+      throw new Error(
+        `tool-subagent: provider "${subagentProvider.name}" cannot enforce the worker delegation boundary `
+        + '(no toolFilter capability)',
+      )
+    }
+    if (config.toolFilter !== undefined && !subagentProvider.capabilities.toolFilter) {
+      throw new Error(`tool-subagent: provider "${subagentProvider.name}" does not support configured toolFilter`)
+    }
     if (ctx.subagents.resolveMaxDepth(config.maxDepth) !== undefined && !subagentProvider.capabilities.depthLimit) {
       throw new Error(
         `tool-subagent: provider "${subagentProvider.name}" cannot enforce maxDepth (no depthLimit capability) — `
@@ -201,6 +225,11 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   const initialProvider = ctx.subagents.getProvider(config.provider)
   if (initialProvider !== undefined) assertSubagentProviderConfiguration(initialProvider)
 
+  // A session-bound setup is already running inside a delegated child. Do not
+  // install another supervisor tool in that child; its parent owns follow-up
+  // dispatch as a sibling.
+  if (session?.header.origin === 'subagent') return
+
   const install = (runtimeCtx: Context, modelSelectionPolicy: ModelSelectionPolicy | undefined): void => {
     const modelSelectionEnabled = modelSelectionPolicy !== undefined
     if (modelSelectionPolicy !== undefined) registerListSubagentModels(runtimeCtx, modelSelectionPolicy)
@@ -223,10 +252,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
       const definition = defineTool({
         name: toolName,
         description: wording.description
-          + ' This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes.'
-          + (subagentProvider.prepareContinuable !== undefined
-            ? ' The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.'
-            : ' The completion notice includes its final answer. This backend does not accept follow-up messages.')
+          + ' This tool waits for the subagent and returns its final outcome to you. Do not ask it to start more agents; ask it to list any needed follow-up tasks in its final answer so you can dispatch them as siblings.'
           + choiceDescription,
         parameters: {
           cwd: {
@@ -270,11 +296,19 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             type: 'object',
             additionalProperties: false,
             properties: {
-              kind: { type: 'string', required: true, const: 'activation' },
+              kind: { type: 'string', required: true, const: 'supervisor-result' },
               subagentId: { type: 'string', required: true },
+              status: { type: 'string', required: true, enum: ['completed', 'failed'] },
+              stopReason: { type: 'string', required: true },
+              output: { type: 'string', required: true },
+              diagnostic: { type: 'string' },
             },
           },
-          render: (_args, value) => [{ type: 'text', text: `started subagent ${value.subagentId}` }],
+          render: (_args, value) => [{
+            type: 'text',
+            text: `Subagent ${value.status} (${value.stopReason}): ${value.output || '(no text output)'}`
+              + (value.diagnostic === undefined ? '' : `\nDiagnostic: ${value.diagnostic}`),
+          }],
         },
         isConcurrencySafe: () => true,
         async execute(args, exec) {
@@ -327,7 +361,25 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             parent,
             ...requestedChildAgentOptions !== undefined ? { agentOptions: requestedChildAgentOptions } : {},
             ...config.persona !== undefined ? { persona: config.persona } : {},
-            ...config.toolFilter !== undefined ? { toolFilter: config.toolFilter } : {},
+            ...subagentProvider.capabilities.toolFilter
+              ? (() => {
+                const visibleDelegationNames = [...delegationTools]
+                  // tools.restrict() can only name global registrations. Preset
+                  // tools are scoped to their Agent and are omitted from a
+                  // delegated child's composition below.
+                  .filter(candidate => runtimeCtx.tools.get(candidate.name) === candidate)
+                  .map(candidate => candidate.name)
+                const allow = config.toolFilter?.allow
+                const deny = [...new Set([...(config.toolFilter?.deny ?? []), ...visibleDelegationNames])]
+                if (allow === undefined && deny.length === 0) return {}
+                return {
+                  toolFilter: {
+                    ...allow !== undefined ? { allow } : {},
+                    deny,
+                  },
+                }
+              })()
+              : {},
             ...maxDepth !== undefined ? { maxDepth } : {},
           }
 
@@ -336,9 +388,40 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
             label: args.description,
             request,
             signal: exec.signal,
-            delivery: 'parent',
+            delivery: 'caller',
           })
-          return { kind: 'activation' as const, subagentId: started.childId }
+          let disposal: Promise<void> | undefined
+          const disposeOwned = (): Promise<void> => disposal ??= started.dispose()
+          const onAbort = (): void => { void disposeOwned().catch(() => {}) }
+          exec.signal.addEventListener('abort', onAbort, { once: true })
+          let outcome: SupervisorResult
+          try {
+            const childResult = await started.result
+            exec.signal.throwIfAborted()
+            const output = resultText(childResult)
+            outcome = {
+              kind: 'supervisor-result',
+              subagentId: started.childId,
+              status: childResult.stopReason === 'completed' ? 'completed' : 'failed',
+              stopReason: childResult.stopReason,
+              output,
+              ...childResult.diagnostic !== undefined ? { diagnostic: childResult.diagnostic } : {},
+            }
+          } catch (error: unknown) {
+            if (exec.signal.aborted) throw error
+            outcome = {
+              kind: 'supervisor-result',
+              subagentId: started.childId,
+              status: 'failed',
+              stopReason: 'error',
+              output: '',
+              diagnostic: error instanceof Error ? error.message : String(error),
+            }
+          } finally {
+            exec.signal.removeEventListener('abort', onAbort)
+            await disposeOwned()
+          }
+          return outcome
         },
       })
       const disposeTool = runtimeCtx.effect(() => {
@@ -380,7 +463,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
           .sort()
         if (visible[0] !== toolName) return ''
         const names = visible.map(name => `\`${name}\``).join(' or ')
-        return `Start independent delegations with ${names} together in one assistant message and continue useful work while they run.`
+        return `Start independent delegations with ${names} together in one assistant message. Each call returns its final result before your next model step; ask workers to report any follow-up tasks so you can dispatch them as siblings.`
       },
     })
   }
@@ -443,6 +526,7 @@ export function apply(ctx: Context, config: Config, session?: Session): void {
   const belongsToComposition = (candidate: Agent): boolean =>
     scopeChainOf(scopeOf(candidate.ctx)).includes(compositionScope)
   const installScoped = (candidate: Agent): ReturnType<Context['inject']> | undefined => {
+    if (candidate.session.header.origin === 'subagent') return
     const existing = scopedInstalls.get(candidate)
     if (existing !== undefined) return existing
     if (installing.has(candidate)) return

@@ -106,7 +106,7 @@ let callCounter = 0
 export async function callSubagent(
   ctx: Context,
   args: unknown,
-  over: { agent?: Agent | undefined; signal?: AbortSignal } = {},
+  over: { agent?: Agent | undefined; signal?: AbortSignal; toolName?: string } = {},
 ) {
   // Distinguish "no override" (use a default agent) from an explicit
   // `{ agent: undefined }` (test the no-agent path). Under
@@ -116,7 +116,7 @@ export async function callSubagent(
   return ctx.tools.execute({
     signal: testToolSignal,
     callId: ToolCallId(`call-${++callCounter}`),
-    name: 'subagent',
+    name: over.toolName ?? 'subagent',
     arguments: args,
     ...agent ? { agent } : {},
     ...over.signal ? { signal: over.signal } : {},
