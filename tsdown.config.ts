@@ -20,8 +20,8 @@ export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.DSH_BUILD_FACE)
   return {
     workspace: client
-      ? ['vendor/*', 'packages/*/*', 'apps/cli']
-      : ['vendor/*', 'packages/*/*', 'apps/cli', 'apps/desktop-host'],
+      ? ['vendor/*', 'packages/*/*', 'packages/policy-extension', 'apps/cli']
+      : ['vendor/*', 'packages/*/*', 'packages/policy-extension', 'apps/cli', 'apps/desktop-host'],
     entry: client ? '' : ['lib/types/{index,startup}.js'],
     outDir: 'lib',
     format: ['esm'],

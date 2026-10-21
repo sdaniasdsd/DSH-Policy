@@ -125,15 +125,20 @@ export function parseDevWebArguments(argv: readonly string[]): DevWebArguments {
 
 /**
  * Discover the watch workspace by declaration: every packages/<group>/<name>
+ * and the standalone packages/policy-extension
  * whose package.json carries `dsh.client` with platform "web" is a client
  * plugin bundle emitter. Scanned once at startup — a package added while
  * watching means restarting this script.
- * @param root - repository root containing the grouped package directories.
+ * @param root - repository root containing the package directories.
  * @returns workspace-relative plugin package directories.
  */
 export function discoverPluginDirs(root = repoRoot): string[] {
   const dirs: string[] = []
-  for (const manifestPath of globSync('packages/*/*/package.json', { cwd: root }).sort()) {
+  const manifests = globSync(
+    ['packages/*/*/package.json', 'packages/policy-extension/package.json'],
+    { cwd: root },
+  )
+  for (const manifestPath of manifests.sort()) {
     const manifest = JSON.parse(readFileSync(join(root, manifestPath), 'utf8')) as {
       dsh?: { client?: { platform?: unknown } }
     }
@@ -151,12 +156,16 @@ export function discoverPluginDirs(root = repoRoot): string[] {
  * the set from the build preset rather than a hand list keeps it correct when
  * dependency sections move around; deriving it from `dependencies` would not,
  * because client packages declare their build inputs as devDependencies.
- * @param root - repository root containing the grouped package directories.
+ * @param root - repository root containing the package directories.
  * @returns workspace-relative library package directories.
  */
 export function discoverLibraryDirs(root = repoRoot): string[] {
   const dirs: string[] = []
-  for (const configPath of globSync('packages/*/*/tsdown.config.ts', { cwd: root }).sort()) {
+  const configs = globSync(
+    ['packages/*/*/tsdown.config.ts', 'packages/policy-extension/tsdown.config.ts'],
+    { cwd: root },
+  )
+  for (const configPath of configs.sort()) {
     const dir = dirname(configPath).split(sep).join('/')
     if (dir.startsWith(TEST_INFRASTRUCTURE_PREFIX)) continue
     if (!readFileSync(join(root, configPath), 'utf8').includes('tsdown.client.ts')) continue

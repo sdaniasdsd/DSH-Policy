@@ -58,9 +58,11 @@ describe('Policy extension package', () => {
   })
 
   it('packedTarballHasNoWorkspacePeerRanges', () => {
-    const destination = mkdtempSync(join(tmpdir(), 'dsh-policy-pack-'))
+    const destination = mkdtempSync(join(tmpdir(), 'dsh policy pack '))
     try {
-      const packedResult = spawnSync('cmd.exe', ['/d', '/s', '/c', `corepack pnpm pack --pack-destination ${destination}`], {
+      const pnpmCli = process.env.npm_execpath
+      if (!pnpmCli) throw new Error('run this spec through pnpm exec')
+      const packedResult = spawnSync(process.execPath, [pnpmCli, 'pack', '--pack-destination', destination], {
         cwd: packageDirectory,
         encoding: 'utf8',
       })
@@ -75,9 +77,26 @@ describe('Policy extension package', () => {
       const packed = JSON.parse(execFileSync('tar', ['-xOf', tarball, 'package/package.json'], {
         encoding: 'utf8',
       })) as PackageManifest
+      const packedCompatibility = JSON.parse(execFileSync('tar', ['-xOf', tarball, 'package/compatibility.json'], {
+        encoding: 'utf8',
+      })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string }
+      expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
+      expect(packed.version).toBe('1.0.2')
+      expect(packed.engines.dsh).toBe('0.2.1-rc.2')
+      expect(packedCompatibility).toMatchObject({
+        policyVersion: '1.0.2',
+        dshVersion: '0.2.1-rc.2',
+        dshTag: 'dsh-v0.2.1-rc.2',
+        dshCommit: '687f282e8625c6b8d11ff58211a90524be2e4317',
+      })
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
-      expect(JSON.stringify(packed.peerDependencies)).not.toContain('workspace:')
-      expect(JSON.stringify(packed.dependencies ?? {})).not.toContain('workspace:')
+      const packedDshPeers = Object.entries(packed.peerDependencies)
+        .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
+      expect(packedDshPeers.map(([name]) => name).sort()).toEqual([...packedCompatibility.requiredDshPeers].sort())
+      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.2')).toBe(true)
+      for (const section of [packed.peerDependencies, packed.dependencies ?? {}, packed.devDependencies]) {
+        expect(Object.values(section).some(version => version.startsWith('workspace:'))).toBe(false)
+      }
     } finally {
       rmSync(destination, { recursive: true, force: true })
     }
