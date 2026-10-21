@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 export { POLICY_COMPATIBILITY, type PolicyCompatibility } from './compatibility.ts'
 export { TaskRun } from './task-runtime/task-run.ts'
+export { createWorkflowExecutor } from './workflow-executor.ts'
 export { StrategyRegistry } from './task-runtime/strategy-registry.ts'
 export { captureStrategy } from './task-runtime/static-plan.ts'
 export { executePlan, validatePlan } from './task-runtime/executor.ts'

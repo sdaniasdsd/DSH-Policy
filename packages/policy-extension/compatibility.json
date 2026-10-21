@@ -6,6 +6,7 @@
   "requiredDshPeers": [
     "@deepseek-ai/dsh-jobs",
     "@deepseek-ai/dsh-llm",
-    "@deepseek-ai/dsh-session"
+    "@deepseek-ai/dsh-session",
+    "@deepseek-ai/dsh-workflow"
   ]
 }
