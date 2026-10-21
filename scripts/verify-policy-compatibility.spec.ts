@@ -126,3 +126,15 @@ it('rejectsSourceTagNotPresentAtCheckoutHead', () => {
   const problems = policyCompatibilityProblems(expectedFixture, [manifest()], source, importer, checkout, '.')
   expect(problems.join('\n')).toContain(`tag must include ${expected.dshTag}`)
 })
+
+it('rejectsDirtyTrackedSourceManifest', () => {
+  writeFileSync(join(checkout, 'packages', 'boot', 'app-boot', 'package.json'), '{ invalid json')
+  expect(() => readTestedDshSource(checkout, 'packages/boot/app-boot/package.json'))
+    .toThrow('DSH source checkout must be clean')
+})
+
+it('rejectsNonignoredUntrackedSourceFiles', () => {
+  writeFileSync(join(checkout, 'untracked.txt'), 'uncommitted source')
+  expect(() => readTestedDshSource(checkout, 'packages/boot/app-boot/package.json'))
+    .toThrow('DSH source checkout must be clean')
+})

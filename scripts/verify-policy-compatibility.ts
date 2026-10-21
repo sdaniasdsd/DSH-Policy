@@ -36,6 +36,10 @@ export interface TestedDshSource {
 /** Read the official DSH version and Git identity from a tested checkout. */
 export function readTestedDshSource(checkout: string, packageJson: string): TestedDshSource {
   const sourceRoot = resolve(checkout)
+  const status = execFileSync('git', ['-C', sourceRoot, 'status', '--porcelain=v1', '--untracked-files=all'], {
+    encoding: 'utf8',
+  }).trim()
+  if (status.length > 0) throw new Error('DSH source checkout must be clean before compatibility verification')
   const manifestPath = resolve(sourceRoot, packageJson)
   const manifestRelativePath = relative(sourceRoot, manifestPath)
   if (isAbsolute(manifestRelativePath) || manifestRelativePath === '..' || manifestRelativePath.startsWith(`..${sep}`)) {
