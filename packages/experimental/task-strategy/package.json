@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-experimental-task-strategy",
   "description": "Independent author execution strategies with an opt-in DSH Cordis carrier",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "publishConfig": {
     "access": "public"
   },
