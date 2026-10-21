@@ -71,12 +71,12 @@
 **文件：**
 - 新建：`packages/policy-extension/package.json`、`tsconfig.json`、`src/index.ts`、`src/client/index.ts` 和 `dsh.bundle.patch.yml`
 - 新建：`packages/policy-extension/tests/package-metadata.spec.ts`
-- 修改：根目录 `package.json` workspace 脚本和 `pnpm-lock.yaml`
+- 修改：根目录 `package.json` workspace 列表和脚本、`pnpm-workspace.yaml` 及 `pnpm-lock.yaml`
 
 **接口：**
 - 使用任务 1 提供的 `PolicyCompatibility`。
 - 产出名为 `@deepseek-ai/dsh-policy-extension` 的包，提供宿主端和客户端导出、`dsh.bundle.patch` 声明，以及每个所用官方 DSH 包的精确版本 peer 依赖。
-- Bundle 元数据通过官方 DSH profile 插件管理器启用宿主端和客户端插件；它不依赖桌面应用。宿主端入口在注册策略服务前，使用任务 1 的检查核对已安装运行时；版本不匹配时必须停止激活。
+- Bundle 元数据通过官方 DSH profile 插件管理器启用宿主端和客户端插件；它不依赖桌面应用。包清单声明精确的 `engines.dsh: "0.2.1-rc.2"`；锁定版本的官方 DSH 会在 Bundle 加载前执行兼容性预检并拒绝不匹配版本，因此扩展不重复实现运行时准入。
 
 - [ ] 增加 `packageMetadataDeclaresAnOfficialBundle`、`publishedPeersAreExact` 和 `packedTarballHasNoWorkspacePeerRanges` 测试。
 - [ ] 执行 `corepack pnpm exec vitest run packages/policy-extension/tests/package-metadata.spec.ts`，确认在实现包之前测试失败。

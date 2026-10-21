@@ -72,12 +72,12 @@ English | [中文](2026-10-22-dsh-policy-extension.zh.md)
 **Files:**
 - Create: `packages/policy-extension/package.json`, `tsconfig.json`, `src/index.ts`, `src/client/index.ts`, and `dsh.bundle.patch.yml`
 - Create: `packages/policy-extension/tests/package-metadata.spec.ts`
-- Modify: root `package.json` workspace scripts and `pnpm-lock.yaml`
+- Modify: root `package.json` workspace list and scripts, `pnpm-workspace.yaml`, and `pnpm-lock.yaml`
 
 **Interfaces:**
 - Consumes `PolicyCompatibility` from Task 1.
 - Produces a package named `@deepseek-ai/dsh-policy-extension` with host and client exports, a `dsh.bundle.patch` declaration, and exact-version peers for every consumed official DSH package.
-- Bundle metadata activates the host and client plugins through the official DSH profile plugin manager; it does not add a desktop-app dependency. The host entry checks the installed runtime against Task 1 before registering policy services and fails activation on a mismatch.
+- Bundle metadata activates the host and client plugins through the official DSH profile plugin manager; it does not add a desktop-app dependency. The package declares exact `engines.dsh: "0.2.1-rc.2"`; the pinned official DSH pre-import compatibility check rejects a mismatch before the Bundle loads, so the extension does not duplicate runtime admission.
 
 - [ ] Add `packageMetadataDeclaresAnOfficialBundle`, `publishedPeersAreExact`, and `packedTarballHasNoWorkspacePeerRanges` tests.
 - [ ] Run `corepack pnpm exec vitest run packages/policy-extension/tests/package-metadata.spec.ts` and confirm the tests fail before adding the package implementation.
