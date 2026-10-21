@@ -2,10 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "lib/types"
+    "outDir": "lib/types",
+    "noEmitOnError": true,
+    "paths": {}
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../vendor/cordis" }
-  ]
+  "references": []
 }

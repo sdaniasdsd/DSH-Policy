@@ -4,17 +4,8 @@
   "dshTag": "dsh-v0.2.1-rc.2",
   "dshCommit": "687f282e8625c6b8d11ff58211a90524be2e4317",
   "requiredDshPeers": [
-    "@deepseek-ai/dsh-agent",
-    "@deepseek-ai/dsh-agent-preset-registry",
     "@deepseek-ai/dsh-jobs",
     "@deepseek-ai/dsh-llm",
-    "@deepseek-ai/dsh-session",
-    "@deepseek-ai/dsh-subagent",
-    "@deepseek-ai/dsh-subprocess",
-    "@deepseek-ai/dsh-system-prompt",
-    "@deepseek-ai/dsh-token-meter",
-    "@deepseek-ai/dsh-tools",
-    "@deepseek-ai/dsh-typert-protocol",
-    "@deepseek-ai/dsh-workflow"
+    "@deepseek-ai/dsh-session"
   ]
 }
