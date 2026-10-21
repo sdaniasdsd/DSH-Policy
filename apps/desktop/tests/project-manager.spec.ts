@@ -75,6 +75,29 @@ describe('desktop external plugin profile', () => {
     expect(lstatSync(path).isDirectory()).toBe(true)
     expect(lstatSync(join(profile, 'node_modules/plugin')).isDirectory()).toBe(true)
   })
+  it('adds the policy strategy bundle when an existing profile upgrades to a policy runtime', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    seedPlugin(manager)
+    const profilePath = join(manager.paths.profile, 'package.json')
+    const original = JSON.parse(readFileSync(profilePath, 'utf8')) as {
+      dependencies: Record<string, string>
+      dsh: { profile: { bundles: string[] } }
+    }
+    const runtimeMarker = join(manager.runtime.dsh, 'policy-workflows.patch.yml')
+    writeFileSync(runtimeMarker, 'policy workflows\n')
+
+    await expect(manager.applyRelease()).resolves.toBeUndefined()
+
+    const upgraded = JSON.parse(readFileSync(profilePath, 'utf8')) as typeof original
+    expect(upgraded.dependencies).toEqual(original.dependencies)
+    expect(upgraded.dsh.profile.bundles).toContain('@deepseek-ai/dsh-experimental-task-strategy')
+    expect(upgraded.dsh.profile.bundles).toContain('plugin')
+
+    await manager.applyRelease()
+    const repeated = JSON.parse(readFileSync(profilePath, 'utf8')) as typeof original
+    expect(repeated.dsh.profile.bundles.filter(name => name === '@deepseek-ai/dsh-experimental-task-strategy')).toHaveLength(1)
+  })
   it('reuses plugin files without scanning manifests and can disable them', async () => {
     const { manager } = setup()
     await manager.applyRelease()

@@ -23,7 +23,8 @@ import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import {
-  initProfile, PROFILE_TEMPLATES, removeLinkProjections, sanitizeProfile, type ProfileTemplate,
+  initProfile, PROFILE_TEMPLATES, readProfileManifest, removeLinkProjections, sanitizeProfile,
+  writeProfileBundles, type ProfileTemplate,
 } from '@deepseek-ai/dsh-app-boot'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
@@ -177,6 +178,11 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
  */
 export function createPluginProfile(projectDir: string, runtimeDir?: string): void {
   const policyEdition = runtimeDir !== undefined && existsSync(join(runtimeDir, 'policy-workflows.patch.yml'))
-  initProfile(projectDir, policyEdition
-    ? [...WEB_PROFILE.bundles, '@deepseek-ai/dsh-experimental-task-strategy'] : WEB_PROFILE.bundles)
+  const strategyBundle = '@deepseek-ai/dsh-experimental-task-strategy'
+  initProfile(projectDir, policyEdition ? [...WEB_PROFILE.bundles, strategyBundle] : WEB_PROFILE.bundles)
+  if (policyEdition) {
+    const manifest = readProfileManifest('dsh', projectDir)
+    const bundles = manifest.dsh?.profile?.bundles ?? []
+    if (!bundles.includes(strategyBundle)) writeProfileBundles(projectDir, manifest, [...bundles, strategyBundle])
+  }
 }
