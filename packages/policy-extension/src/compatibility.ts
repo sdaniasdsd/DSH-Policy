@@ -8,6 +8,7 @@ export interface PolicyCompatibility {
   dshVersion: string
   dshTag: string
   dshCommit: string
+  requiredDshPeers: string[]
 }
 
 /** Raised when the active DSH version differs from this extension's release pair. */
