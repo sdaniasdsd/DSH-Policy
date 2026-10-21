@@ -1,0 +1,3 @@
+- insert:
+    - id: policy-extension
+      name: '@deepseek-ai/dsh-policy-extension'
