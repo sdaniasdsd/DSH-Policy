@@ -654,6 +654,9 @@ importers:
       '@deepseek-ai/dsh-api-gateway':
         specifier: workspace:*
         version: link:../../packages/api/gateway
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../packages/typert/protocol
       electron-updater:
         specifier: ^6.8.9
         version: 6.8.9(supports-color@9.4.0)
