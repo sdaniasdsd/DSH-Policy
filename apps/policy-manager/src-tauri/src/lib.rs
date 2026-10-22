@@ -1,7 +1,10 @@
+pub mod backup;
 pub mod catalog;
 pub mod catalog_update;
+pub mod harness_home;
 pub mod installed_dsh;
 pub mod manager_state;
+pub mod transaction;
 
 #[cfg(feature = "app")]
 pub fn run() {

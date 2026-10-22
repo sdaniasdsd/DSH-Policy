@@ -8,6 +8,8 @@ The app uses the official Desktop runtime and profile CLI. It does not patch `ap
 
 On Windows, installation discovery reads the official uninstall registry entry and verifies that the installed executable exists. It reads Desktop and DSH package identity from the application's ASAR without modifying it. Missing or unreadable runtime identity leaves official mode available and disables Policy mode; Policy is enabled only for an exact runtime version and commit in the verified catalog. A dirty build is never Policy-compatible.
 
+Harness home selection honors an explicit `DSH_HOME`, otherwise reuses the only populated home among `%USERPROFILE%\.dsh` and the former Policy Edition home `%USERPROFILE%\.dsh-policy`. If both contain data, the manager asks the user to choose and does not merge sessions. Every transition backup is encrypted with Windows DPAPI, checked before restore, and staged in a new directory so the original backup and current home remain intact if validation fails. The transition journal publishes each stage as a synced immutable record before the next mutation.
+
 The release catalog accepts only unexpired signed records that identify an official Windows x64 installer, its SHA-256, its bundled DSH version and commit, and exact Policy compatibility. The checked-in development catalog is empty because no immutable official Desktop installer artifact has yet been verified for distribution. Policy mode stays unavailable until the exact runtime compatibility and release-catalog signing key are configured.
 
 ## Development
