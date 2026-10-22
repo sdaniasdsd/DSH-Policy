@@ -6,12 +6,14 @@ DSH Policy Manager is a standalone Windows app for managing the official DSH Des
 
 The app uses the official Desktop runtime and profile CLI. It does not patch `app.asar` or run a second agent runtime.
 
+On Windows, installation discovery reads the official uninstall registry entry and verifies that the installed executable exists. It reads Desktop and DSH package identity from the application's ASAR without modifying it. Missing or unreadable runtime identity leaves official mode available and disables Policy mode; Policy is enabled only for an exact runtime version and commit in the verified catalog. A dirty build is never Policy-compatible.
+
 The release catalog accepts only unexpired signed records that identify an official Windows x64 installer, its SHA-256, its bundled DSH version and commit, and exact Policy compatibility. The checked-in development catalog is empty because no immutable official Desktop installer artifact has yet been verified for distribution. Policy mode stays unavailable until the exact runtime compatibility and release-catalog signing key are configured.
 
 ## Development
 
 Install the stable MSVC Rust toolchain, Visual Studio C++ Build Tools, and WebView2 Runtime. Refresh JavaScript dependencies with `corepack pnpm install` from the repository root; the workspace root already declares the `apps/*` package pattern.
 
-Run the UI tests with `npm --prefix apps/policy-manager test`, build the UI with `npm --prefix apps/policy-manager run build`, and run the Rust catalog tests with `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml`.
+Run the UI tests with `npm --prefix apps/policy-manager test`, build the UI with `npm --prefix apps/policy-manager run build`, and run the Rust tests with `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml`.
 
 Keep catalog signing private keys outside the repository. Publish `manager-catalog.json` and its raw Ed25519 signature as release assets only after verifying the immutable official installer bytes and runtime identity.

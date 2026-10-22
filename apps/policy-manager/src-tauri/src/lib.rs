@@ -1,5 +1,7 @@
 pub mod catalog;
 pub mod catalog_update;
+pub mod installed_dsh;
+pub mod manager_state;
 
 #[cfg(feature = "app")]
 pub fn run() {

@@ -38,7 +38,7 @@ pub struct DesktopRelease {
     pub policies: Vec<PolicyRelease>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PolicyRelease {
     pub package: String,
