@@ -78,3 +78,18 @@ fn refuses_to_advance_from_a_corrupt_durable_record() {
     std::fs::write(operation_dir.join("0001-corrupt.json"), b"broken").unwrap();
     assert!(matches!(journal.current(id), Err(JournalError::Corrupt(_))));
 }
+
+#[test]
+fn lists_latest_stage_and_timestamp_for_each_operation() {
+    let temp = tempdir().unwrap();
+    let journal = TransitionJournal::new(temp.path());
+    let id = Uuid::new_v4();
+    journal.advance(id, TransitionStage::Prepared).unwrap();
+    journal.advance(id, TransitionStage::BackedUp).unwrap();
+
+    let records = journal.list().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].operation_id, id);
+    assert_eq!(records[0].stage, TransitionStage::BackedUp);
+    assert!(records[0].updated_at > 0);
+}

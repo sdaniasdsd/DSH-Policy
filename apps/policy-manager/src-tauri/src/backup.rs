@@ -120,6 +120,60 @@ impl BackupStore {
         })
     }
 
+    pub fn list(&self) -> Result<Vec<BackupRecord>, BackupError> {
+        let entries = match fs::read_dir(&self.directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(BackupError::Io(error)),
+        };
+        let mut records = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let Some(id_text) = name
+                .strip_prefix("backup-")
+                .and_then(|name| name.strip_suffix(".dshb"))
+            else {
+                continue;
+            };
+            let id = Uuid::parse_str(id_text).map_err(|_| BackupError::InvalidRecordPath)?;
+            let metadata = fs::symlink_metadata(&path)?;
+            if !metadata.is_file() || metadata.file_type().is_symlink() {
+                return Err(BackupError::InvalidRecordPath);
+            }
+            let mut encrypted = Vec::new();
+            File::open(&path)?.read_to_end(&mut encrypted)?;
+            let plaintext = self
+                .protector
+                .unprotect(&encrypted)
+                .map_err(BackupError::Decrypt)?;
+            let (manifest, files) = decode_archive(&plaintext)?;
+            let digest = hex(&digest_files(&files));
+            if manifest.schema_version != 1
+                || manifest.archive_digest != digest
+                || manifest.file_count != files.len() as u64
+            {
+                return Err(BackupError::DigestMismatch);
+            }
+            records.push(BackupRecord {
+                id,
+                archive_path: path,
+                source_path: manifest.source_path,
+                created_at: manifest.created_at,
+                archive_digest: digest,
+            });
+        }
+        records.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        Ok(records)
+    }
+
     pub fn restore(&self, record: &BackupRecord, destination: &Path) -> Result<(), BackupError> {
         let root = fs::canonicalize(&self.directory)?;
         let archive_path = fs::canonicalize(&record.archive_path)?;

@@ -24,6 +24,13 @@ pub struct CatalogClient {
     public_key: [u8; 32],
 }
 
+#[derive(Clone, Debug)]
+pub struct VerifiedCatalog {
+    pub catalog: ReleaseCatalog,
+    pub data: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
 impl CatalogClient {
     /// Loads the public key embedded from `DSH_POLICY_CATALOG_PUBLIC_KEY` at build time.
     pub fn from_embedded_key() -> Result<Self, CatalogUpdateError> {
@@ -54,6 +61,13 @@ impl CatalogClient {
         &self,
         current: Option<&ReleaseCatalog>,
     ) -> Result<ReleaseCatalog, CatalogUpdateError> {
+        Ok(self.refresh_signed(current).await?.catalog)
+    }
+
+    pub async fn refresh_signed(
+        &self,
+        current: Option<&ReleaseCatalog>,
+    ) -> Result<VerifiedCatalog, CatalogUpdateError> {
         let catalog_url = format!("{RELEASE_CATALOG_BASE_URL}manager-catalog.json");
         let signature_url = format!("{RELEASE_CATALOG_BASE_URL}manager-catalog.json.sig");
         let bytes = read_bounded(
@@ -79,7 +93,19 @@ impl CatalogClient {
             current.map(|catalog| catalog.catalog_revision),
             candidate.catalog_revision,
         )?;
-        Ok(candidate)
+        Ok(VerifiedCatalog {
+            catalog: candidate,
+            data: bytes,
+            signature,
+        })
+    }
+
+    pub fn verify_cached(
+        &self,
+        data: &[u8],
+        signature: &[u8],
+    ) -> Result<ReleaseCatalog, CatalogUpdateError> {
+        Ok(verify_catalog_candidate(data, signature, &self.public_key)?)
     }
 }
 

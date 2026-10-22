@@ -145,6 +145,19 @@ fn rejects_a_backup_record_with_the_wrong_digest() {
     ));
 }
 
+#[test]
+fn lists_only_valid_encrypted_restore_points() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("session.json"), b"session").unwrap();
+    let store = store(temp.path());
+    let created = store.create(&home).unwrap();
+
+    let listed = store.list().unwrap();
+    assert_eq!(listed, vec![created]);
+}
+
 #[cfg(windows)]
 #[test]
 fn protects_and_unprotects_with_windows_dpapi() {

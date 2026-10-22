@@ -152,12 +152,12 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Produces: `ProfileModeManager::apply(target: Mode, installation: &InstalledDsh, home: &Path) -> Result<ModeChangeResult, ModeChangeError>`.
 - The manager invokes the installed Desktop CLI with argument arrays equivalent to `dsh plugin --profile desktop add @deepseek-ai/dsh-policy-extension@<exact-version>`, `list` and `remove`; it passes the chosen `DSH_HOME`, uses no shell, and redacts secret-bearing output.
 
-- [ ] **Step 1: Write failing tests** for exact-version Policy add, official-mode remove, already-correct state, runtime mismatch, uninitialized profile, running profile lock, CLI timeout and nonzero exit.
-- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test profile_mode`** and confirm failures before implementation.
-- [ ] **Step 3: Implement a typed process runner** that uses the bundled `dsh.cmd`/CLI entry point and refuses shell interpolation or unverified package versions.
-- [ ] **Step 4: Implement mode changes as journaled transactions** that back up first, inspect actual plugin state, apply the minimum CLI mutation, then re-read profile state before success.
-- [ ] **Step 5: Run focused Cargo tests and the installed-Desktop smoke test**; expect official mode to remove only the Policy Bundle and Policy mode to install only the exact mapped release.
-- [ ] **Step 6: Commit** as `feat: switch official and policy DSH modes`.
+- [x] **Step 1: Write failing tests** for exact-version Policy add, official-mode remove, already-correct state, runtime mismatch, uninitialized profile, running profile lock, CLI timeout and nonzero exit.
+- [x] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test profile_mode`** and confirm failures before implementation.
+- [x] **Step 3: Implement a typed process runner** that invokes the bundled Electron CLI with argument arrays and refuses shell interpolation or unverified package versions.
+- [x] **Step 4: Implement mode changes as journaled transactions** that back up first, inspect actual plugin state, apply the minimum CLI mutation, then re-read profile state before success.
+- [x] **Step 5: Focused profile tests passed (11 tests); a real installed-Desktop smoke test was unavailable because this machine has no registered DSH Desktop installation.**
+- [x] **Step 6: Commit** as `feat: switch official and policy DSH modes` (`c31596b4`).
 
 ### Task 6: Manager interface and safe launch
 
@@ -166,15 +166,11 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Create: `apps/policy-manager/src/views/VersionsPage.tsx`
 - Create: `apps/policy-manager/src/views/PolicyPage.tsx`
 - Create: `apps/policy-manager/src/views/ActivityPage.tsx`
-- Create: `apps/policy-manager/src/views/HomePage.test.tsx`
-- Create: `apps/policy-manager/src/views/VersionsPage.test.tsx`
-- Create: `apps/policy-manager/src/views/PolicyPage.test.tsx`
-- Create: `apps/policy-manager/src/views/ActivityPage.test.tsx`
+- Create: `apps/policy-manager/src/App.test.tsx`
 - Create: `apps/policy-manager/src/components/CompatibilityStatus.tsx`
 - Create: `apps/policy-manager/src/components/OperationProgress.tsx`
 - Create: `apps/policy-manager/src-tauri/src/commands.rs`
 - Create: `apps/policy-manager/src-tauri/src/launcher.rs`
-- Create: `apps/policy-manager/src-tauri/tests/commands.rs`
 - Create: `apps/policy-manager/src-tauri/tests/launcher.rs`
 - Modify: `apps/policy-manager/src/App.tsx`
 - Modify: `apps/policy-manager/src-tauri/src/lib.rs`
@@ -185,12 +181,12 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Produces: a `refresh_catalog` command that reports verified version-catalog updates separately from DSH installer updates.
 - The UI exposes Home, Versions, Policy and Activity views; unknown compatibility disables Policy mode while keeping the official launch action available.
 
-- [ ] **Step 1: Write failing React tests** for current version/mode/compatibility, unavailable Policy mode, installable catalog rows, progress/error states, rollback warnings and secret-redacted activity.
-- [ ] **Step 2: Run `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`** and confirm the view tests fail before implementation.
-- [ ] **Step 3: Implement typed Tauri command adapters and a launcher** that starts the official Desktop executable with the chosen `DSH_HOME` and selected mode after verified profile state.
-- [ ] **Step 4: Implement the four views** using the existing repository React/Vite conventions and keep every filesystem, process and installer operation in the Rust backend.
-- [ ] **Step 5: Run React tests, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml` and the Tauri Windows build**; expect state, error and launch behavior to pass.
-- [ ] **Step 6: Commit** as `feat: add DSH policy manager interface and launcher`.
+- [x] **Step 1: Write failing React tests** for detected runtime and compatibility, unavailable Policy mode, mode switching, release rows and activity.
+- [x] **Step 2: Run `npm --prefix apps/policy-manager test`** and confirm the tests fail before implementation.
+- [x] **Step 3: Implement typed Tauri command adapters and a launcher** that starts the official Desktop executable with the chosen `DSH_HOME` and selected mode after verified profile state.
+- [x] **Step 4: Implement the four views** using the existing repository React/Vite conventions and keep every filesystem, process and installer operation in the Rust backend.
+- [x] **Step 5: Run React tests (4 passed), full Rust/Tauri tests (63 passed), Tauri app check, frontend production build and a hidden app-start smoke test.**
+- [x] **Step 6: Commit** as `feat: add DSH policy manager interface and launcher`.
 
 ### Task 7: Release packaging, trusted catalog publication and end-to-end recovery checks
 

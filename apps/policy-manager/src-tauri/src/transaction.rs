@@ -44,6 +44,14 @@ pub struct TransitionJournal {
     root: PathBuf,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JournalActivity {
+    pub operation_id: Uuid,
+    pub stage: TransitionStage,
+    pub updated_at: u64,
+}
+
 impl TransitionJournal {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
@@ -121,6 +129,56 @@ impl TransitionJournal {
         }
         result?;
         Ok(())
+    }
+
+    pub fn list(&self) -> Result<Vec<JournalActivity>, JournalError> {
+        let entries = match fs::read_dir(&self.root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(JournalError::Io(error)),
+        };
+        let mut activities = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let Some(operation_id) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| Uuid::parse_str(name).ok())
+            else {
+                continue;
+            };
+            let Some(stage) = self.current(operation_id)? else {
+                continue;
+            };
+            let mut records = fs::read_dir(entry.path())?
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .filter(|record| {
+                    record
+                        .path()
+                        .extension()
+                        .is_some_and(|extension| extension == "json")
+                })
+                .collect::<Vec<_>>();
+            records.sort_by_key(|record| record.file_name());
+            let updated_at = records
+                .last()
+                .and_then(|record| record.metadata().ok())
+                .and_then(|metadata| metadata.modified().ok())
+                .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs())
+                .unwrap_or_default();
+            activities.push(JournalActivity {
+                operation_id,
+                stage,
+                updated_at,
+            });
+        }
+        activities.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        Ok(activities)
     }
 }
 

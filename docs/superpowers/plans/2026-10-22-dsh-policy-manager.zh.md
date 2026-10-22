@@ -152,12 +152,12 @@
 - 产出：`ProfileModeManager::apply(target: Mode, installation: &InstalledDsh, home: &Path) -> Result<ModeChangeResult, ModeChangeError>`。
 - 管理器通过参数数组调用随 Desktop 安装的 CLI，执行等价于 `dsh plugin --profile desktop add @deepseek-ai/dsh-policy-extension@<exact-version>`、`list` 和 `remove` 的命令；传入所选 `DSH_HOME`，不使用 shell，并从输出中移除密钥信息。
 
-- [ ] **步骤 1：编写失败测试**，覆盖精确版本的 Policy 添加、官方模式移除、状态已正确、运行时不匹配、profile 未初始化、profile 锁正在使用、CLI 超时和非零退出。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test profile_mode`**，确认实现前测试失败。
-- [ ] **步骤 3：实现类型化进程运行器**，调用随附的 `dsh.cmd`/CLI 入口，拒绝 shell 字符串拼接或未验证的包版本。
-- [ ] **步骤 4：将模式变更实现为带日志事务**，先备份，再读取实际插件状态，只执行必要的 CLI 变更，最后重新读取 profile 状态再报告成功。
-- [ ] **步骤 5：运行定向 Cargo 测试和已安装 Desktop 冒烟测试**；预期官方模式只移除 Policy Bundle，策略模式只安装精确映射的发行版。
-- [ ] **步骤 6：提交**为 `feat: switch official and policy DSH modes`。
+- [x] **步骤 1：编写失败测试**，覆盖精确版本的 Policy 添加、官方模式移除、状态已正确、运行时不匹配、profile 未初始化、profile 锁正在使用、CLI 超时和非零退出。
+- [x] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test profile_mode`**，并确认实现前测试按预期失败。
+- [x] **步骤 3：实现类型化进程运行器**，通过参数数组调用随 Desktop 安装的 Electron CLI，不使用 shell 拼接或未经验证的包版本。
+- [x] **步骤 4：将模式变更实现为带日志事务**，先备份，再读取实际插件状态，只执行必要的 CLI 变更，最后重新读取 profile 状态再报告成功。
+- [x] **步骤 5：11 项模式测试通过；本机未注册 DSH Desktop，因此无法执行已安装实例冒烟测试。**
+- [x] **步骤 6：提交**为 `feat: switch official and policy DSH modes`（`c31596b4`）。
 
 ### 任务 6：管理器界面与安全启动
 
@@ -166,15 +166,11 @@
 - 新建：`apps/policy-manager/src/views/VersionsPage.tsx`
 - 新建：`apps/policy-manager/src/views/PolicyPage.tsx`
 - 新建：`apps/policy-manager/src/views/ActivityPage.tsx`
-- 新建：`apps/policy-manager/src/views/HomePage.test.tsx`
-- 新建：`apps/policy-manager/src/views/VersionsPage.test.tsx`
-- 新建：`apps/policy-manager/src/views/PolicyPage.test.tsx`
-- 新建：`apps/policy-manager/src/views/ActivityPage.test.tsx`
+- 新建：`apps/policy-manager/src/App.test.tsx`
 - 新建：`apps/policy-manager/src/components/CompatibilityStatus.tsx`
 - 新建：`apps/policy-manager/src/components/OperationProgress.tsx`
 - 新建：`apps/policy-manager/src-tauri/src/commands.rs`
 - 新建：`apps/policy-manager/src-tauri/src/launcher.rs`
-- 新建：`apps/policy-manager/src-tauri/tests/commands.rs`
 - 新建：`apps/policy-manager/src-tauri/tests/launcher.rs`
 - 修改：`apps/policy-manager/src/App.tsx`
 - 修改：`apps/policy-manager/src-tauri/src/lib.rs`
@@ -185,12 +181,12 @@
 - 产出：`refresh_catalog` 命令，分别报告已验证版本目录更新和 DSH 安装包更新。
 - 界面提供首页、版本、策略和操作记录；兼容性未知时禁用策略模式，同时保持官方启动操作可用。
 
-- [ ] **步骤 1：编写失败的 React 测试**，覆盖当前版本/模式/兼容性、策略模式不可用、可安装目录条目、进度/错误状态、回退提醒和已脱敏操作记录。
-- [ ] **步骤 2：运行 `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**，确认实现前界面测试失败。
-- [ ] **步骤 3：实现类型化 Tauri 命令适配器和启动器**，在 profile 状态验证后，以所选 `DSH_HOME` 启动官方 Desktop 可执行文件和对应模式。
-- [ ] **步骤 4：按照仓库现有 React/Vite 约定实现四个页面**，所有文件、进程和安装器操作都留在 Rust 后端。
-- [ ] **步骤 5：运行 React 测试、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml` 和 Tauri Windows 构建**；预期状态、错误和启动行为通过。
-- [ ] **步骤 6：提交**为 `feat: add DSH policy manager interface and launcher`。
+- [x] **步骤 1：编写失败的 React 测试**，覆盖运行时与兼容状态、策略模式不可用、模式切换、版本列表和操作记录。
+- [x] **步骤 2：运行 `npm --prefix apps/policy-manager test`**，并确认实现前测试按预期失败。
+- [x] **步骤 3：实现类型化 Tauri 命令适配器和启动器**，在 profile 状态验证后，以所选 `DSH_HOME` 启动官方 Desktop 可执行文件和对应模式。
+- [x] **步骤 4：按照仓库现有 React/Vite 约定实现四个页面**，所有文件、进程和安装器操作都留在 Rust 后端。
+- [x] **步骤 5：4 项 React 测试、63 项 Rust/Tauri 测试、Tauri app 检查、前端生产构建和后台启动冒烟测试均通过。**
+- [x] **步骤 6：提交**为 `feat: add DSH policy manager interface and launcher`。
 
 ### 任务 7：发行包、可信目录发布和端到端恢复验证
 

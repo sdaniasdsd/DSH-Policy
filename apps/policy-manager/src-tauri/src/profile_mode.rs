@@ -364,6 +364,21 @@ impl ProfileModeManager {
         self.journal.current(operation_id)
     }
 
+    pub fn inspect_policy_version(
+        &self,
+        installation: &InstalledDsh,
+        home: &Path,
+    ) -> Result<Option<String>, ModeChangeError> {
+        let profile = home.join("profiles/desktop");
+        if !profile.join("package.json").is_file() {
+            return Err(ModeChangeError::UninitializedProfile);
+        }
+        if profile.join("package.json.lock").exists() {
+            return Err(ModeChangeError::ProfileBusy);
+        }
+        self.list_policy(installation, home)
+    }
+
     fn compatible_policy(&self, installation: &InstalledDsh) -> Option<PolicyRelease> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
