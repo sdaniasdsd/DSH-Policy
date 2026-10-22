@@ -1,0 +1,10 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write apps/policy-manager/README.md
+/dsh-policy-manager:
+  en: 2ddc1eb83e0cc23b
+  zh: 66e6a8bfdbce13d3
+/dsh-policy-manager/development:
+  en: d556cf35e75f9108
+  zh: d795dc393b944ee5

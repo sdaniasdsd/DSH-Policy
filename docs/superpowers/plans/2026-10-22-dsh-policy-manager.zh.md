@@ -22,7 +22,7 @@
 - 安装前验证签名版本目录和安装包 SHA-256；只有来源为第一方、行为已知且已列入目录的包才可安装。
 - 保留最后一个已验证安装包和 Harness 主目录恢复点；失败或中断后绝不启动未经验证的安装。
 - 从诊断信息中移除凭据、授权头和包含密钥的命令参数。
-- 当前仓库环境的 PATH 中没有 Rust 工具链；Windows Tauri 原生验证需要先准备 Rust 和 Tauri 的 Windows 构建前置条件。
+- 当前 Windows 开发机已通过官方 rustup 配置 stable MSVC Rust 工具链，并检测到 Visual Studio C++ Build Tools；运行打包后的管理器还需要 WebView2。
 
 ## 评审关注点
 
@@ -54,7 +54,6 @@
 - 新建：`apps/policy-manager/src-tauri/tests/catalog.rs`
 - 新建：`apps/policy-manager/src-tauri/tests/catalog_update.rs`
 - 新建：`apps/policy-manager/catalog/releases.json`
-- 新建：`apps/policy-manager/catalog/releases.json.sig`
 - 新建：`apps/policy-manager/catalog/README.md`
 - 新建：`apps/policy-manager/catalog/README.zh.md`
 - 新建：`apps/policy-manager/README.md`
@@ -64,15 +63,15 @@
 **接口：**
 - 产出：Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` 和 `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`。
 - 产出：公开的 `DesktopRelease` 和 `PolicyRelease` 结构体，其字段与下方列出的签名目录记录字段一致。
-- 产出：`CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`；它只从 `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` 获取 `manager-catalog.json` 及其独立签名，并且仅在签名验证通过后接受新内容。
-- 发行版记录包含操作系统、架构、Desktop 版本、DSH 版本、DSH 提交、第一方安装包 URL、SHA-256、安装器参数配置和精确的 Policy 包映射。
+- 产出：异步 `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`；它只从 `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` 获取 `manager-catalog.json` 及其独立签名，验证签名并拒绝低于当前已加载目录的版本号。
+- 发行版记录包含操作系统、架构、Desktop 版本、DSH 版本、DSH 提交、第一方安装包 URL、SHA-256、安装器参数配置和精确的 Policy 包映射。仓库中的开发清单可以为空且不带签名；发布目录必须使用管理器内嵌公钥验证独立的 Ed25519 签名。
 - 初始目录只包含第一方来源、不可变字节、哈希、运行时身份和安装器行为均已验证的包；其他核心标签仅显示为不可用的元数据或直接省略。
 
-- [ ] **步骤 1：编写失败的 Rust 版本目录测试**，覆盖有效签名数据、签名错误、字段格式错误、不支持的架构、缺少哈希、重复 Desktop 身份、精确 Policy 匹配和运行时提交不匹配；编写目录更新测试，覆盖重定向到未批准 GitHub 主机和替换目录签名错误；再添加失败的 `App.test.tsx` 初始外壳冒烟测试。
+- [ ] **步骤 1：编写失败的 Rust 版本目录测试**，覆盖有效签名数据、签名错误、字段格式错误、目录过期、不支持的架构、缺少哈希、重复 Desktop 身份、精确 Policy 匹配和运行时提交不匹配；编写目录更新测试，覆盖重定向到未批准 GitHub 主机、替换目录签名错误和拒绝降低版本号；再添加失败的 `App.test.tsx` 初始外壳冒烟测试。
 - [ ] **步骤 2：添加最小 Tauri/Vite 测试环境和仅供编译的 Rust API stub**，使测试目标可执行；运行两个 Cargo 集成测试目标和 Vitest，并确认行为断言因有效目录验证、精确匹配、目录刷新和初始页面标题尚未实现而失败。
 - [ ] **步骤 3：实现目录解析、Ed25519 签名验证和目录刷新**；应用只内嵌目录验证公钥，签名私钥留在仓库之外。
-- [ ] **步骤 4：验证第一方安装包来源、更新 feed 字段、稳定下载字节、SHA-256、内置 DSH 身份和受支持的安装器参数**后，才添加可安装条目；在目录 README 中记录尚未解决的归档行为。
-- [ ] **步骤 5：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog`、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog_update` 和 `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**；预期目录测试和初始 React 外壳测试通过。
+- [ ] **步骤 4：验证第一方安装包来源、更新 feed 字段、稳定下载字节、SHA-256、内置 DSH 身份和受支持的安装器参数**后，才添加可安装条目；在目录 README 中记录尚未解决的归档行为。实现期间不创建生产签名密钥；在文档中说明发行密钥配置要求。
+- [ ] **步骤 5：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog`、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog_update` 和 `npm --prefix apps/policy-manager test`**；预期目录测试和初始 React 外壳测试通过。
 - [ ] **步骤 6：提交**为 `feat: scaffold DSH policy manager and release catalog`。
 
 ### 任务 2：已安装 Desktop 检测与管理器状态

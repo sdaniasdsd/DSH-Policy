@@ -22,7 +22,7 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Verify the signed catalog and installer SHA-256 before installation; only catalogued first-party artifacts with known installer behavior are installable.
 - Preserve the last verified installer and Harness-home restore point; never launch an unverified installation after a failed or interrupted transition.
 - Redact credentials, authorization headers and secret-bearing command arguments from diagnostics.
-- The repository currently has no Rust toolchain available on PATH; Windows Tauri compilation requires Rust and the Tauri Windows build prerequisites before native verification.
+- The Windows development host now has the stable MSVC Rust toolchain and Visual Studio C++ Build Tools; WebView2 is required to run the packaged manager.
 
 ## Review Focus
 
@@ -54,7 +54,6 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Create: `apps/policy-manager/src-tauri/tests/catalog.rs`
 - Create: `apps/policy-manager/src-tauri/tests/catalog_update.rs`
 - Create: `apps/policy-manager/catalog/releases.json`
-- Create: `apps/policy-manager/catalog/releases.json.sig`
 - Create: `apps/policy-manager/catalog/README.md`
 - Create: `apps/policy-manager/catalog/README.zh.md`
 - Create: `apps/policy-manager/README.md`
@@ -64,15 +63,15 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 **Interfaces:**
 - Produces: Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` and `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`.
 - Produces: public `DesktopRelease` and `PolicyRelease` structs whose fields match the signed catalog record fields listed below.
-- Produces: `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`; it fetches `manager-catalog.json` and its detached signature only from `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` and accepts new bytes only after signature verification.
-- Catalog release records include OS, architecture, Desktop version, DSH version, DSH commit, first-party installer URL, SHA-256, installer argument profile and exact Policy package mapping.
+- Produces: async `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`; it fetches `manager-catalog.json` and its detached signature only from `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/`, verifies the signature, and rejects a catalog revision lower than the loaded one.
+- Catalog release records include OS, architecture, Desktop version, DSH version, DSH commit, first-party installer URL, SHA-256, installer argument profile and exact Policy package mapping. The checked-in development inventory may remain empty and unsigned; published catalogs require an embedded public key and detached Ed25519 signature.
 - The initial catalog contains only artifacts whose first-party source, immutable bytes, hash, runtime identity and installer behavior have been verified; other core tags remain visible as unavailable metadata or are omitted.
 
-- [ ] **Step 1: Write failing Rust catalog tests** for valid signed data, invalid signature, malformed fields, unsupported architecture, missing hash, duplicate Desktop identity, exact Policy match and runtime-commit mismatch; write catalog-update tests for redirects outside approved GitHub hosts and invalid replacement signatures; add a failing `App.test.tsx` smoke test for the initial shell.
+- [ ] **Step 1: Write failing Rust catalog tests** for valid signed data, invalid signature, malformed fields, expiration, unsupported architecture, missing hash, duplicate Desktop identity, exact Policy match and runtime-commit mismatch; write catalog-update tests for redirects outside approved GitHub hosts, invalid replacement signatures and lower revision rejection; add a failing `App.test.tsx` smoke test for the initial shell.
 - [ ] **Step 2: Add the minimal Tauri/Vite test harness and compile-only Rust API stubs** so the tests execute; run the two Cargo integration-test targets and Vitest, and confirm behavior assertions fail because valid catalog verification, exact matching, catalog refresh and the initial app heading are not implemented.
 - [ ] **Step 3: Implement catalog parsing, Ed25519 signature verification and catalog refresh**; embed only the catalog verification public key in the application and keep the signing key out of the repository.
-- [ ] **Step 4: Verify the first-party installer source, update feed fields, stable download bytes, SHA-256, embedded DSH identity and supported installer arguments** before adding any installable entry; record unresolved archive behavior in the catalog README.
-- [ ] **Step 5: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog`, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog_update` and `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**; expect catalog tests and the initial React shell test to pass.
+- [ ] **Step 4: Verify the first-party installer source, update feed fields, stable download bytes, SHA-256, embedded DSH identity and supported installer arguments** before adding any installable entry; record unresolved archive behavior in the catalog README. Do not create a production signature key as part of implementation; document the release-key configuration requirement.
+- [ ] **Step 5: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog`, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog_update` and `npm --prefix apps/policy-manager test`**; expect catalog tests and the initial React shell test to pass.
 - [ ] **Step 6: Commit** as `feat: scaffold DSH policy manager and release catalog`.
 
 ### Task 2: Installed Desktop detection and manager state
