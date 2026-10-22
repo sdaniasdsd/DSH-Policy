@@ -1,0 +1,221 @@
+# DSH Policy Manager Implementation Plan
+
+English | [中文](2026-10-22-dsh-policy-manager.zh.md)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build a standalone Windows Tauri application that manages verified official DSH Desktop releases, exact Policy compatibility, shared Harness data, mode switching, backups, rollback, launch and diagnostics.
+
+**Architecture:** Add `apps/policy-manager` as a separate workspace application with a React/TypeScript interface and a Windows-only Rust backend. The backend verifies a signed release catalog, uses the bundled Desktop `dsh` command for profile operations, and owns installer, backup and recovery transactions; it never edits `app.asar` or runs a replacement agent runtime.
+
+**Tech Stack:** Tauri 2, Rust, React, TypeScript, Vite, Vitest, Cargo tests, Windows DPAPI.
+
+**Spec:** [DSH Policy Manager and Version Control](../specs/2026-10-22-dsh-policy-manager-design.md)
+
+## Global Constraints
+
+- Target Windows x64 and one active official DSH Desktop installation in the first release.
+- Treat Desktop package version and bundled DSH runtime version plus upstream commit as separate identities.
+- Enable Policy mode only for an exact runtime-version and commit compatibility record; otherwise allow official mode only.
+- Keep the selected `DSH_HOME` constant across modes and supported releases; create and verify a local encrypted backup before mutation.
+- Use the official Desktop `dsh` command and profile Bundle path; never edit `app.asar`, inject renderer code, or replace the official runtime.
+- Verify the signed catalog and installer SHA-256 before installation; only catalogued first-party artifacts with known installer behavior are installable.
+- Preserve the last verified installer and Harness-home restore point; never launch an unverified installation after a failed or interrupted transition.
+- Redact credentials, authorization headers and secret-bearing command arguments from diagnostics.
+- The repository currently has no Rust toolchain available on PATH; Windows Tauri compilation requires Rust and the Tauri Windows build prerequisites before native verification.
+
+## Review Focus
+
+- Missing, malformed, expired or incorrectly signed catalog data must disable install and Policy mode without preventing safe launch in official mode; Task 1 pins parser and UI states.
+- A Desktop version with a mismatched DSH version or commit must never enable a nearby Policy release; Task 1 and Task 5 pin exact-pair rejection.
+- Both standard and former Policy homes containing data must preserve both snapshots and require an explicit home choice; Task 3 pins setup and backup behavior.
+- DSH, its profile package operation or another manager transition may still be running; Tasks 3–5 pin lock handling and no-mutation behavior.
+- Download, installer, profile operation or process interruption may leave a partial transition; Task 4 pins recovery to the prior verified version and snapshot.
+
+---
+
+### Task 1: Manager scaffold and trusted release catalog
+
+**Files:**
+- Create: `apps/policy-manager/package.json`
+- Create: `apps/policy-manager/index.html`
+- Create: `apps/policy-manager/vite.config.ts`
+- Create: `apps/policy-manager/tsconfig.json`
+- Create: `apps/policy-manager/src/main.tsx`
+- Create: `apps/policy-manager/src/App.test.tsx`
+- Create: `apps/policy-manager/src/App.tsx`
+- Create: `apps/policy-manager/src-tauri/Cargo.toml`
+- Create: `apps/policy-manager/src-tauri/build.rs`
+- Create: `apps/policy-manager/src-tauri/tauri.conf.json`
+- Create: `apps/policy-manager/src-tauri/src/main.rs`
+- Create: `apps/policy-manager/src-tauri/src/lib.rs`
+- Create: `apps/policy-manager/src-tauri/src/catalog.rs`
+- Create: `apps/policy-manager/src-tauri/src/catalog_update.rs`
+- Create: `apps/policy-manager/src-tauri/tests/catalog.rs`
+- Create: `apps/policy-manager/src-tauri/tests/catalog_update.rs`
+- Create: `apps/policy-manager/catalog/releases.json`
+- Create: `apps/policy-manager/catalog/releases.json.sig`
+- Create: `apps/policy-manager/catalog/README.md`
+- Create: `apps/policy-manager/catalog/README.zh.md`
+- Create: `apps/policy-manager/README.md`
+- Create: `apps/policy-manager/README.zh.md`
+- Modify: `pnpm-workspace.yaml` only if the existing `apps/*` workspace glob does not include the new package.
+
+**Interfaces:**
+- Produces: Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` and `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`.
+- Produces: `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`; it fetches `manager-catalog.json` and its detached signature only from `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` and accepts new bytes only after signature verification.
+- Catalog release records include OS, architecture, Desktop version, DSH version, DSH commit, first-party installer URL, SHA-256, installer argument profile and exact Policy package mapping.
+- The initial catalog contains only artifacts whose first-party source, immutable bytes, hash, runtime identity and installer behavior have been verified; other core tags remain visible as unavailable metadata or are omitted.
+
+- [ ] **Step 1: Write failing Rust catalog tests** for valid signed data, invalid signature, malformed fields, unsupported architecture, missing hash, duplicate Desktop identity, exact Policy match and runtime-commit mismatch; write catalog-update tests for redirects outside approved GitHub hosts and invalid replacement signatures; add a failing `App.test.tsx` smoke test for the initial shell.
+- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml catalog`** and confirm the tests fail because the catalog module does not exist.
+- [ ] **Step 3: Add the Tauri/Vite workspace scaffold and implement catalog parsing and Ed25519 signature verification** in `catalog.rs`; embed only the catalog verification public key in the application and keep the signing key out of the repository.
+- [ ] **Step 4: Verify the first-party installer source, update feed fields, stable download bytes, SHA-256, embedded DSH identity and supported installer arguments** before adding any installable entry; record unresolved archive behavior in the catalog README.
+- [ ] **Step 5: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml catalog` and `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**; expect catalog tests and the initial React shell test to pass.
+- [ ] **Step 6: Commit** as `feat: scaffold DSH policy manager and release catalog`.
+
+### Task 2: Installed Desktop detection and manager state
+
+**Files:**
+- Create: `apps/policy-manager/src-tauri/src/installed_dsh.rs`
+- Create: `apps/policy-manager/src-tauri/src/manager_state.rs`
+- Create: `apps/policy-manager/src-tauri/tests/installed_dsh.rs`
+- Create: `apps/policy-manager/src-tauri/tests/manager_state.rs`
+- Modify: `apps/policy-manager/src-tauri/src/lib.rs`
+
+**Interfaces:**
+- Consumes: Task 1 `ReleaseCatalog` and the trusted catalog parser.
+- Produces: `InstalledDsh::detect(registry: &dyn InstallRegistry) -> Result<Option<InstalledDsh>, DetectError>` and `ManagerState::inspect(installed: Option<InstalledDsh>, home: PathBuf, profile: ProfileSnapshot, catalog: &ReleaseCatalog) -> ManagerState`.
+- `InstalledDsh` stores installation path, Desktop version, bundled DSH version and commit when available; `ManagerState` reports official/policy mode and exact compatibility status independently.
+
+- [ ] **Step 1: Write failing tests** for no installation, valid registry install, missing executable, unreadable runtime identity, externally updated runtime and exact versus mismatched Policy compatibility.
+- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml installed_dsh manager_state`** and confirm the new tests fail before implementation.
+- [ ] **Step 3: Implement registry-backed Windows installation discovery and read-only bundled runtime identity detection** without writing to the installation or `app.asar`.
+- [ ] **Step 4: Implement manager state derivation** so unsupported or unknown installations remain launchable only in verified official mode and disable Policy mode.
+- [ ] **Step 5: Run the focused Cargo tests** and expect all detection and compatibility cases to pass.
+- [ ] **Step 6: Commit** as `feat: detect DSH desktop and policy compatibility`.
+
+### Task 3: Shared Harness home, encrypted backups and transition journal
+
+**Files:**
+- Create: `apps/policy-manager/src-tauri/src/harness_home.rs`
+- Create: `apps/policy-manager/src-tauri/src/backup.rs`
+- Create: `apps/policy-manager/src-tauri/src/transaction.rs`
+- Create: `apps/policy-manager/src-tauri/tests/harness_home.rs`
+- Create: `apps/policy-manager/src-tauri/tests/backup.rs`
+- Create: `apps/policy-manager/src-tauri/tests/transaction.rs`
+- Modify: `apps/policy-manager/src-tauri/src/lib.rs`
+
+**Interfaces:**
+- Produces: `HarnessHome::resolve(explicit: Option<PathBuf>, user_profile: &Path) -> HomeResolution`, `BackupStore::create(home: &Path) -> Result<BackupRecord, BackupError>`, `BackupStore::restore(record: &BackupRecord, destination: &Path) -> Result<(), BackupError>` and `TransitionJournal::advance(operation_id: Uuid, stage: TransitionStage) -> Result<(), JournalError>`.
+- Backup files use a versioned archive encrypted with Windows DPAPI and contain a manifest with source path, creation time and archive digest.
+- Transition stages are durable before each install/profile mutation and distinguish prepared, backed-up, installing, profile-updating, verifying, committed, recovering and recovery-required states.
+
+- [ ] **Step 1: Write failing tests** for explicit `DSH_HOME`, standard-home fallback, both legacy homes containing data, archive tampering, DPAPI round-trip, interrupted journal writes and illegal stage transitions.
+- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml harness_home backup transaction`** and confirm the tests fail before implementation.
+- [ ] **Step 3: Implement home selection and backup encryption** with a platform abstraction that permits deterministic test encryption while production uses Windows DPAPI.
+- [ ] **Step 4: Implement atomic journal persistence and recovery-state parsing**; never delete or overwrite the only verified backup when recovery data is incomplete.
+- [ ] **Step 5: Run focused Cargo tests on Windows** and expect home selection, encrypted restore and interrupted-journal recovery tests to pass.
+- [ ] **Step 6: Commit** as `feat: add encrypted DSH home backups and transition journal`.
+
+### Task 4: Verified installer download, replacement and rollback
+
+**Files:**
+- Create: `apps/policy-manager/src-tauri/src/installer.rs`
+- Create: `apps/policy-manager/src-tauri/src/recovery.rs`
+- Create: `apps/policy-manager/src-tauri/tests/installer.rs`
+- Create: `apps/policy-manager/src-tauri/tests/recovery.rs`
+- Modify: `apps/policy-manager/src-tauri/src/lib.rs`
+
+**Interfaces:**
+- Consumes: Tasks 1–3 catalog, installed state, backup and journal interfaces.
+- Produces: `InstallerManager::stage(release: &DesktopRelease) -> Result<VerifiedInstaller, InstallError>`, `InstallerManager::install(installer: &VerifiedInstaller) -> Result<(), InstallError>` and `RecoveryManager::recover(snapshot: &RecoverySnapshot) -> Result<ManagerState, RecoveryError>`.
+- Installer arguments are selected from an application allow-list keyed by verified installer family; a catalog record cannot supply arbitrary executable arguments.
+
+- [ ] **Step 1: Write failing tests** for HTTPS host restrictions, hash mismatch, partial download, cache corruption, running Desktop detection, allowed installer arguments, failed install compensation and rollback with a missing cached installer.
+- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml installer recovery`** and confirm failures before implementation.
+- [ ] **Step 3: Implement staged downloads and SHA-256 verification**; no install or Harness-home mutation may begin before the staged artifact is verified.
+- [ ] **Step 4: Implement Windows installer invocation and recovery** using the verified previous installer plus pre-change backup; enter recovery-required state if compensation fails and never launch an unverified install.
+- [ ] **Step 5: Run focused Cargo tests with mock installers** and expect failed and interrupted transitions to restore the previous verified state or expose a recoverable state.
+- [ ] **Step 6: Commit** as `feat: install verified DSH releases with rollback`.
+
+### Task 5: Official and Policy mode through the bundled DSH CLI
+
+**Files:**
+- Create: `apps/policy-manager/src-tauri/src/profile_mode.rs`
+- Create: `apps/policy-manager/src-tauri/tests/profile_mode.rs`
+- Modify: `apps/policy-manager/src-tauri/src/lib.rs`
+- Modify: `apps/policy-manager/src-tauri/src/transaction.rs`
+
+**Interfaces:**
+- Consumes: `InstalledDsh`, `ReleaseCatalog`, `HarnessHome`, `BackupStore` and `TransitionJournal` from Tasks 1–4.
+- Produces: `ProfileModeManager::apply(target: Mode, installation: &InstalledDsh, home: &Path) -> Result<ModeChangeResult, ModeChangeError>`.
+- The manager invokes the installed Desktop CLI with argument arrays equivalent to `dsh plugin --profile desktop add @deepseek-ai/dsh-policy-extension@<exact-version>`, `list` and `remove`; it passes the chosen `DSH_HOME`, uses no shell, and redacts secret-bearing output.
+
+- [ ] **Step 1: Write failing tests** for exact-version Policy add, official-mode remove, already-correct state, runtime mismatch, uninitialized profile, running profile lock, CLI timeout and nonzero exit.
+- [ ] **Step 2: Run `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml profile_mode`** and confirm failures before implementation.
+- [ ] **Step 3: Implement a typed process runner** that uses the bundled `dsh.cmd`/CLI entry point and refuses shell interpolation or unverified package versions.
+- [ ] **Step 4: Implement mode changes as journaled transactions** that back up first, inspect actual plugin state, apply the minimum CLI mutation, then re-read profile state before success.
+- [ ] **Step 5: Run focused Cargo tests and the installed-Desktop smoke test**; expect official mode to remove only the Policy Bundle and Policy mode to install only the exact mapped release.
+- [ ] **Step 6: Commit** as `feat: switch official and policy DSH modes`.
+
+### Task 6: Manager interface and safe launch
+
+**Files:**
+- Create: `apps/policy-manager/src/views/HomePage.tsx`
+- Create: `apps/policy-manager/src/views/VersionsPage.tsx`
+- Create: `apps/policy-manager/src/views/PolicyPage.tsx`
+- Create: `apps/policy-manager/src/views/ActivityPage.tsx`
+- Create: `apps/policy-manager/src/views/HomePage.test.tsx`
+- Create: `apps/policy-manager/src/views/VersionsPage.test.tsx`
+- Create: `apps/policy-manager/src/views/PolicyPage.test.tsx`
+- Create: `apps/policy-manager/src/views/ActivityPage.test.tsx`
+- Create: `apps/policy-manager/src/components/CompatibilityStatus.tsx`
+- Create: `apps/policy-manager/src/components/OperationProgress.tsx`
+- Create: `apps/policy-manager/src-tauri/src/commands.rs`
+- Create: `apps/policy-manager/src-tauri/src/launcher.rs`
+- Create: `apps/policy-manager/src-tauri/tests/commands.rs`
+- Create: `apps/policy-manager/src-tauri/tests/launcher.rs`
+- Modify: `apps/policy-manager/src/App.tsx`
+- Modify: `apps/policy-manager/src-tauri/src/lib.rs`
+
+**Interfaces:**
+- Consumes: the typed manager state and operations from Tasks 1–5.
+- Produces: Tauri commands for `get_manager_state`, `list_releases`, `set_mode`, `install_release`, `list_backups`, `restore_backup`, `launch_dsh` and `get_activity`.
+- Produces: a `refresh_catalog` command that reports verified version-catalog updates separately from DSH installer updates.
+- The UI exposes Home, Versions, Policy and Activity views; unknown compatibility disables Policy mode while keeping the official launch action available.
+
+- [ ] **Step 1: Write failing React tests** for current version/mode/compatibility, unavailable Policy mode, installable catalog rows, progress/error states, rollback warnings and secret-redacted activity.
+- [ ] **Step 2: Run `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`** and confirm the view tests fail before implementation.
+- [ ] **Step 3: Implement typed Tauri command adapters and a launcher** that starts the official Desktop executable with the chosen `DSH_HOME` and selected mode after verified profile state.
+- [ ] **Step 4: Implement the four views** using the existing repository React/Vite conventions and keep every filesystem, process and installer operation in the Rust backend.
+- [ ] **Step 5: Run React tests, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml` and the Tauri Windows build**; expect state, error and launch behavior to pass.
+- [ ] **Step 6: Commit** as `feat: add DSH policy manager interface and launcher`.
+
+### Task 7: Release packaging, trusted catalog publication and end-to-end recovery checks
+
+**Files:**
+- Create: `apps/policy-manager/src-tauri/capabilities/default.json`
+- Create: `.github/workflows/policy-manager-windows.yml`
+- Create: `apps/policy-manager/tests/windows-manager-smoke.ps1`
+- Create: `apps/policy-manager/tests/fixtures/catalog/`
+- Modify: `apps/policy-manager/package.json`
+- Modify: `apps/policy-manager/src-tauri/tauri.conf.json`
+- Modify: `apps/policy-manager/README.md`
+- Modify: `apps/policy-manager/README.zh.md`
+
+**Interfaces:**
+- Consumes: the packaged manager and release catalog from Tasks 1–6.
+- Produces: a Windows x64 manager installer and a catalog publication workflow that signs catalog bytes with a protected release secret; the private signing key is never stored in the repository or shipped in the app.
+- The packaged smoke test uses a disposable fake DSH installation and fake Harness home; it never replaces the user's installed DSH or reads real credentials.
+
+- [ ] **Step 1: Write failing packaging and smoke checks** for unsigned catalog rejection, mock version transition, backup restore, manager restart during install and absence of secret values in logs.
+- [ ] **Step 2: Run the new packaging/smoke checks** and confirm they fail before workflow and fixture setup.
+- [ ] **Step 3: Add least-privilege Tauri capabilities and Windows CI** for frontend tests, Cargo tests, manager packaging, catalog signature verification and artifact hashes.
+- [ ] **Step 4: Implement the disposable Windows smoke test** covering official launch, exact Policy switch, external Desktop update detection, rollback and recovery after a forced interruption.
+- [ ] **Step 5: Run `corepack pnpm --filter @deepseek-ai/dsh-policy-manager test`, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml`, the Windows smoke test and `corepack pnpm run doc-sync`**; expect all manager checks to pass and document unrelated repository-gate failures without changing unrelated files.
+- [ ] **Step 6: Commit** as `test: qualify DSH policy manager Windows release`.
+
+## Source verification recorded while planning
+
+The official [DeepSeek download page](https://www.deepseek.com/en/download/) exposes current macOS and Windows downloads; the Windows link resolves to a moving `dsh-latest-windows-x64.exe` URL. The official [DSH GitHub releases](https://github.com/deepseek-ai/deepseek-harness/releases) publish core tags and commits, which do not by themselves identify Desktop installers. Existing `apps/desktop/scripts/desktop-auto-update-environment.mjs` points the updater feed at `https://download.deepseek.com/dsh-desk/feeds/win-x64/`. Task 1 must verify the production feed's artifact retention and installer behavior before populating historical installable entries; if the feed does not provide a verified immutable installer, the catalog offers only artifacts cached locally or otherwise verified from an official first-party source.
