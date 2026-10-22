@@ -63,15 +63,16 @@
 
 **接口：**
 - 产出：Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` 和 `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`。
+- 产出：公开的 `DesktopRelease` 和 `PolicyRelease` 结构体，其字段与下方列出的签名目录记录字段一致。
 - 产出：`CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`；它只从 `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` 获取 `manager-catalog.json` 及其独立签名，并且仅在签名验证通过后接受新内容。
 - 发行版记录包含操作系统、架构、Desktop 版本、DSH 版本、DSH 提交、第一方安装包 URL、SHA-256、安装器参数配置和精确的 Policy 包映射。
 - 初始目录只包含第一方来源、不可变字节、哈希、运行时身份和安装器行为均已验证的包；其他核心标签仅显示为不可用的元数据或直接省略。
 
 - [ ] **步骤 1：编写失败的 Rust 版本目录测试**，覆盖有效签名数据、签名错误、字段格式错误、不支持的架构、缺少哈希、重复 Desktop 身份、精确 Policy 匹配和运行时提交不匹配；编写目录更新测试，覆盖重定向到未批准 GitHub 主机和替换目录签名错误；再添加失败的 `App.test.tsx` 初始外壳冒烟测试。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml catalog`**，确认由于目录模块不存在而失败。
-- [ ] **步骤 3：添加 Tauri/Vite workspace 脚手架并在 `catalog.rs` 实现目录解析和 Ed25519 签名验证**；应用只内嵌目录验证公钥，签名私钥留在仓库之外。
+- [ ] **步骤 2：添加最小 Tauri/Vite 测试环境和仅供编译的 Rust API stub**，使测试目标可执行；运行两个 Cargo 集成测试目标和 Vitest，并确认行为断言因有效目录验证、精确匹配、目录刷新和初始页面标题尚未实现而失败。
+- [ ] **步骤 3：实现目录解析、Ed25519 签名验证和目录刷新**；应用只内嵌目录验证公钥，签名私钥留在仓库之外。
 - [ ] **步骤 4：验证第一方安装包来源、更新 feed 字段、稳定下载字节、SHA-256、内置 DSH 身份和受支持的安装器参数**后，才添加可安装条目；在目录 README 中记录尚未解决的归档行为。
-- [ ] **步骤 5：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml catalog` 和 `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**；预期目录测试和初始 React 外壳测试通过。
+- [ ] **步骤 5：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog`、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test catalog_update` 和 `corepack pnpm --filter @deepseek-ai/dsh-policy-manager exec vitest run`**；预期目录测试和初始 React 外壳测试通过。
 - [ ] **步骤 6：提交**为 `feat: scaffold DSH policy manager and release catalog`。
 
 ### 任务 2：已安装 Desktop 检测与管理器状态
@@ -89,7 +90,7 @@
 - `InstalledDsh` 在可读取时保存安装路径、Desktop 版本、内置 DSH 版本和提交；`ManagerState` 独立报告官方/策略模式和精确兼容状态。
 
 - [ ] **步骤 1：编写失败测试**，覆盖未安装、有效注册表安装、可执行文件缺失、运行时身份无法读取、外部升级后的运行时，以及精确和不匹配的 Policy 兼容关系。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml installed_dsh manager_state`**，确认实现前新测试失败。
+- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test installed_dsh` 和 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test manager_state`**，确认实现前新测试失败。
 - [ ] **步骤 3：实现基于 Windows 注册表的安装检测和只读内置运行时身份识别**，不写入安装目录或 `app.asar`。
 - [ ] **步骤 4：实现管理器状态计算**，使不受支持或未知的安装仍可在已验证的官方模式中启动，并禁用 Policy 模式。
 - [ ] **步骤 5：运行定向 Cargo 测试**，预期安装检测和兼容性案例全部通过。
@@ -112,7 +113,7 @@
 - 每次安装/profile 变更前都先持久化事务阶段，并区分 prepared、backed-up、installing、profile-updating、verifying、committed、recovering 和 recovery-required 状态。
 
 - [ ] **步骤 1：编写失败测试**，覆盖显式 `DSH_HOME`、标准主目录回退、两个旧主目录都含数据、归档篡改、DPAPI 往返、日志写入中断和非法阶段跳转。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml harness_home backup transaction`**，确认实现前测试失败。
+- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test harness_home`、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test backup` 和 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test transaction`**，确认实现前测试失败。
 - [ ] **步骤 3：实现主目录选择和备份加密**，通过平台抽象提供可确定的测试加密，生产环境使用 Windows DPAPI。
 - [ ] **步骤 4：实现原子日志持久化和恢复状态解析**；恢复数据不完整时绝不删除或覆盖唯一已验证备份。
 - [ ] **步骤 5：在 Windows 上运行定向 Cargo 测试**，预期主目录选择、加密恢复和中断日志恢复测试通过。
@@ -133,7 +134,7 @@
 - 安装器参数按已验证的安装器类型从应用内允许列表选择；目录记录不能提供任意可执行参数。
 
 - [ ] **步骤 1：编写失败测试**，覆盖 HTTPS 主机限制、哈希错误、下载不完整、缓存损坏、检测到 Desktop 正在运行、允许的安装器参数、安装失败补偿和缓存缺少安装包时的回退。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml installer recovery`**，确认实现前测试失败。
+- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test installer` 和 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test recovery`**，确认实现前测试失败。
 - [ ] **步骤 3：实现暂存下载和 SHA-256 验证**；在暂存文件验证前不开始安装或修改 Harness 主目录。
 - [ ] **步骤 4：实现 Windows 安装器调用和恢复**，使用已验证的上一版本安装包和变更前备份；补偿失败时进入 recovery-required 状态，绝不启动未经验证的安装。
 - [ ] **步骤 5：用模拟安装器运行定向 Cargo 测试**，预期失败和中断事务恢复到上一个已验证状态，或明确进入可恢复状态。
@@ -153,7 +154,7 @@
 - 管理器通过参数数组调用随 Desktop 安装的 CLI，执行等价于 `dsh plugin --profile desktop add @deepseek-ai/dsh-policy-extension@<exact-version>`、`list` 和 `remove` 的命令；传入所选 `DSH_HOME`，不使用 shell，并从输出中移除密钥信息。
 
 - [ ] **步骤 1：编写失败测试**，覆盖精确版本的 Policy 添加、官方模式移除、状态已正确、运行时不匹配、profile 未初始化、profile 锁正在使用、CLI 超时和非零退出。
-- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml profile_mode`**，确认实现前测试失败。
+- [ ] **步骤 2：运行 `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --test profile_mode`**，确认实现前测试失败。
 - [ ] **步骤 3：实现类型化进程运行器**，调用随附的 `dsh.cmd`/CLI 入口，拒绝 shell 字符串拼接或未验证的包版本。
 - [ ] **步骤 4：将模式变更实现为带日志事务**，先备份，再读取实际插件状态，只执行必要的 CLI 变更，最后重新读取 profile 状态再报告成功。
 - [ ] **步骤 5：运行定向 Cargo 测试和已安装 Desktop 冒烟测试**；预期官方模式只移除 Policy Bundle，策略模式只安装精确映射的发行版。
