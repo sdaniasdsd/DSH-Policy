@@ -3,7 +3,9 @@ pub mod catalog;
 pub mod catalog_update;
 pub mod harness_home;
 pub mod installed_dsh;
+pub mod installer;
 pub mod manager_state;
+pub mod recovery;
 pub mod transaction;
 
 #[cfg(feature = "app")]

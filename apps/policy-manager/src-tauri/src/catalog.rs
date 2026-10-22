@@ -24,7 +24,7 @@ pub struct ReleaseCatalog {
     pub desktop_releases: Vec<DesktopRelease>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopRelease {
     pub os: String,

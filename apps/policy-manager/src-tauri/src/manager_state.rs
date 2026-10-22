@@ -2,6 +2,7 @@ use crate::catalog::{PolicyRelease, ReleaseCatalog};
 use crate::installed_dsh::InstalledDsh;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -34,7 +35,14 @@ impl ManagerState {
         profile: ProfileSnapshot,
         catalog: &ReleaseCatalog,
     ) -> Self {
+        let catalog_is_current = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|now| catalog.expires_at > now.as_secs())
+            .unwrap_or(false);
         let compatible_policy = installed.as_ref().and_then(|runtime| {
+            if !catalog_is_current {
+                return None;
+            }
             if runtime.build_dirty {
                 return None;
             }

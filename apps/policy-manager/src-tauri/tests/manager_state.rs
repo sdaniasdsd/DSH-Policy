@@ -113,3 +113,19 @@ fn missing_installation_reports_policy_unavailable_and_official_mode() {
     assert!(!state.policy_compatible);
     assert_eq!(state.mode, ManagerMode::Official);
 }
+
+#[test]
+fn disables_policy_when_the_verified_catalog_has_expired() {
+    let mut expired = catalog("0.2.1-rc.2", COMMIT);
+    expired.expires_at = 1;
+    let state = ManagerState::inspect(
+        Some(installed("0.2.1-rc.2", Some(COMMIT), false)),
+        PathBuf::from("C:/Users/test/.dsh"),
+        ProfileSnapshot {
+            mode: ManagerMode::Policy,
+        },
+        &expired,
+    );
+    assert!(!state.policy_compatible);
+    assert_eq!(state.mode, ManagerMode::Official);
+}
