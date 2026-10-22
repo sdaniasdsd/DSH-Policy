@@ -35,7 +35,7 @@ try {
   $manager = $null
 
   $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-  cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --features app --test backup --test catalog --test installer --test launcher --test installed_dsh --test profile_mode --test recovery --test recovery_descriptor --test transaction
+  cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml --features app --jobs 1 --test backup --test catalog --test installer --test launcher --test installed_dsh --test profile_mode --test recovery --test recovery_descriptor --test transaction
   if ($LASTEXITCODE -ne 0) {
     throw 'The isolated release transition scenarios failed.'
   }
