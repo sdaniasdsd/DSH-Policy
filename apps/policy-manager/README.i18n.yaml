@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/policy-manager/README.md
 /dsh-policy-manager:
-  en: 36267eefdda9d7ca
-  zh: 4ab16522369036b8
+  en: 6aa7c0c5c7bc6993
+  zh: 5847b037ec509387
 /dsh-policy-manager/development:
   en: 4e2cbebaccc1891c
   zh: 59b906ef3b9c0336

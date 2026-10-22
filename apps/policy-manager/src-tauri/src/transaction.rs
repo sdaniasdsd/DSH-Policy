@@ -129,6 +129,7 @@ fn transition_allowed(from: Option<TransitionStage>, to: TransitionStage) -> boo
     match (from, to) {
         (None, Prepared) => true,
         (Some(Prepared), BackedUp) => true,
+        (Some(BackedUp), ProfileUpdating | Verifying) => true,
         (Some(BackedUp), Installing) => true,
         (Some(Installing), ProfileUpdating) => true,
         (Some(ProfileUpdating), Verifying) => true,
