@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for 2026-10-22-dsh-policy-manager-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-22-dsh-policy-manager-design.md
+/dsh-policy-manager-and-version-control:
+  en: 9d9f8fbdf916acca
+  zh: c7cb1005754c08e4
+/dsh-policy-manager-and-version-control/goal:
+  en: 3ef7c39fe56d7c2d
+  zh: e9c715949a646d14
+/dsh-policy-manager-and-version-control/product-and-responsibility-split:
+  en: f7f3f11b28445037
+  zh: b37c8819356ebf92
+/dsh-policy-manager-and-version-control/version-catalog-and-compatibility:
+  en: 59026565bef0cc7f
+  zh: d8dd7c16fd5df52c
+/dsh-policy-manager-and-version-control/version-and-mode-changes:
+  en: f9656ef7fbce8f09
+  zh: ec07ac337740cdb3
+/dsh-policy-manager-and-version-control/backup-failure-and-rollback:
+  en: f58e6c217c5621fc
+  zh: ae3a175c648401a2
+/dsh-policy-manager-and-version-control/manager-interface:
+  en: ff3268950f9f4cd4
+  zh: e9a87fa0f6e03a22
+/dsh-policy-manager-and-version-control/alternatives-considered:
+  en: 6a2e2511922ac62b
+  zh: 4b1643a2816b7176
+/dsh-policy-manager-and-version-control/validation-goals:
+  en: e573913951a06c63
+  zh: c4cab9ed95314214
+/dsh-policy-manager-and-version-control/scope:
+  en: 1b2a16903adedbc8
+  zh: 57610a22aca5c67d
+/dsh-policy-manager-and-version-control/dev-note:
+  en: 200955ad911e214e
+  zh: 78fefd74a55a90d0
