@@ -8,7 +8,8 @@ use crate::launcher::DshLauncher;
 use crate::manager_state::{ManagerMode, ManagerState, ProfileSnapshot};
 use crate::profile_mode::ProfileModeManager;
 use crate::recovery::{
-    RecoveryManager, RecoverySnapshot, WindowsInstalledDshVerifier, preserved_home_path,
+    RecoveryDescriptor, RecoveryDescriptorStore, RecoveryManager, RecoverySnapshot,
+    WindowsInstalledDshVerifier, preserved_home_path,
 };
 use crate::transaction::{TransitionJournal, TransitionStage};
 use serde::{Deserialize, Serialize};
@@ -141,6 +142,37 @@ impl ManagerServices {
     }
     fn journal(&self) -> TransitionJournal {
         TransitionJournal::new(self.local_data.join("journal"))
+    }
+    fn recovery_descriptors(&self) -> RecoveryDescriptorStore {
+        RecoveryDescriptorStore::new(self.local_data.join("recovery-descriptors"))
+    }
+
+    fn ensure_no_pending_recovery(&self) -> Result<(), String> {
+        let descriptors = self.recovery_descriptors();
+        let mut pending = false;
+        for entry in self.journal().list().map_err(|error| error.to_string())? {
+            if matches!(entry.stage, TransitionStage::Committed) {
+                continue;
+            }
+            match descriptors.load(entry.operation_id) {
+                Ok(Some(_)) => pending = true,
+                Ok(None) => {}
+                Err(_) => {
+                    return Err(
+                        "a recovery record is damaged; manager actions are blocked for safety"
+                            .to_owned(),
+                    );
+                }
+            }
+        }
+        if pending {
+            Err(
+                "recover the interrupted DSH version change from Activity before continuing"
+                    .to_owned(),
+            )
+        } else {
+            Ok(())
+        }
     }
 
     fn installed(&self) -> Result<Option<InstalledDsh>, String> {
@@ -362,19 +394,31 @@ fn list_backups_inner(services: &ManagerServices) -> Result<Vec<BackupRecord>, S
 pub fn get_activity(
     services: State<'_, Arc<ManagerServices>>,
 ) -> Result<Vec<ActivityView>, String> {
-    Ok(services
+    services
         .journal()
         .list()
         .map_err(|error| error.to_string())?
         .into_iter()
-        .map(|entry| ActivityView {
-            id: entry.operation_id.to_string(),
-            action: "DSH manager transition".to_owned(),
-            stage: format!("{:?}", entry.stage),
-            updated_at: entry.updated_at,
-            details: Some(format!("Operation {}", entry.operation_id)),
+        .map(|entry| {
+            let recoverable = if matches!(entry.stage, TransitionStage::Committed) {
+                false
+            } else {
+                services
+                    .recovery_descriptors()
+                    .load(entry.operation_id)
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+            };
+            Ok(ActivityView {
+                id: entry.operation_id.to_string(),
+                action: "DSH manager transition".to_owned(),
+                stage: format!("{:?}", entry.stage),
+                updated_at: entry.updated_at,
+                details: Some(format!("Operation {}", entry.operation_id)),
+                recoverable,
+            })
         })
-        .collect())
+        .collect()
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -385,6 +429,125 @@ pub struct ActivityView {
     pub stage: String,
     pub updated_at: u64,
     pub details: Option<String>,
+    pub recoverable: bool,
+}
+
+#[tauri::command]
+pub async fn recover_transition(
+    operation_id: String,
+    services: State<'_, Arc<ManagerServices>>,
+) -> Result<RecoveryCommandResult, String> {
+    let services = Arc::clone(services.inner());
+    tauri::async_runtime::spawn_blocking(move || recover_transition_inner(operation_id, &services))
+        .await
+        .map_err(|_| "recovery worker failed".to_owned())?
+}
+
+fn recover_transition_inner(
+    operation_id: String,
+    services: &ManagerServices,
+) -> Result<RecoveryCommandResult, String> {
+    if SystemDesktopProcessProbe
+        .is_running()
+        .map_err(|error| error.to_string())?
+    {
+        return Err("close DSH Desktop before recovering the previous version".to_owned());
+    }
+    let operation_id = Uuid::parse_str(&operation_id)
+        .map_err(|_| "transition identifier is invalid".to_owned())?;
+    let descriptors = services.recovery_descriptors();
+    let descriptor = descriptors
+        .load(operation_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "this transition has no verified recovery record".to_owned())?;
+    let stage = services
+        .journal()
+        .current(operation_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "this transition is no longer active".to_owned())?;
+    if matches!(stage, TransitionStage::Committed) {
+        return Err("this transition has already committed".to_owned());
+    }
+    let catalog = services.catalog()?;
+    if catalog.catalog_revision < descriptor.catalog_revision
+        || catalog.expires_at <= now_unix()
+        || !catalog
+            .desktop_releases
+            .iter()
+            .any(|release| release == &descriptor.previous_release)
+    {
+        return Err("the signed catalog no longer verifies this rollback release".to_owned());
+    }
+    let home = match services.resolve_home()? {
+        HomeResolution::Selected { path, .. } => path,
+        HomeResolution::ChoiceRequired { .. } => {
+            return Err("select the original Harness home before recovery".to_owned());
+        }
+        HomeResolution::InspectionFailed { reason, .. } => return Err(reason),
+    };
+    if !same_path_or_value(&home, &descriptor.home) {
+        return Err("the selected Harness home differs from the interrupted operation".to_owned());
+    }
+    if home.join("profiles/desktop/package.json.lock").exists() {
+        return Err(
+            "the desktop profile is busy; retry after its package operation finishes".to_owned(),
+        );
+    }
+    if let Some(installed) = services.installed()? {
+        if !same_path_or_value(
+            &installed.install_location,
+            &descriptor.installation_location,
+        ) {
+            return Err(
+                "the installed DSH location differs from the interrupted operation".to_owned(),
+            );
+        }
+    }
+    let backup = services
+        .backup_store()
+        .list()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|record| record.id == descriptor.backup_id)
+        .ok_or_else(|| "the verified pre-upgrade backup is missing".to_owned())?;
+    if !same_path_or_value(&backup.source_path, &home) {
+        return Err("the recovery backup belongs to a different Harness home".to_owned());
+    }
+    let snapshot = RecoverySnapshot {
+        operation_id,
+        previous_release: descriptor.previous_release,
+        backup,
+        home,
+        installation_location: descriptor.installation_location,
+        requested_mode: descriptor.requested_mode,
+        catalog: catalog.clone(),
+    };
+    let recovery = RecoveryManager::new(
+        InstallerManager::system(services.local_data.join("installers"))
+            .map_err(|error| error.to_string())?,
+        services.backup_store(),
+        services.journal(),
+        Arc::new(WindowsInstalledDshVerifier),
+    );
+    let policy_version = catalog
+        .policy_for(
+            snapshot.previous_release.runtime_version.as_str(),
+            snapshot.previous_release.runtime_commit.as_str(),
+        )
+        .filter(|_| snapshot.requested_mode == ManagerMode::Policy)
+        .map(|policy| policy.version.clone());
+    services.save_mode(snapshot.requested_mode, policy_version)?;
+    recovery
+        .recover(&snapshot)
+        .map_err(|error| error.to_string())?;
+    let _ = descriptors.remove(operation_id);
+    Ok(RecoveryCommandResult { recovered: true })
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryCommandResult {
+    pub recovered: bool,
 }
 
 #[tauri::command]
@@ -487,6 +650,7 @@ fn set_mode_inner(
     mode: ManagerMode,
     services: &ManagerServices,
 ) -> Result<ModeCommandResult, String> {
+    services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
     let installation = snapshot
         .installed
@@ -525,6 +689,7 @@ pub async fn launch_dsh(
 }
 
 fn launch_dsh_inner(services: &ManagerServices) -> Result<LaunchCommandResult, String> {
+    services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
     let installation = snapshot
         .installed
@@ -583,6 +748,7 @@ fn restore_backup_inner(
     id: String,
     services: &ManagerServices,
 ) -> Result<RestoreCommandResult, String> {
+    services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
     let home = snapshot
         .home
@@ -714,6 +880,7 @@ fn install_release_inner(
     services: &ManagerServices,
     desktop_version: &str,
 ) -> Result<InstallCommandResult, String> {
+    services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
     let home = snapshot
         .home
@@ -783,6 +950,19 @@ fn install_release_inner(
         requested_mode: snapshot.mode,
         catalog: catalog.clone(),
     };
+    services
+        .recovery_descriptors()
+        .save(&RecoveryDescriptor {
+            schema_version: 1,
+            operation_id,
+            previous_release: recovery_snapshot.previous_release.clone(),
+            backup_id: recovery_snapshot.backup.id,
+            home: recovery_snapshot.home.clone(),
+            installation_location: recovery_snapshot.installation_location.clone(),
+            requested_mode: recovery_snapshot.requested_mode,
+            catalog_revision: catalog.catalog_revision,
+        })
+        .map_err(|error| format!("could not persist the rollback record: {error}"))?;
     journal
         .advance(operation_id, TransitionStage::Installing)
         .map_err(|error| error.to_string())?;
@@ -818,6 +998,8 @@ fn install_release_inner(
         );
         match recovery.recover(&recovery_snapshot) {
             Ok(_) => {
+                let _ = services.recovery_descriptors().remove(operation_id);
+                services.save_mode(snapshot.mode, snapshot.policy_version.clone())?;
                 return Err(format!(
                     "{error}; the prior verified DSH release and home were restored"
                 ));
@@ -855,9 +1037,13 @@ fn install_release_inner(
             Arc::new(WindowsInstalledDshVerifier),
         );
         return match recovery.recover(&recovery_snapshot) {
-            Ok(_) => Err(format!(
-                "profile update failed and the previous DSH release was restored: {mode_error}"
-            )),
+            Ok(_) => {
+                let _ = services.recovery_descriptors().remove(operation_id);
+                services.save_mode(snapshot.mode, snapshot.policy_version.clone())?;
+                Err(format!(
+                    "profile update failed and the previous DSH release was restored: {mode_error}"
+                ))
+            }
             Err(recovery_error) => Err(format!(
                 "profile update failed; recovery is required: {mode_error}; {recovery_error}"
             )),
@@ -866,22 +1052,21 @@ fn install_release_inner(
     journal
         .advance(operation_id, TransitionStage::Verifying)
         .map_err(|error| error.to_string())?;
+    let policy_version = if requested_mode == ManagerMode::Policy {
+        catalog
+            .policy_for(
+                target.runtime_version.as_str(),
+                target.runtime_commit.as_str(),
+            )
+            .map(|policy| policy.version.clone())
+    } else {
+        None
+    };
+    services.save_mode(requested_mode, policy_version)?;
     journal
         .advance(operation_id, TransitionStage::Committed)
         .map_err(|error| error.to_string())?;
-    services.save_mode(
-        requested_mode,
-        if requested_mode == ManagerMode::Policy {
-            catalog
-                .policy_for(
-                    target.runtime_version.as_str(),
-                    target.runtime_commit.as_str(),
-                )
-                .map(|policy| policy.version.clone())
-        } else {
-            None
-        },
-    )?;
+    let _ = services.recovery_descriptors().remove(operation_id);
     Ok(InstallCommandResult {
         installed: true,
         backup_id: backup.id.to_string(),

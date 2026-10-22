@@ -93,3 +93,33 @@ fn lists_latest_stage_and_timestamp_for_each_operation() {
     assert_eq!(records[0].stage, TransitionStage::BackedUp);
     assert!(records[0].updated_at > 0);
 }
+
+#[test]
+fn manager_restart_retains_the_install_stage_for_recovery() {
+    let temp = tempdir().unwrap();
+    let journal = TransitionJournal::new(temp.path());
+    let id = Uuid::new_v4();
+    journal.advance(id, TransitionStage::Prepared).unwrap();
+    journal.advance(id, TransitionStage::BackedUp).unwrap();
+    journal.advance(id, TransitionStage::Installing).unwrap();
+
+    let restarted_manager = TransitionJournal::new(temp.path());
+    assert_eq!(
+        restarted_manager.current(id).unwrap(),
+        Some(TransitionStage::Installing)
+    );
+    assert_eq!(
+        restarted_manager.list().unwrap()[0].stage,
+        TransitionStage::Installing
+    );
+    restarted_manager
+        .advance(id, TransitionStage::Recovering)
+        .unwrap();
+    restarted_manager
+        .advance(id, TransitionStage::RecoveryRequired)
+        .unwrap();
+    assert_eq!(
+        TransitionJournal::new(temp.path()).current(id).unwrap(),
+        Some(TransitionStage::RecoveryRequired)
+    );
+}

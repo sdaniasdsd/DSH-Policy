@@ -63,7 +63,7 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 **Interfaces:**
 - Produces: Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` and `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`.
 - Produces: public `DesktopRelease` and `PolicyRelease` structs whose fields match the signed catalog record fields listed below.
-- Produces: async `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`; it fetches `manager-catalog.json` and its detached signature only from `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/`, verifies the signature, and rejects a catalog revision lower than the loaded one.
+- Produces: async `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`; it fetches `manager-catalog.json` and its detached signature only from `https://github.com/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/`, verifies the signature, and rejects a catalog revision lower than the loaded one.
 - Catalog release records include OS, architecture, Desktop version, DSH version, DSH commit, first-party installer URL, SHA-256, installer argument profile and exact Policy package mapping. The checked-in development inventory may remain empty and unsigned; published catalogs require an embedded public key and detached Ed25519 signature.
 - The initial catalog contains only artifacts whose first-party source, immutable bytes, hash, runtime identity and installer behavior have been verified; other core tags remain visible as unavailable metadata or are omitted.
 
@@ -157,7 +157,7 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - [x] **Step 3: Implement a typed process runner** that invokes the bundled Electron CLI with argument arrays and refuses shell interpolation or unverified package versions.
 - [x] **Step 4: Implement mode changes as journaled transactions** that back up first, inspect actual plugin state, apply the minimum CLI mutation, then re-read profile state before success.
 - [x] **Step 5: Focused profile tests passed (11 tests); a real installed-Desktop smoke test was unavailable because this machine has no registered DSH Desktop installation.**
-- [x] **Step 6: Commit** as `feat: switch official and policy DSH modes` (`c31596b4`).
+- [x] **Step 6: Commit** as `feat: switch official and policy DSH modes`.
 
 ### Task 6: Manager interface and safe launch
 
@@ -177,7 +177,7 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 
 **Interfaces:**
 - Consumes: the typed manager state and operations from Tasks 1–5.
-- Produces: Tauri commands for `get_manager_state`, `list_releases`, `set_mode`, `install_release`, `list_backups`, `restore_backup`, `launch_dsh` and `get_activity`.
+- Produces: Tauri commands for `get_manager_state`, `list_releases`, `set_mode`, `install_release`, `list_backups`, `restore_backup`, `launch_dsh`, `get_activity` and restart-safe `recover_transition`.
 - Produces: a `refresh_catalog` command that reports verified version-catalog updates separately from DSH installer updates.
 - The UI exposes Home, Versions, Policy and Activity views; unknown compatibility disables Policy mode while keeping the official launch action available.
 
@@ -195,7 +195,11 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 - Create: `.github/workflows/policy-manager-windows.yml`
 - Create: `apps/policy-manager/tests/windows-manager-smoke.ps1`
 - Create: `apps/policy-manager/tests/fixtures/catalog/`
+- Create: `apps/policy-manager/src-tauri/tests/recovery_descriptor.rs`
 - Modify: `apps/policy-manager/package.json`
+- Modify: `apps/policy-manager/src-tauri/src/commands.rs`
+- Modify: `apps/policy-manager/src/views/ActivityPage.tsx`
+- Modify: `apps/policy-manager/src/App.test.tsx`
 - Modify: `apps/policy-manager/src-tauri/tauri.conf.json`
 - Modify: `apps/policy-manager/README.md`
 - Modify: `apps/policy-manager/README.zh.md`
@@ -203,14 +207,14 @@ English | [中文](2026-10-22-dsh-policy-manager.zh.md)
 **Interfaces:**
 - Consumes: the packaged manager and release catalog from Tasks 1–6.
 - Produces: a Windows x64 manager installer and a catalog publication workflow that signs catalog bytes with a protected release secret; the private signing key is never stored in the repository or shipped in the app.
-- The packaged smoke test uses a disposable fake DSH installation and fake Harness home; it never replaces the user's installed DSH or reads real credentials.
+- The packaged smoke test launches the built manager with disposable `DSH_HOME` and `LOCALAPPDATA` values, then runs integration scenarios against mock installers; it never replaces the user's installed DSH or reads real credentials.
 
-- [ ] **Step 1: Write failing packaging and smoke checks** for unsigned catalog rejection, mock version transition, backup restore, manager restart during install and absence of secret values in logs.
-- [ ] **Step 2: Run the new packaging/smoke checks** and confirm they fail before workflow and fixture setup.
-- [ ] **Step 3: Add least-privilege Tauri capabilities and Windows CI** for frontend tests, Cargo tests, manager packaging, catalog signature verification and artifact hashes.
-- [ ] **Step 4: Implement the disposable Windows smoke test** covering official launch, exact Policy switch, external Desktop update detection, rollback and recovery after a forced interruption.
-- [ ] **Step 5: Run `corepack pnpm --filter @deepseek-ai/dsh-policy-manager test`, `cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml`, the Windows smoke test and `corepack pnpm run doc-sync`**; expect all manager checks to pass and document unrelated repository-gate failures without changing unrelated files.
-- [ ] **Step 6: Commit** as `test: qualify DSH policy manager Windows release`.
+- [x] **Step 1: Write failing packaging and recovery checks** for unsigned catalog rejection, signing-key mismatch, empty/unsupported catalogs, packaged launch isolation, interrupted transaction persistence and the Activity recovery action.
+- [x] **Step 2: Run the new checks first**; the recovery button test failed before the Activity action existed, and signer/release checks failed before the release tooling was added.
+- [x] **Step 3: Add least-privilege Tauri capabilities and Windows CI** for frontend tests, Cargo tests, manager packaging, protected catalog signing and artifact hashes; release publishing waits for verification and rejects an empty catalog.
+- [x] **Step 4: Add isolated packaged startup smoke and mock transition scenarios** for backups, mode switching, external-install detection, rollback and manager restart. A live installed-DSH upgrade was unavailable because this machine has no registered official DSH Desktop installation.
+- [x] **Step 5: Run manager tests and production builds** — UI 5/5, release qualification 8/8, Rust/Tauri 77/77, `cargo check`, production Vite build, NSIS packaging and isolated Windows startup smoke all passed. `corepack pnpm --filter ... test` is blocked by the pre-existing root `node_modules` junction and pnpm's unsafe task-state-path check; `doc-sync` reports unrelated baseline failures (29 passed, 13 failed), with no unrelated files changed.
+- [x] **Step 6: Commit** as `test: qualify DSH policy manager Windows release`.
 
 ## Source verification recorded while planning
 

@@ -6,7 +6,7 @@ use dsh_policy_manager_lib::installer::{
 };
 use dsh_policy_manager_lib::manager_state::ManagerMode;
 use dsh_policy_manager_lib::recovery::{
-    InstalledDshVerifier, RecoveryError, RecoveryManager, RecoverySnapshot,
+    InstalledDshVerifier, RecoveryError, RecoveryManager, RecoverySnapshot, preserved_home_path,
 };
 use dsh_policy_manager_lib::transaction::{TransitionJournal, TransitionStage};
 use sha2::{Digest, Sha256};
@@ -187,6 +187,82 @@ fn rollback_redownloads_a_missing_cached_installer_then_restores_the_backup() {
     );
     assert_eq!(state.mode, ManagerMode::Official);
     assert_eq!(std::fs::read_dir(temp.path()).unwrap().count() > 0, true);
+}
+
+#[test]
+fn retrying_recovery_preserves_home_when_the_previous_attempt_left_a_recovery_copy() {
+    let temp = tempdir().unwrap();
+    let previous = release("0.2.1-rc.2", b"previous installer");
+    let home = temp.path().join(".dsh");
+    create_dir_all(&home).unwrap();
+    write(home.join("settings.json"), b"backup state").unwrap();
+    let backups = BackupStore::with_protector(temp.path().join("backups"), Arc::new(Protector));
+    let backup = backups.create(&home).unwrap();
+
+    let operation = Uuid::new_v4();
+    let preserved = preserved_home_path(&home, operation);
+    create_dir_all(&preserved).unwrap();
+    write(preserved.join("settings.json"), b"previous attempt's copy").unwrap();
+    write(home.join("settings.json"), b"current state after crash").unwrap();
+
+    let downloader = Arc::new(Downloader {
+        bytes: b"previous installer".to_vec(),
+        calls: Mutex::new(0),
+    });
+    let installer = InstallerManager::new(
+        temp.path().join("cache"),
+        downloader,
+        Arc::new(Executor {
+            outcomes: Mutex::new(vec![Ok(())]),
+        }),
+        Arc::new(Probe),
+    );
+    let journal = TransitionJournal::new(temp.path().join("journal"));
+    journal
+        .advance(operation, TransitionStage::Prepared)
+        .unwrap();
+    journal
+        .advance(operation, TransitionStage::BackedUp)
+        .unwrap();
+    journal
+        .advance(operation, TransitionStage::Installing)
+        .unwrap();
+    journal
+        .advance(operation, TransitionStage::Recovering)
+        .unwrap();
+    journal
+        .advance(operation, TransitionStage::RecoveryRequired)
+        .unwrap();
+    let installation_location = temp.path().join("DeepSeek Harness");
+    create_dir_all(&installation_location).unwrap();
+    let manager = RecoveryManager::new(
+        installer,
+        backups,
+        journal,
+        verifier(&previous, &installation_location),
+    );
+
+    manager
+        .recover(&RecoverySnapshot {
+            operation_id: operation,
+            previous_release: previous.clone(),
+            backup,
+            home: home.clone(),
+            installation_location,
+            requested_mode: ManagerMode::Official,
+            catalog: catalog(previous),
+        })
+        .unwrap();
+
+    assert_eq!(read(home.join("settings.json")).unwrap(), b"backup state");
+    assert_eq!(
+        read(preserved.join("settings.json")).unwrap(),
+        b"previous attempt's copy"
+    );
+    assert_eq!(
+        manager.journal_stage(operation).unwrap(),
+        Some(TransitionStage::Committed)
+    );
 }
 
 #[test]

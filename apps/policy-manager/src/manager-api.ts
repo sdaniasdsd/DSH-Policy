@@ -10,6 +10,7 @@ export const tauriManagerApi: ManagerApi = {
   setMode: mode => invoke('set_mode', { mode }),
   installRelease: desktopVersion => invoke('install_release', { desktopVersion }),
   restoreBackup: id => invoke('restore_backup', { id }),
+  recoverTransition: operationId => invoke('recover_transition', { operationId }),
   launchDsh: () => invoke('launch_dsh'),
   chooseHome: path => invoke('choose_home', { path }),
 }

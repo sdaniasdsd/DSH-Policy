@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "test": "vitest run",
+    "test": "vitest run && node --test tests/release-qualification.test.mjs",
+    "catalog:sign": "node scripts/sign-catalog.mjs",
     "tauri": "tauri",
     "desktop": "tauri dev --features app",
     "package": "tauri build --features app"

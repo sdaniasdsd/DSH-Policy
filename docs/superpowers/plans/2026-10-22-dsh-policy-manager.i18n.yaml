@@ -12,8 +12,8 @@
   en: a50a536d7705d962
   zh: 7f2234d6ba3815c2
 /dsh-policy-manager-implementation-plan/review-focus/task-1-manager-scaffold-and-trusted-release-catalog:
-  en: a562b9a2b0ea3558
-  zh: 0395e838a0a39842
+  en: cda1a1630e3d25cb
+  zh: 49eeee8f761911f6
 /dsh-policy-manager-implementation-plan/review-focus/task-2-installed-desktop-detection-and-manager-state:
   en: df6cbbda610410bb
   zh: 233eb733d4416001
@@ -24,14 +24,14 @@
   en: 4c79b71d69dc0524
   zh: 9f5e35e33ab29140
 /dsh-policy-manager-implementation-plan/review-focus/task-5-official-and-policy-mode-through-the-bundled-dsh-cli:
-  en: 16de3b72938cf397
-  zh: e55f086e89afe249
+  en: 16209e5d113d1c63
+  zh: 5c25f4581a57da7c
 /dsh-policy-manager-implementation-plan/review-focus/task-6-manager-interface-and-safe-launch:
-  en: 1d249b89db98d516
-  zh: 3cb4695f81fa85f8
+  en: 773621282cab148f
+  zh: 87deca4842cd9718
 /dsh-policy-manager-implementation-plan/review-focus/task-7-release-packaging-trusted-catalog-publication-and-end-to-end-recovery-checks:
-  en: 2d778cda5ea85c81
-  zh: f2afd6e2786ce93f
+  en: b77bc4f585d4274e
+  zh: 412cc80a586918ca
 /dsh-policy-manager-implementation-plan/source-verification-recorded-while-planning:
   en: 42d5a548af4530d3
   zh: 42aa1208138d9020

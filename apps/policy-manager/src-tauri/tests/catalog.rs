@@ -57,6 +57,18 @@ fn rejects_an_invalid_signature() {
 }
 
 #[test]
+fn rejects_the_checked_in_unsigned_catalog_fixture() {
+    let bytes = include_bytes!("../../tests/fixtures/catalog/unsigned-catalog.json");
+    let signature = include_bytes!("../../tests/fixtures/catalog/unsigned-catalog.json.sig");
+    let public_key = SigningKey::from_bytes(&[9; 32]).verifying_key().to_bytes();
+
+    assert!(matches!(
+        ReleaseCatalog::verify(bytes, signature, &public_key),
+        Err(CatalogError::InvalidSignature)
+    ));
+}
+
+#[test]
 fn rejects_malformed_catalog_json() {
     let key = SigningKey::from_bytes(&[7; 32]);
     let bytes = b"{not json";

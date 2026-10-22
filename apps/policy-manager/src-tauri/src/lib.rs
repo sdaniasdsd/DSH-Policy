@@ -31,6 +31,7 @@ pub fn run() {
             commands::list_releases,
             commands::list_backups,
             commands::get_activity,
+            commands::recover_transition,
             commands::refresh_catalog,
             commands::choose_home,
             commands::set_mode,

@@ -3,7 +3,7 @@ use reqwest::redirect::Policy;
 use thiserror::Error;
 
 pub const RELEASE_CATALOG_BASE_URL: &str =
-    "https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/";
+    "https://github.com/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/";
 
 #[derive(Debug, Error)]
 pub enum CatalogUpdateError {
@@ -181,11 +181,17 @@ fn is_approved_catalog_url(value: &str) -> bool {
     let Ok(url) = url::Url::parse(value) else {
         return false;
     };
+    let catalog_path = "/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/";
+    let path = url.path();
     url.scheme() == "https"
         && url.host_str() == Some("github.com")
         && url.username().is_empty()
         && url.password().is_none()
         && url.port().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && (path == format!("{catalog_path}manager-catalog.json")
+            || path == format!("{catalog_path}manager-catalog.json.sig"))
 }
 
 fn is_approved_github_host(host: Option<&str>) -> bool {
@@ -199,9 +205,25 @@ fn is_approved_github_host(host: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CatalogUpdateError, ensure_revision_not_rolled_back, verify_catalog_candidate};
+    use super::{
+        CatalogUpdateError, ensure_revision_not_rolled_back, is_approved_catalog_url,
+        verify_catalog_candidate,
+    };
     use crate::catalog::CatalogError;
     use ed25519_dalek::SigningKey;
+
+    #[test]
+    fn approves_only_the_dedicated_manager_catalog_release_path() {
+        assert!(is_approved_catalog_url(
+            "https://github.com/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/manager-catalog.json"
+        ));
+        assert!(!is_approved_catalog_url(
+            "https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/manager-catalog.json"
+        ));
+        assert!(!is_approved_catalog_url(
+            "https://github.com/attacker/project/releases/download/dsh-policy-manager-catalog/manager-catalog.json"
+        ));
+    }
 
     #[test]
     fn rejects_a_replacement_catalog_with_an_invalid_signature() {

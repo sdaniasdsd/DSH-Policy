@@ -49,6 +49,7 @@ export interface ActivityItem {
   stage: string
   updatedAt: number
   details?: string
+  recoverable?: boolean
 }
 
 export interface ManagerApi {
@@ -60,6 +61,7 @@ export interface ManagerApi {
   setMode(mode: ManagerMode): Promise<{ mode: ManagerMode; changed: boolean }>
   installRelease(desktopVersion: string): Promise<{ installed: boolean }>
   restoreBackup(id: string): Promise<{ restored: boolean }>
+  recoverTransition(operationId: string): Promise<{ recovered: boolean }>
   launchDsh(): Promise<{ launched: boolean }>
   chooseHome(path: string): Promise<ManagerSnapshot>
 }

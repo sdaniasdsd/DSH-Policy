@@ -4,12 +4,162 @@ use crate::installed_dsh::InstalledDsh;
 use crate::installer::{InstallError, InstallerManager};
 use crate::manager_state::{ManagerMode, ManagerState, ProfileSnapshot};
 use crate::transaction::{JournalError, TransitionJournal, TransitionStage};
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use uuid::Uuid;
+
+const MAX_RECOVERY_DESCRIPTOR_BYTES: u64 = 1024 * 1024;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryDescriptor {
+    pub schema_version: u32,
+    pub operation_id: Uuid,
+    pub previous_release: DesktopRelease,
+    pub backup_id: Uuid,
+    pub home: PathBuf,
+    pub installation_location: PathBuf,
+    pub requested_mode: ManagerMode,
+    pub catalog_revision: u64,
+}
+
+#[derive(Debug, Error)]
+pub enum RecoveryDescriptorError {
+    #[error("recovery descriptor I/O failed: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("recovery descriptor is invalid or corrupted")]
+    Corrupt,
+}
+
+pub struct RecoveryDescriptorStore {
+    root: PathBuf,
+}
+
+impl RecoveryDescriptorStore {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    pub fn save(&self, descriptor: &RecoveryDescriptor) -> Result<(), RecoveryDescriptorError> {
+        if descriptor.schema_version != 1
+            || descriptor.operation_id.is_nil()
+            || descriptor.backup_id.is_nil()
+            || descriptor.catalog_revision == 0
+        {
+            return Err(RecoveryDescriptorError::Corrupt);
+        }
+        self.ensure_root()?;
+        let target = self.path(descriptor.operation_id);
+        match fs::symlink_metadata(&target) {
+            Ok(_) => return Err(RecoveryDescriptorError::Corrupt),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let bytes = serde_json::to_vec(descriptor).map_err(|_| RecoveryDescriptorError::Corrupt)?;
+        if bytes.len() as u64 > MAX_RECOVERY_DESCRIPTOR_BYTES {
+            return Err(RecoveryDescriptorError::Corrupt);
+        }
+        let temp = self.root.join(format!(
+            ".{}.{}.tmp",
+            descriptor.operation_id,
+            Uuid::new_v4()
+        ));
+        write_descriptor_synced(&temp, &bytes)?;
+        if let Err(error) = fs::rename(&temp, &target) {
+            let _ = fs::remove_file(&temp);
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    pub fn load(
+        &self,
+        operation_id: Uuid,
+    ) -> Result<Option<RecoveryDescriptor>, RecoveryDescriptorError> {
+        match fs::symlink_metadata(&self.root) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            _ => return Err(RecoveryDescriptorError::Corrupt),
+        }
+        let path = self.path(operation_id);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            _ => return Err(RecoveryDescriptorError::Corrupt),
+        };
+        if metadata.len() > MAX_RECOVERY_DESCRIPTOR_BYTES {
+            return Err(RecoveryDescriptorError::Corrupt);
+        }
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        File::open(path)?
+            .take(MAX_RECOVERY_DESCRIPTOR_BYTES + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_RECOVERY_DESCRIPTOR_BYTES {
+            return Err(RecoveryDescriptorError::Corrupt);
+        }
+        let descriptor: RecoveryDescriptor =
+            serde_json::from_slice(&bytes).map_err(|_| RecoveryDescriptorError::Corrupt)?;
+        if descriptor.schema_version != 1
+            || descriptor.operation_id != operation_id
+            || descriptor.backup_id.is_nil()
+            || descriptor.catalog_revision == 0
+        {
+            return Err(RecoveryDescriptorError::Corrupt);
+        }
+        Ok(Some(descriptor))
+    }
+
+    pub fn remove(&self, operation_id: Uuid) -> Result<(), RecoveryDescriptorError> {
+        match fs::symlink_metadata(&self.root) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            _ => return Err(RecoveryDescriptorError::Corrupt),
+        }
+        let path = self.path(operation_id);
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                fs::remove_file(path)?;
+                Ok(())
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            _ => Err(RecoveryDescriptorError::Corrupt),
+        }
+    }
+
+    fn path(&self, operation_id: Uuid) -> PathBuf {
+        self.root.join(format!("{operation_id}.json"))
+    }
+
+    fn ensure_root(&self) -> Result<(), RecoveryDescriptorError> {
+        match fs::symlink_metadata(&self.root) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => Ok(()),
+            Ok(_) => Err(RecoveryDescriptorError::Corrupt),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir_all(&self.root)?;
+                let metadata = fs::symlink_metadata(&self.root)?;
+                if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                    Ok(())
+                } else {
+                    Err(RecoveryDescriptorError::Corrupt)
+                }
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+}
+
+fn write_descriptor_synced(path: &Path, bytes: &[u8]) -> Result<(), RecoveryDescriptorError> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct RecoverySnapshot {
@@ -210,9 +360,40 @@ fn preserve_existing_home(
 ) -> Result<Option<PathBuf>, RecoveryError> {
     match fs::symlink_metadata(home) {
         Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
-            let preserved = preserved_home_path(home, operation_id);
-            fs::rename(home, &preserved)?;
-            Ok(Some(preserved))
+            for attempt in 0..32 {
+                let preserved = if attempt == 0 {
+                    preserved_home_path(home, operation_id)
+                } else {
+                    let base = preserved_home_path(home, operation_id);
+                    let name = base
+                        .file_name()
+                        .map(|name| name.to_string_lossy())
+                        .unwrap_or_else(|| "dsh-home-recovery".into());
+                    base.with_file_name(format!("{name}-{}", Uuid::new_v4()))
+                };
+                match fs::symlink_metadata(&preserved) {
+                    Ok(_) => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(RecoveryError::Io(error)),
+                }
+                match fs::rename(home, &preserved) {
+                    Ok(()) => return Ok(Some(preserved)),
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            std::io::ErrorKind::AlreadyExists
+                                | std::io::ErrorKind::DirectoryNotEmpty
+                        ) =>
+                    {
+                        continue;
+                    }
+                    Err(error) => return Err(RecoveryError::Io(error)),
+                }
+            }
+            Err(RecoveryError::Io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "could not allocate a unique recovery copy path",
+            )))
         }
         Ok(_) => Err(RecoveryError::UnsafeHome),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),

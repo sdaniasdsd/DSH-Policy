@@ -101,7 +101,11 @@ export function App({ api = tauriManagerApi }: { api?: ManagerApi }) {
   ) : view === 'policy' ? (
     <PolicyPage state={managerState} onSetMode={changeMode} busy={busy} />
   ) : (
-    <ActivityPage activity={activity} backups={backups} onRestore={(id) => {
+    <ActivityPage activity={activity} backups={backups} onRecover={(id) => {
+      if (window.confirm('Restore the previous verified DSH version and pre-upgrade data? The current home will be kept as a recovery copy.')) {
+        void run('Restoring the previous verified DSH version and shared data…', () => api.recoverTransition(id), () => 'The previous verified DSH version was restored.')
+      }
+    }} onRestore={(id) => {
       if (window.confirm('Restore this backup? Current home data will be saved to a new backup first.')) {
         void run('Backing up current data and restoring the selected snapshot…', () => api.restoreBackup(id), () => 'Backup restored.')
       }

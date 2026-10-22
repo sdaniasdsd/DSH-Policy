@@ -63,7 +63,7 @@
 **接口：**
 - 产出：Rust `ReleaseCatalog::verify(bytes: &[u8], signature: &[u8], public_key: &[u8; 32]) -> Result<ReleaseCatalog, CatalogError>` 和 `ReleaseCatalog::policy_for(runtime_version: &str, runtime_commit: &str) -> Option<&PolicyRelease>`。
 - 产出：公开的 `DesktopRelease` 和 `PolicyRelease` 结构体，其字段与下方列出的签名目录记录字段一致。
-- 产出：异步 `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`；它只从 `https://github.com/sdaniasdsd/DSH-Policy/releases/latest/download/` 获取 `manager-catalog.json` 及其独立签名，验证签名并拒绝低于当前已加载目录的版本号。
+- 产出：异步 `CatalogClient::refresh(current: Option<&ReleaseCatalog>) -> Result<ReleaseCatalog, CatalogUpdateError>`；它只从 `https://github.com/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/` 获取 `manager-catalog.json` 及其独立签名，验证签名并拒绝低于当前已加载目录的版本号。
 - 发行版记录包含操作系统、架构、Desktop 版本、DSH 版本、DSH 提交、第一方安装包 URL、SHA-256、安装器参数配置和精确的 Policy 包映射。仓库中的开发清单可以为空且不带签名；发布目录必须使用管理器内嵌公钥验证独立的 Ed25519 签名。
 - 初始目录只包含第一方来源、不可变字节、哈希、运行时身份和安装器行为均已验证的包；其他核心标签仅显示为不可用的元数据或直接省略。
 
@@ -157,7 +157,7 @@
 - [x] **步骤 3：实现类型化进程运行器**，通过参数数组调用随 Desktop 安装的 Electron CLI，不使用 shell 拼接或未经验证的包版本。
 - [x] **步骤 4：将模式变更实现为带日志事务**，先备份，再读取实际插件状态，只执行必要的 CLI 变更，最后重新读取 profile 状态再报告成功。
 - [x] **步骤 5：11 项模式测试通过；本机未注册 DSH Desktop，因此无法执行已安装实例冒烟测试。**
-- [x] **步骤 6：提交**为 `feat: switch official and policy DSH modes`（`c31596b4`）。
+- [x] **步骤 6：提交**为 `feat: switch official and policy DSH modes`。
 
 ### 任务 6：管理器界面与安全启动
 
@@ -177,7 +177,7 @@
 
 **接口：**
 - 使用：任务 1–5 的类型化管理器状态和操作。
-- 产出：Tauri 命令 `get_manager_state`、`list_releases`、`set_mode`、`install_release`、`list_backups`、`restore_backup`、`launch_dsh` 和 `get_activity`。
+- 产出：Tauri 命令 `get_manager_state`、`list_releases`、`set_mode`、`install_release`、`list_backups`、`restore_backup`、`launch_dsh`、`get_activity` 和可跨重启调用的 `recover_transition`。
 - 产出：`refresh_catalog` 命令，分别报告已验证版本目录更新和 DSH 安装包更新。
 - 界面提供首页、版本、策略和操作记录；兼容性未知时禁用策略模式，同时保持官方启动操作可用。
 
@@ -195,7 +195,11 @@
 - 新建：`.github/workflows/policy-manager-windows.yml`
 - 新建：`apps/policy-manager/tests/windows-manager-smoke.ps1`
 - 新建：`apps/policy-manager/tests/fixtures/catalog/`
+- 新建：`apps/policy-manager/src-tauri/tests/recovery_descriptor.rs`
 - 修改：`apps/policy-manager/package.json`
+- 修改：`apps/policy-manager/src-tauri/src/commands.rs`
+- 修改：`apps/policy-manager/src/views/ActivityPage.tsx`
+- 修改：`apps/policy-manager/src/App.test.tsx`
 - 修改：`apps/policy-manager/src-tauri/tauri.conf.json`
 - 修改：`apps/policy-manager/README.md`
 - 修改：`apps/policy-manager/README.zh.md`
@@ -203,14 +207,14 @@
 **接口：**
 - 使用：任务 1–6 的打包管理器和版本目录。
 - 产出：Windows x64 管理器安装包及目录发布工作流；工作流通过受保护的发行密钥为目录字节签名，私钥绝不存储在仓库或随应用发布。
-- 打包冒烟测试使用一次性模拟 DSH 安装和模拟 Harness 主目录；绝不替换用户已安装 DSH，也不读取真实凭据。
+- 打包冒烟测试使用一次性的 `DSH_HOME` 和 `LOCALAPPDATA` 启动管理器，再通过模拟安装器运行事务场景；绝不替换用户已安装 DSH，也不读取真实凭据。
 
-- [ ] **步骤 1：编写失败的打包和冒烟检查**，覆盖无效目录签名拒绝、模拟版本切换、备份恢复、安装中管理器重启，以及日志中不包含密钥值。
-- [ ] **步骤 2：运行新增的打包/冒烟检查**，确认在工作流和测试夹具准备前失败。
-- [ ] **步骤 3：添加最小权限 Tauri 能力和 Windows CI**，运行前端测试、Cargo 测试、管理器打包、目录签名验证及发行包哈希检查。
-- [ ] **步骤 4：实现一次性 Windows 冒烟测试**，覆盖官方启动、精确 Policy 切换、检测外部 Desktop 更新、回退及强制中断后的恢复。
-- [ ] **步骤 5：运行 `corepack pnpm --filter @deepseek-ai/dsh-policy-manager test`、`cargo test --manifest-path apps/policy-manager/src-tauri/Cargo.toml`、Windows 冒烟测试和 `corepack pnpm run doc-sync`**；预期管理器检查全部通过，对无关仓库门禁失败只做记录，不修改无关文件。
-- [ ] **步骤 6：提交**为 `test: qualify DSH policy manager Windows release`。
+- [x] **步骤 1：编写失败的打包与恢复检查**，覆盖无签名目录拒绝、签名密钥不匹配、空目录与不支持的发行记录、隔离启动、中断事务持久化和活动页恢复按钮。
+- [x] **步骤 2：先运行新增检查**；活动页恢复按钮在接入前按预期失败；签名与发行检查在加入工具前也按预期失败。
+- [x] **步骤 3：添加最小权限 Tauri 能力和 Windows CI**，运行前端与 Cargo 测试、打包管理器、受保护目录签名和文件哈希；发行发布需先通过验证，并拒绝空目录。
+- [x] **步骤 4：实现隔离的管理器打包启动冒烟及模拟事务场景**，覆盖备份、模式切换、外部安装检测、回退和管理器重启。本机没有已注册的官方 DSH Desktop，因此无法执行真实安装实例升级。
+- [x] **步骤 5：运行管理器测试与生产构建**：UI 5/5、发行资格 8/8、Rust/Tauri 77/77、`cargo check`、Vite 生产构建、NSIS 打包和隔离 Windows 启动冒烟全部通过。`corepack pnpm --filter ... test` 被既有根目录 `node_modules` junction 与 pnpm unsafe task-state-path 检查阻止；`doc-sync` 有无关基线失败（29 通过、13 失败），未修改无关文件。
+- [x] **步骤 6：提交**为 `test: qualify DSH policy manager Windows release`。
 
 ## 计划时记录的来源核实
 

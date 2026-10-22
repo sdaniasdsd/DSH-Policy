@@ -29,6 +29,7 @@ function api(overrides: Partial<ManagerApi> = {}): ManagerApi {
     setMode: vi.fn().mockResolvedValue({ mode: 'policy', changed: true }),
     installRelease: vi.fn().mockResolvedValue({ installed: true }),
     restoreBackup: vi.fn().mockResolvedValue({ restored: true }),
+    recoverTransition: vi.fn().mockResolvedValue({ recovered: true }),
     launchDsh: vi.fn().mockResolvedValue({ launched: true }),
     chooseHome: vi.fn().mockResolvedValue(state),
     ...overrides,
@@ -82,5 +83,21 @@ describe('DSH Policy Manager', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
     expect(await screen.findByText('Mode change')).toBeTruthy()
     expect(screen.getAllByText('Committed')).toHaveLength(2)
+  })
+
+  it('offers a recovery action for an interrupted version transition', async () => {
+    const recoverTransition = vi.fn().mockResolvedValue({ recovered: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const client = api({
+      getActivity: vi.fn().mockResolvedValue([{ id: 'op-2', action: 'DSH manager transition', stage: 'RecoveryRequired', updatedAt: 100, recoverable: true }]),
+      recoverTransition,
+    })
+    render(<App api={client} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recover previous DSH version' }))
+
+    await waitFor(() => expect(recoverTransition).toHaveBeenCalledWith('op-2'))
+    expect(await screen.findByText('The previous verified DSH version was restored.')).toBeTruthy()
   })
 })
