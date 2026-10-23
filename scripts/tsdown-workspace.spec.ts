@@ -1,13 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { parseConfigFileTextToJson } from 'typescript'
-import config from '../tsdown.config.ts'
+
+interface WorkspaceBuildConfig {
+  readonly workspace: readonly string[]
+}
+
+type WorkspaceBuildConfigFactory = (
+  inlineConfig: { readonly env: Record<string, string> },
+  context: { readonly ci: boolean },
+) => WorkspaceBuildConfig | readonly WorkspaceBuildConfig[] | Promise<WorkspaceBuildConfig | readonly WorkspaceBuildConfig[]>
 
 describe('root tsdown workspace', () => {
   it('builds the standalone Policy Bundle in both faces', async () => {
-    if (typeof config !== 'function') throw new Error('expected an environment-selected tsdown config')
-    const host = await config({ env: { DSH_BUILD_FACE: 'host' } })
-    const client = await config({ env: { DSH_BUILD_FACE: 'client' } })
+    const configPath = fileURLToPath(new URL('../tsdown.config.ts', import.meta.url))
+    const module = await import(configPath) as { default: WorkspaceBuildConfigFactory }
+    const hostConfigs = await module.default({ env: { DSH_BUILD_FACE: 'host' } }, { ci: false })
+    const clientConfigs = await module.default({ env: { DSH_BUILD_FACE: 'client' } }, { ci: false })
+    const host = Array.isArray(hostConfigs) ? hostConfigs[0] : hostConfigs
+    const client = Array.isArray(clientConfigs) ? clientConfigs[0] : clientConfigs
+    if (host === undefined || client === undefined) throw new Error('expected a workspace build config for both faces')
     expect(host.workspace).toContain('packages/policy-extension')
     expect(client.workspace).toContain('packages/policy-extension')
   })
