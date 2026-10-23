@@ -1,6 +1,10 @@
 /** Host-backed task orchestration progress and versioned controls. */
 import { useEffect, useRef, useState } from 'react'
 import type { EntryView } from '../entry-types.ts'
+import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { TaskMemberView } from '../runtime-types.ts'
+import { expandAssistantStream } from '@deepseek-ai/dsh-llm/assistant-stream'
+import type { AssistantStreamRecord, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { StrategyCatalog } from './task-strategy-card-controller.ts'
 import type { TaskEntryNodeKind } from './task-entry-node.ts'
@@ -14,6 +18,7 @@ export interface TaskEntryFace {
   cancel: (view: EntryView) => Promise<void>
   switchStrategy: (view: EntryView, strategy: string, epoch: number) => Promise<void>
   resume: (view: EntryView) => Promise<void>
+  followMember?: (view: EntryView, member: TaskMemberView, signal: AbortSignal) => AsyncIterable<SessionFollowFrame>
   acceptProposal?: (view: EntryView) => Promise<void>
   onReset: (listener: () => void) => () => void
   onConnectionLoss?: (listener: () => void) => () => void
@@ -31,6 +36,7 @@ export function TaskEntryPanel(props: {
   switchStrategy: (id: string, epoch: number) => Promise<void>
   resume: () => Promise<void>
   acceptProposal?: () => Promise<void>
+  memberOutputs?: readonly { readonly sessionId: string; readonly label: string; readonly text: string }[]
 }) {
   const { view, connected } = props
   const acceptProposal = props.acceptProposal
@@ -59,7 +65,18 @@ export function TaskEntryPanel(props: {
     </div> : null}
     {view.progress ? <p>{view.progress}</p> : null}
     {view.proposal ? <p><code>{view.proposal.id}</code> · {view.proposal.task}</p> : null}
-    {view.run ? <p>{copy.completedCounts}: {view.run.completedStages} / {view.run.completedTasks}</p> : null}
+    {view.run ? <>
+      <p>{copy.completedCounts}: {view.run.completedStages} / {view.run.completedTasks}</p>
+      {view.run.activeMembers !== undefined && view.run.activeMembers.length > 0
+        ? <p>{copy.activeMembers}: {view.run.activeMembers.map(member => member.label).join(zh ? '、' : ', ')}</p>
+        : null}
+    </> : null}
+    {props.memberOutputs && props.memberOutputs.length > 0 ? <div aria-label={copy.liveOutput}>
+      <p>{copy.liveOutput}</p>
+      {props.memberOutputs.map(output => <div className={css.output} key={output.sessionId}>
+        <strong>{output.label}</strong><pre>{output.text}</pre>
+      </div>)}
+    </div> : null}
     {run ? <div>
       {run.execution ? <details><summary>{copy.executionConfig}: <code>{run.execution.revision.slice(0, 12)}</code></summary>
         <p>{copy.inheritedModel}: <code>{run.execution.modelProvider ?? copy.unknown} / {run.execution.model ?? copy.unknown}</code></p>
@@ -121,7 +138,10 @@ export function TaskEntryCard(props: TaskEntryCardProps) {
   const [view, setView] = useState(original)
   const [connected, setConnected] = useState(false)
   const [strategies, setStrategies] = useState<StrategyCatalog['strategies']>([])
+  const [memberOutputs, setMemberOutputs] = useState<Record<string, { label: string; text: string }>>({})
   const generation = useRef(0)
+  const viewRef = useRef(view)
+  viewRef.current = view
   useEffect(() => {
     const refresh = () => {
       const current = ++generation.current
@@ -138,7 +158,64 @@ export function TaskEntryCard(props: TaskEntryCardProps) {
     const disposeLoss = props.onConnectionLoss?.(() => { generation.current++; setConnected(false) })
     return () => { generation.current++; dispose(); disposeLoss?.() }
   }, [original, props.readState, props.readCatalog, props.onReset, props.onConnectionLoss])
+  useEffect(() => {
+    if (!connected || !['routing', 'selecting', 'running', 'waiting'].includes(view.state)) return
+    let disposed = false
+    let reading = false
+    const refresh = () => {
+      if (reading) return
+      reading = true
+      void props.readState(original).then((next) => {
+        if (!disposed && next !== undefined) { setView(next); setConnected(true) }
+      }).catch(() => {
+        if (!disposed) setConnected(false)
+      }).finally(() => { reading = false })
+    }
+    const timer = globalThis.setInterval(refresh, 1000)
+    return () => { disposed = true; globalThis.clearInterval(timer) }
+  }, [connected, original, props.readState, view.state])
+  const members = view.run?.activeMembers ?? []
+  useEffect(() => {
+    if (!connected || props.followMember === undefined || members.length === 0) return
+    const controllers = members.map((member) => {
+      const controller = new AbortController()
+      const append = (text: string) => {
+        if (text.length === 0) return
+        setMemberOutputs((previous) => {
+          const next = { ...previous, [member.sessionId]: { label: member.label,
+            text: (previous[member.sessionId]?.text ?? '').concat(text).slice(-2000) } }
+          return Object.fromEntries(Object.entries(next).slice(-5))
+        })
+      }
+      const replace = (text: string) => {
+        setMemberOutputs(previous => ({ ...previous, [member.sessionId]: { label: member.label, text: text.slice(-2000) } }))
+      }
+      void (async () => {
+        try {
+          for await (const frame of props.followMember?.(viewRef.current, member, controller.signal) ?? []) {
+            if (controller.signal.aborted) break
+            if (frame.type === 'snapshot') {
+              const stream = frame.assistantStream?.activeAttempt?.stream
+              if (stream === undefined) continue
+              let text = ''
+              for (const item of expandAssistantStream(stream as unknown as readonly AssistantStreamRecord[])) {
+                if (item.chunk.type === 'text-delta') text += item.chunk.text
+              }
+              replace(text)
+            } else if (frame.type === 'assistant-stream' && frame.frame.type === 'chunk') {
+              const chunk = frame.frame.chunk as unknown as StreamChunk
+              if (chunk.type === 'text-delta') append(chunk.text)
+            }
+          }
+        } catch { /* The task snapshot remains available if one member stream closes. */ }
+      })()
+      return controller
+    })
+    return () => { for (const controller of controllers) controller.abort() }
+  }, [connected, props.followMember, original.sessionId, members.map(member => member.sessionId).join('\0')])
+  const renderedOutputs = Object.entries(memberOutputs).map(([sessionId, output]) => ({ sessionId, ...output }))
   return <TaskEntryPanel view={view} language={props.t('entryLanguage')} connected={connected} strategies={strategies}
+    memberOutputs={renderedOutputs}
     cancel={() => props.cancel(view)} switchStrategy={(id, epoch) => props.switchStrategy(view, id, epoch)}
     resume={() => props.resume(view)} {...acceptProposal === undefined ? {} : { acceptProposal: () => acceptProposal(view) }} />
 }

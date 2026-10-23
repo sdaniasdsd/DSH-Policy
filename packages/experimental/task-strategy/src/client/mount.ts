@@ -1,6 +1,8 @@
 /** Source-safe registration of the optional catalogue Remote and plugin page. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-experimental-task-strategy/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -53,6 +55,10 @@ function registerUi(ctx: Context): void {
       if (!result.ok) throw result.error
       return result.value.strategies
     },
+    followMember: (view, member, signal): AsyncIterable<SessionFollowFrame> => ctx.remote.session.follow({
+      address: { kind: 'subagent', parentSessionId: view.sessionId, childSessionId: member.sessionId, mode: 'unknown' },
+      assistantStream: true,
+    }, signal),
     cancel: async (view) => {
       const result = await ctx.remote.taskStrategies.cancelEntry({ sessionId: view.sessionId, requestId: view.requestId })
       if (!result.ok) throw result.error
