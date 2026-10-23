@@ -35,17 +35,15 @@ it('continues a truncated node in the same session before running dependent rese
   if (initialSessionId === undefined) throw new Error('initial model request has no session id')
   const stored = await loadStoredSession(ctx.sessionPersistence, initialSessionId)
   const inputs = stored.events.filter(event => event.type === 'user/message')
-  expect(inputs.at(-1)?.data.content.filter(block => block.type === 'text').map(block => block.text)).toMatchInlineSnapshot(`
-    [
-      "Agent task-owner sent a message: ",
-      "The previous response reached the model output limit. Continue the same task from the existing conversation and completed tool results. Do not restart the task or repeat completed actions or text. Continue from the cutoff and finish the remaining work. If a structured result is required, submit a complete concise value through structured_output.",
-    ]
-  `)
+  const recovery = inputs.at(-1)?.data.content.filter(block => block.type === 'text').map(block => block.text).join('')
+  expect(recovery).toContain('Continue the same task from the existing conversation')
+  expect(recovery).toContain('Current stage goal (criteria):\ncriteria')
+  expect(recovery).toContain('a truncated tool call is not proof it executed')
 }, waitMs)
 
 it('keeps repeated output-limit continuations inside one logical task', async () => {
   const { ctx, parent, model } = await bootTaskRuntime([
-    ...Array.from({ length: 4 }, () => ({ chunks: maxTokensResponse('') })),
+    ...Array.from({ length: 4 }, (_, index) => ({ chunks: maxTokensResponse(`finding ${index}; `) })),
     { chunks: textResponse('complete criteria') },
     { chunks: textResponse('sources') },
     { chunks: textResponse('report') },
@@ -127,4 +125,40 @@ it('keeps genuine model failures visible instead of treating them as output-limi
   expect((await ctx.jobs.wait(id, waitMs, parent.id)).status).toBe('failed')
   expect(model.requests).toHaveLength(1)
   expect(ctx.taskRuns.inspect(parent, id).results[0]!.stopReason).toBe('error')
+}, waitMs)
+
+it('stops repeated identical output, retains its session and partial result, and skips dependents', async () => {
+  const { ctx, parent, model } = await bootTaskRuntime(
+    Array.from({ length: 5 }, () => ({ chunks: maxTokensResponse('unchanged partial') })), undefined, true)
+  const id = await ctx.taskRuns.start(parent, 'Keep the original goal', plan, taskRules, signal)
+  expect((await ctx.jobs.wait(id, waitMs, parent.id)).status).toBe('failed')
+  const view = ctx.taskRuns.inspect(parent, id)
+  expect(model.requests).toHaveLength(3)
+  expect(view).toMatchObject({ completedStages: 0, startedTasks: 1, results: [{
+    stopReason: 'max-tokens', output: 'unchanged partial', sessionId: model.requests[0]!.sessionId,
+  }] })
+  expect(view.error).toContain('no observable progress')
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('Current stage goal')
+  expect(JSON.stringify(model.requests[1]!.messages)).toContain('Keep the original goal')
+}, waitMs)
+
+it.each([0, 1])('respects the configured %i continuation limit without advancing the stage', async (maxAttempts) => {
+  const { ctx, parent, model } = await bootTaskRuntime(
+    Array.from({ length: 4 }, (_, index) => ({ chunks: maxTokensResponse(`new finding ${index}; `) })), undefined, true)
+  const bounded = { name: 'bounded', stages: [{ name: 'work', tasks: [{ ...plan.stages[0]!.tasks[0]!, continuation: { maxAttempts } }] }, plan.stages[1]!] }
+  const id = await ctx.taskRuns.start(parent, 'goal', bounded, taskRules, signal)
+  expect((await ctx.jobs.wait(id, waitMs, parent.id)).status).toBe('failed')
+  expect(model.requests).toHaveLength(maxAttempts + 1)
+  const view = ctx.taskRuns.inspect(parent, id)
+  expect(view.error).toContain(`continuation limit ${maxAttempts} reached`)
+  expect(view).toMatchObject({ completedStages: 0, startedTasks: 1,
+    results: [{ sessionId: model.requests[0]!.sessionId, stopReason: 'max-tokens' }] })
+}, waitMs)
+
+it.each([-1, 17, 0.5])('rejects invalid continuation attempts %i before dispatch', async (maxAttempts) => {
+  const { ctx, parent, model } = await bootTaskRuntime([], undefined, true)
+  const bounded = { name: 'bounded', stages: [{ name: 'work', tasks: [{ ...plan.stages[0]!.tasks[0]!, continuation: { maxAttempts } }] }] }
+  await expect(ctx.taskRuns.start(parent, 'goal', bounded, taskRules, signal)).rejects.toThrow('Continuation maxAttempts')
+  expect(model.requests).toHaveLength(0)
+  expect(ctx.jobs.list(parent.id)).toHaveLength(0)
 }, waitMs)

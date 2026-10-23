@@ -3,13 +3,14 @@ import { startCancellableActivation } from './subagent-activation.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SubagentActivation, SubagentActivationSpec } from '@deepseek-ai/dsh-subagent'
+import type { SubagentActivation, SubagentActivationSpec, SubagentResult } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import type { ChildResult, TaskStep, ObservedUsage } from './types.ts'
 import { parseWorkflowProposal, workflowOutputSchema, parseReviewReport, reviewOutputSchema } from './workflow-report.ts'
 import { normalizeReadPath, verifyArtifacts } from './verification.ts'
 import type { ReadEvidence } from './verification.ts'
 import { selectorAgentOptions } from './selector-agent-options.ts'
+import { errorText } from './errors.ts'
 
 function readPath(value: unknown): string | undefined {
   if (value === null || typeof value !== 'object' || !('file_path' in value) || typeof value.file_path !== 'string') return undefined
@@ -55,11 +56,17 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
   continueRun?: (spec: SubagentActivationSpec & { readonly childId: SessionId }) => Promise<SubagentActivation>): Promise<ChildResult> {
   const deadline = new AbortController()
   const combined = AbortSignal.any([signal, deadline.signal])
-  const timer = step.timeoutMs === undefined ? undefined
-    : setTimeout(() => { deadline.abort(new Error('Strategy child deadline exceeded')) }, step.timeoutMs)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const armDeadline = (timeoutMs: number | undefined) => {
+    if (timeoutMs === undefined) return
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(() => { deadline.abort(new Error(`Strategy child deadline exceeded: ${step.label} (${timeoutMs} ms)`)) }, timeoutMs)
+  }
+  armDeadline(step.timeoutMs)
   const observations = new Map<SessionId, Map<string, ReadEvidence>>()
   const calls = new Map<SessionId, Map<string, string>>()
   const usages = new Map<SessionId, ObservedUsage>()
+  const successfulTools = new Map<SessionId, number>()
   const cwd = workspaceRoot ?? ctx.get('workingDirectory')?.get(parent.session) ?? parent.session.header.cwd
   const bytes = new Map<SessionId, number>()
   const overflow = new Set<SessionId>()
@@ -78,6 +85,10 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
   // Install before start: a fast child may log tools before start resolves its handle.
   const release = ctx.on('session/event', (session, event) => {
     if (session.header.parentSession !== parent.id) return
+    if (event.type === 'tool/result' && event.data.message.isError !== true
+      || event.type === 'tool/ptc-dispatch' && !event.data.isError) {
+      successfulTools.set(session.id, (successfulTools.get(session.id) ?? 0) + 1)
+    }
     if (event.type === 'assistant/message') {
       const prior = usages.get(session.id) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 }
       const usage = event.data.usage
@@ -129,35 +140,60 @@ export async function executeDshChild(ctx: Pick<Context, 'on' | 'get'> & { subag
     } }
     let run = await start(spec)
     let releaseMember: (() => void) | undefined
+    let output = ''
+    let attempts = 0
+    const snapshot = (result: SubagentResult): ChildResult => ({ sessionId: run.childId,
+      stopReason: combined.aborted ? 'aborted' : result.stopReason,
+      usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 }, output,
+      ...combined.aborted ? { diagnostic: errorText(combined.reason) }
+        : result.diagnostic === undefined ? result.stopReason === 'aborted'
+          ? { diagnostic: 'Subagent aborted without a reported cause; no automatic retry was performed.' } : {}
+          : { diagnostic: result.diagnostic },
+      ...step.workflowOutput !== true || result.stopReason !== 'completed' || combined.aborted ? {}
+        : { workflow: parseWorkflowProposal(result.structured) },
+      ...step.reviewOutput !== true || result.stopReason !== 'completed' || combined.aborted ? {} : {
+        review: parseReviewReport(result.structured,
+          overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd, step.reviewPaths ?? []) },
+      ...step.artifactChecks === undefined ? {} : {
+        verification: verifyArtifacts(step.artifactChecks,
+          overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
+    })
     try {
       releaseMember = onActive?.(run.childId)
       let result = await run.result
-      let output = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+      output = result.output.filter(block => block.type === 'text').map(block => block.text).join('\n')
+      let stalled = 0
+      const maxAttempts = step.continuation?.maxAttempts ?? 4
       while (result.stopReason === 'max-tokens' && continueRun !== undefined && !combined.aborted) {
+        if (attempts >= maxAttempts || stalled >= 2) {
+          result = { ...result, diagnostic: `Output recovery stopped: ${stalled >= 2 ? 'no observable progress in two continuations' : `continuation limit ${maxAttempts} reached`}. `
+            + `Stage ${step.label} remains incomplete; retained session ${run.childId} and partial results. Inspect existing artifacts before retrying.` }
+          break
+        }
         // Resume the accepted session after teardown; replaying the task could repeat completed effects.
         await run.dispose()
         combined.throwIfAborted()
+        armDeadline(step.continuation?.timeoutMs)
+        attempts++
+        const previousOutput = output
+        const previousTools = successfulTools.get(run.childId) ?? 0
         run = await continueRun({ ...spec, childId: run.childId, request: { ...spec.request, prompt: [{ type: 'text',
           text: 'The previous response reached the model output limit. Continue the same task from the existing conversation and completed tool results. '
-            + 'Do not restart the task or repeat completed actions or text. Continue from the cutoff and finish the remaining work. '
-            + 'If a structured result is required, submit a complete concise value through structured_output.',
+            + 'Do not restart the task or repeat completed actions or text. Read existing artifacts before modifying them; a truncated tool call is not proof it executed. '
+            + 'Work on the remaining goal in small tool calls or file patches, verify the result, and keep the handoff concise. '
+            + 'If a structured result is required, submit a complete concise value through structured_output. '
+            + `Recovery attempt ${attempts}/${maxAttempts}. Current stage goal (${step.label}):\n${step.instruction}`
+            + (stalled === 0 ? '' : '\nThe previous continuation added no observable output or successful tools. Reduce the next action to one concrete unfinished item.'),
         }] } })
         result = await run.result
         output = mergeContinuationText(output, result.output.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+        stalled = output === previousOutput && (successfulTools.get(run.childId) ?? 0) === previousTools ? stalled + 1 : 0
       }
-      return { sessionId: run.childId, stopReason: result.stopReason,
-        usage: usages.get(run.childId) ?? { modelCalls: 0, reportedCalls: 0, observedTokens: 0 },
-        output,
-        ...result.diagnostic === undefined ? {} : { diagnostic: result.diagnostic },
-        ...step.workflowOutput !== true || result.stopReason !== 'completed' ? {}
-          : { workflow: parseWorkflowProposal(result.structured) },
-        ...step.reviewOutput !== true || result.stopReason !== 'completed' ? {} : {
-          review: parseReviewReport(result.structured,
-            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd, step.reviewPaths ?? []) },
-        ...step.artifactChecks === undefined ? {} : {
-          verification: verifyArtifacts(step.artifactChecks,
-            overflow.has(run.childId) ? [] : [...observations.get(run.childId)?.values() ?? []], cwd) },
-      }
+      return snapshot(result)
+    } catch (error) {
+      if (combined.aborted) return snapshot({ stopReason: 'aborted', output: [] })
+      if (attempts === 0) throw error
+      return snapshot({ stopReason: 'error', output: [], diagnostic: errorText(error) })
     } finally { try { await run.dispose() } finally { releaseMember?.() } }
   } finally { if (timer !== undefined) clearTimeout(timer); release() }
 }

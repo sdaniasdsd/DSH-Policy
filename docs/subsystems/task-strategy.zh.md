@@ -28,6 +28,8 @@
 | `TaskRecordWaitResult` | 新记录或有界超时结果 |
 | `TaskCoordination` | 向执行器提供的通用记录与保留发送者身份的成员消息 |
 
+本地 `TaskStep.continuation` 设置通过额外激活次数及可选的单次续跑时限，限制输出截断后的同会话恢复。阶段保留目标、前序结果和子会话身份；恢复额度耗尽不会推进依赖阶段。参见[执行契约](../../packages/experimental/task-strategy/README.zh.md)和[迁移说明](../upgrade-guide/v1.0.2/task-strategy-output-recovery/guide.zh.md)。
+
 任务协调沿用原版 Job owner 和 Subagents 消息通道。`inspect(parent, jobId)` 返回独立复制的 `activeMembers`，成员格式为 `{ sessionId, label }`；`ctx.taskRuns` 与 `ctx.taskStrategies` 上的 `sendMessage(parent, jobId, { childId, text }, signal)` 在收件箱接收后只返回 `{ messageId }`。目标必须属于该任务且仍在执行。其他 owner、已停止任务、空闲或结束的子会话及原生执行器目标会被拒绝，不会唤醒会话或切换后端。消息文本必须非空，完整序列化请求的 UTF-8 字节数不能超过任务接收时捕获的 `maxPlanBytes`；调用方或任务取消会中止尚未接收的投递。收件箱接受后，取消不会撤回消息，发送方仍会收到收据。接收不代表已处理或已采纳决策，已接收消息不会自动重试。
 
 根模型工具 `task_strategy_inspect(jobId)`、`task_strategy_message(jobId, childId, text)` 和 `task_strategy_record_{read,list,write,wait}` 使用同一套归属检查，名称跟随 `toolPrefix`。记录由原始 Job 隔离；`write` 按 `expectedRevision` 比较并交换，`wait` 等待版本变化或超时。记录 key 和 JSON value 的语义由调用方定义。自动根入口开启时工具可用，载体卸载时移除；执行子任务保留原有工具。DSH 只提供通用基础能力与统一 LLM 工具入口，不新增插件专属适配，不决定策略命令格式或业务流程。

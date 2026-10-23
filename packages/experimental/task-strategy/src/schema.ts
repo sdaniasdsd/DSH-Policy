@@ -40,6 +40,10 @@ export const planSchema = z.object({
       }))]),
       maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER),
       timeoutMs: z.natural().min(1).max(2147483647),
+      continuation: z.union([z.const(undefined), z.object({
+        maxAttempts: z.natural().max(16).required(),
+        timeoutMs: z.natural().min(1).max(2147483647),
+      })]),
     })).required(),
   })).required(),
 }) as z<ExecutionPlan>

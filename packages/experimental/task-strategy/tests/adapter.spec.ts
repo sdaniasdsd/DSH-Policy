@@ -338,7 +338,7 @@ describe('Loader-composed strategy adapter', () => {
     expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
   })
   it('uses only a configured balanced fallback after a failed automatic choice', async () => {
-    const { ctx, parent } = await boot([maxTokensResponse('exhausted'), textResponse('done')], undefined, {
+    const { ctx, parent } = await boot([maxTokensResponse('exhausted'), maxTokensResponse('still exhausted'), textResponse('done')], undefined, {
       entry: { enabled: true },
       selection: { default: { kind: 'auto' }, fallbackStrategy: 'balanced', timeoutMs: 30000, maxPromptBytes: 32768, maxOutputBytes: 2048, maxTokens: 512 },
     })
@@ -350,6 +350,18 @@ describe('Loader-composed strategy adapter', () => {
     expect(receipt).toMatchObject({ strategy: 'balanced', name: 'Fallback medium', selection: { kind: 'fallback', tier: 'medium' } })
     expect(receipt.selection?.reason).toContain('max-tokens')
     expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
+  })
+  it('recovers a truncated selector before fallback and creates only one execution Job', async () => {
+    const { ctx, parent } = await boot([maxTokensResponse('cutoff'),
+      toolCallResponse('choose', 'structured_output', { strategy: 'review-first', tier: 'default', reason: 'Recovered choice' }),
+      textResponse('read'), textResponse('done')], undefined, {
+      selection: { default: { kind: 'auto', workflow: true }, fallbackStrategy: 'missing', timeoutMs: 30000,
+        maxPromptBytes: 32768, maxOutputBytes: 2048, maxTokens: 512 },
+    })
+    const receipt = await ctx.taskStrategies.submitTask(parent, { requestId: 'recovered-selector', task: 'read and check' }, new AbortController().signal)
+    expect(receipt).toMatchObject({ strategy: 'review-first', selection: { kind: 'auto' } })
+    expect((await ctx.jobs.wait(receipt.jobId, 5000, parent.id)).status).toBe('completed')
+    expect(ctx.jobs.list(parent.id)).toHaveLength(1)
   })
   it('accepts an explicit proposal once and clarifies ambiguous short continuations', async () => {
     const { ctx, parent } = await boot([textResponse('done')], undefined, { entry: { enabled: true } })

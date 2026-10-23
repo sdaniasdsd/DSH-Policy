@@ -18,6 +18,7 @@ export interface ExtremeHighConfig {
   readonly maxRepairs: number
   readonly maxTokens: number
   readonly timeoutMs: number
+  readonly continuation?: TaskStep['continuation']
   readonly tokenCost: { callsPerTask: number; contextTokensPerCall: number; outputTokensPerCall: number }
 }
 
@@ -33,6 +34,7 @@ export interface StyleConfig {
   readonly maxRepairs: number
   readonly maxTokens: number
   readonly timeoutMs: number
+  readonly continuation?: TaskStep['continuation']
   readonly readTools: string[]
   readonly tokenCost: { callsPerTask: number; contextTokensPerCall: number; outputTokensPerCall: number }
   readonly extremeHigh: ExtremeHighConfig
@@ -68,6 +70,8 @@ export function styleSchema(pattern: StylePattern): z<StyleConfigInput, StyleCon
     maxConcurrent: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(1),
     maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(4096),
     timeoutMs: z.natural().min(1).max(2147483647).default(300000),
+    continuation: z.object({ maxAttempts: z.natural().max(16).default(4),
+      timeoutMs: z.natural().min(1).max(2147483647).default(300000) }).default({}),
     readTools: z.array(z.string()).default(['read', 'glob', 'grep']),
     tokenCost: z.object({ callsPerTask: z.natural().min(1).default(4), contextTokensPerCall: z.natural().default(2048),
       outputTokensPerCall: z.natural().default(1024) }).default({}),
@@ -76,6 +80,8 @@ export function styleSchema(pattern: StylePattern): z<StyleConfigInput, StyleCon
       maxRepairs: z.natural().max(4).default(4),
       maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER).default(8192),
       timeoutMs: z.natural().min(1).max(2147483647).default(600000),
+      continuation: z.object({ maxAttempts: z.natural().max(16).default(4),
+        timeoutMs: z.natural().min(1).max(2147483647).default(600000) }).default({}),
       tokenCost: z.object({ callsPerTask: z.natural().min(1).default(8), contextTokensPerCall: z.natural().default(8192),
         outputTokensPerCall: z.natural().default(4096) }).default({}) }).default({}),
   }) as z<StyleConfigInput, StyleConfig>
@@ -96,6 +102,7 @@ function task(config: StyleConfig, label: string, instruction: string, readOnly 
     + '只处理原始任务涉及的文件，不调查执行宿主、测试驱动脚本或其他任务日志。输出保留可复核证据、结论和必要交接。',
   priorResults: { scope: 'current-binding' },
   maxTokens: config.maxTokens, timeoutMs: config.timeoutMs,
+  ...config.continuation === undefined ? {} : { continuation: config.continuation },
   ...readOnly ? { tools: { allow: [...config.readTools] } } : {} }
 }
 
@@ -180,7 +187,8 @@ function verify(config: StyleConfig, checks: readonly ArtifactCheck[], label = '
 function forTier(config: StyleConfig, tier: StyleTier): StyleConfig {
   if (tier === 'extreme-high') return { ...config, tier, maxNodes: config.extremeHigh.maxNodes, maxConcurrent: config.extremeHigh.maxConcurrent,
     maxRepairs: config.extremeHigh.maxRepairs,
-    maxTokens: config.extremeHigh.maxTokens, timeoutMs: config.extremeHigh.timeoutMs, tokenCost: config.extremeHigh.tokenCost }
+    maxTokens: config.extremeHigh.maxTokens, timeoutMs: config.extremeHigh.timeoutMs,
+    continuation: config.extremeHigh.continuation, tokenCost: config.extremeHigh.tokenCost }
   return { ...config, tier, maxNodes: Math.min(config.maxNodes, tier === 'low' ? 1 : tier === 'medium' ? 3 : config.maxNodes),
     maxRepairs: Math.min(config.maxRepairs, tier === 'low' ? 0 : tier === 'medium' ? 1 : config.maxRepairs) }
 }

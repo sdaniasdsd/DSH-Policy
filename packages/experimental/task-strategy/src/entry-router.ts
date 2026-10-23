@@ -1,4 +1,4 @@
-import { startCancellableActivation } from './subagent-activation.ts'
+import { runDecision } from './decision-recovery.ts'
 /** Side-effect-free bounded intent classification through the original subagent provider. */
 import z from 'zod'
 import type { Context } from '@deepseek-ai/cordis'
@@ -61,7 +61,7 @@ export async function routeEntry(
   const combined = AbortSignal.any([signal, deadline.signal])
   const timer = setTimeout(() => { deadline.abort(new Error('Task entry routing timed out')) }, options.timeoutMs)
   try {
-    const run = await startCancellableActivation(subagents, { provider, label: 'Route task entry', signal: combined, delivery: 'caller', request: {
+    const result = await runDecision(subagents, { provider, label: 'Route task entry', signal: combined, delivery: 'caller', request: {
       parent, toolFilter: { allow: [] },
       prompt: [{ type: 'text', text: prompt }],
       agentOptions: await selectorAgentOptions(parent, options, combined),
@@ -69,17 +69,14 @@ export async function routeEntry(
         kind: { type: 'string', enum: ['chat', 'new-task', 'supplement', 'status', 'cancel', 'switch', 'clarify'] },
         requestId: { type: 'string', ...active.length === 0 ? {} : { enum: active.map(view => view.requestId) } }, strategy: { type: 'string' }, expectedBindingEpoch: { type: 'integer' },
       }, required: ['kind'], additionalProperties: false },
-    } })
-    try {
-      const result = await run.result
-      combined.throwIfAborted()
-      if (result.stopReason !== 'completed') throw new Error(`Task entry routing did not complete: ${result.stopReason}`)
-      if (Buffer.byteLength(JSON.stringify(result.structured ?? null), 'utf8') > options.maxOutputBytes) throw new Error('Task entry routing output exceeds byte limit')
-      const route = schema.parse(wireSchema.parse(result.structured))
-      if ('requestId' in route && route.requestId !== undefined && !active.some(view => view.requestId === route.requestId)) {
-        throw new Error('Task entry routing referenced an unknown owned task')
-      }
-      return route
-    } finally { await run.dispose() }
+    } }, options.maxPromptBytes)
+    combined.throwIfAborted()
+    if (result.stopReason !== 'completed') throw new Error(`Task entry routing did not complete: ${result.stopReason}${result.diagnostic === undefined ? '' : ': ' + result.diagnostic}`)
+    if (Buffer.byteLength(JSON.stringify(result.structured ?? null), 'utf8') > options.maxOutputBytes) throw new Error('Task entry routing output exceeds byte limit')
+    const route = schema.parse(wireSchema.parse(result.structured))
+    if ('requestId' in route && route.requestId !== undefined && !active.some(view => view.requestId === route.requestId)) {
+      throw new Error('Task entry routing referenced an unknown owned task')
+    }
+    return route
   } finally { clearTimeout(timer) }
 }

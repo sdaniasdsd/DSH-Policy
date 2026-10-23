@@ -1,4 +1,4 @@
-import { startCancellableActivation } from './subagent-activation.ts'
+import { runDecision } from './decision-recovery.ts'
 /** One bounded strategy choice through the original DSH subagent lifecycle. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -69,34 +69,31 @@ async function choose(parent: Agent, candidates: readonly WorkflowCandidate[], i
   const timer = setTimeout(() => { deadline.abort(new Error('Strategy selection timed out')) }, options.timeoutMs)
   try {
     const ids = candidates.map(candidate => candidate.id)
-    const run = await startCancellableActivation(subagents, { provider: executionProvider, label: 'Choose task strategy', signal: combined, delivery: 'caller', request: {
+    const result = await runDecision(subagents, { provider: executionProvider, label: 'Choose task strategy', signal: combined, delivery: 'caller', request: {
       parent,
       prompt: [{ type: 'text', text: prompt }], toolFilter: { allow: [] },
       agentOptions: await selectorAgentOptions(parent, options, combined),
       outputSchema: { type: 'object', properties: { strategy: { type: 'string', enum: ids },
         ...workflow ? { tier: { type: 'string', enum: ['low', 'medium', 'high', 'extreme-high', 'default'] }, reason: { type: 'string' } } : {} },
       required: workflow ? ['strategy', 'tier', 'reason'] : ['strategy'], additionalProperties: false },
-    } })
+    } }, options.maxPromptBytes)
     let selected: WorkflowDecision
-    try {
-      const result = await run.result
-      combined.throwIfAborted()
-      if (result.stopReason !== 'completed') throw new Error(`Strategy selection did not complete: ${result.stopReason}`)
-      if (Buffer.byteLength(JSON.stringify(result.structured ?? null), 'utf8') > options.maxOutputBytes) {
-        throw new Error('Strategy selection output exceeds byte limit')
+    combined.throwIfAborted()
+    if (result.stopReason !== 'completed') throw new Error(`Strategy selection did not complete: ${result.stopReason}${result.diagnostic === undefined ? '' : ': ' + result.diagnostic}`)
+    if (Buffer.byteLength(JSON.stringify(result.structured ?? null), 'utf8') > options.maxOutputBytes) {
+      throw new Error('Strategy selection output exceeds byte limit')
+    }
+    if (workflow) {
+      const choice = z.object({ strategy: z.string(), tier: z.enum(['low', 'medium', 'high', 'extreme-high', 'default']),
+        reason: z.string().trim().min(1).max(240) }).strict().parse(result.structured)
+      const candidate = candidates.find(row => row.id === choice.strategy)
+      if (candidate === undefined || (candidate.tiers !== undefined && !candidate.tiers.some(row => row.tier === choice.tier))) {
+        throw new Error('Invalid workflow selection')
       }
-      if (workflow) {
-        const choice = z.object({ strategy: z.string(), tier: z.enum(['low', 'medium', 'high', 'extreme-high', 'default']),
-          reason: z.string().trim().min(1).max(240) }).strict().parse(result.structured)
-        const candidate = candidates.find(row => row.id === choice.strategy)
-        if (candidate === undefined || (candidate.tiers !== undefined && !candidate.tiers.some(row => row.tier === choice.tier))) {
-          throw new Error('Invalid workflow selection')
-        }
-        // A fixed workflow owns its plan; redundant tier output cannot modify it.
-        selected = { strategy: choice.strategy, reason: choice.reason,
-          ...candidate.tiers === undefined || choice.tier === 'default' ? {} : { tier: choice.tier } }
-      } else selected = { strategy: parseSelection(result.structured, ids), reason: '' }
-    } finally { await run.dispose() }
+      // A fixed workflow owns its plan; redundant tier output cannot modify it.
+      selected = { strategy: choice.strategy, reason: choice.reason,
+        ...candidate.tiers === undefined || choice.tier === 'default' ? {} : { tier: choice.tier } }
+    } else selected = { strategy: parseSelection(result.structured, ids), reason: '' }
     combined.throwIfAborted()
     return selected
   } finally { clearTimeout(timer) }
