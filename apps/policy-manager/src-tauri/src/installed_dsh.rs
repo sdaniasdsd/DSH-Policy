@@ -16,6 +16,11 @@ pub struct InstallRecord {
 
 pub trait InstallRegistry {
     fn installations(&self) -> Result<Vec<InstallRecord>, String>;
+
+    /// Conventional installation roots used when an installer registry record is absent.
+    fn fallback_roots(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -60,14 +65,12 @@ impl InstalledDsh {
     pub fn discover(
         registry: &dyn InstallRegistry,
     ) -> Result<Vec<DetectedInstallation>, DetectError> {
-        discover_records(registry.installations().map_err(DetectError::Registry)?)
+        discover_records(installation_records(registry)?)
     }
 
     /// Returns the only official installation, independently of separately installed Policy editions.
     pub fn detect(registry: &dyn InstallRegistry) -> Result<Option<Self>, DetectError> {
-        let records = registry
-            .installations()
-            .map_err(DetectError::Registry)?
+        let records = installation_records(registry)?
             .into_iter()
             .filter(|record| {
                 candidate_edition(&record.display_name) == Some(InstallationEdition::Official)
@@ -82,6 +85,58 @@ impl InstalledDsh {
         }
         Ok(Some(found.installed))
     }
+}
+
+fn installation_records(registry: &dyn InstallRegistry) -> Result<Vec<InstallRecord>, DetectError> {
+    let mut records = registry.installations().map_err(DetectError::Registry)?;
+    records.extend(standard_install_records(
+        &registry.fallback_roots(),
+        &records,
+    ));
+    Ok(records)
+}
+
+fn standard_install_records(roots: &[PathBuf], existing: &[InstallRecord]) -> Vec<InstallRecord> {
+    let mut records = Vec::new();
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let install_location = entry.path();
+            if !install_location.is_dir()
+                || !install_location.join("DeepSeek Harness.exe").is_file()
+                || !install_location.join("resources/app.asar").is_file()
+            {
+                continue;
+            }
+            let display_name = entry.file_name().to_string_lossy().into_owned();
+            if candidate_edition(&display_name).is_none()
+                || existing
+                    .iter()
+                    .chain(&records)
+                    .any(|record| same_path(&record.install_location, &install_location))
+            {
+                continue;
+            }
+            records.push(InstallRecord {
+                display_name,
+                display_version: String::new(),
+                install_location,
+            });
+        }
+    }
+    records
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    let normalize = |path: &Path| {
+        path.to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_ascii_lowercase()
+    };
+    normalize(left) == normalize(right)
 }
 
 fn candidate_edition(display_name: &str) -> Option<InstallationEdition> {
@@ -363,5 +418,21 @@ impl InstallRegistry for WindowsInstallRegistry {
                 .unwrap_or_else(|| "uninstall registry key is unavailable".to_owned()));
         }
         Ok(entries)
+    }
+
+    fn fallback_roots(&self) -> Vec<PathBuf> {
+        let mut roots = Vec::new();
+        if let Some(path) = std::env::var_os("LOCALAPPDATA") {
+            roots.push(PathBuf::from(path).join("Programs"));
+        }
+        for variable in ["PROGRAMFILES", "PROGRAMFILES(X86)"] {
+            if let Some(path) = std::env::var_os(variable) {
+                roots.push(PathBuf::from(path));
+            }
+        }
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            roots.push(PathBuf::from(profile).join("AppData/Local/Programs"));
+        }
+        roots
     }
 }

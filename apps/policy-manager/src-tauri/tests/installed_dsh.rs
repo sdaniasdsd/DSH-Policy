@@ -16,6 +16,21 @@ impl InstallRegistry for Registry {
     }
 }
 
+struct RegistryWithFallback {
+    records: Vec<InstallRecord>,
+    roots: Vec<PathBuf>,
+}
+
+impl InstallRegistry for RegistryWithFallback {
+    fn installations(&self) -> Result<Vec<InstallRecord>, String> {
+        Ok(self.records.clone())
+    }
+
+    fn fallback_roots(&self) -> Vec<PathBuf> {
+        self.roots.clone()
+    }
+}
+
 fn asar(path: &Path, desktop: &str, runtime: &str, commit: Option<&str>, dirty: bool) {
     asar_manifest(
         path,
@@ -102,6 +117,35 @@ fn reads_runtime_identity_from_the_installed_read_only_asar() {
     assert_eq!(found.runtime_version.as_deref(), Some("0.2.1-rc.2"));
     assert_eq!(found.runtime_commit.as_deref(), Some(COMMIT));
     assert!(!found.build_dirty);
+}
+
+#[test]
+fn discovers_official_desktop_from_standard_programs_directory_without_registry_record() {
+    let temp = tempdir().unwrap();
+    let programs = temp.path().join("AppData/Local/Programs");
+    let location = install(&programs);
+    asar(
+        &location.join("resources/app.asar"),
+        "1.0.2",
+        "0.2.1-rc.2",
+        Some(COMMIT),
+        false,
+    );
+
+    let duplicate_programs = PathBuf::from(programs.to_string_lossy().replace('\\', "/"));
+    let registry = RegistryWithFallback {
+        records: vec![],
+        roots: vec![programs, duplicate_programs],
+    };
+    let found = InstalledDsh::discover(&registry).unwrap();
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].edition, InstallationEdition::Official);
+    assert_eq!(found[0].installed.install_location, location);
+    assert_eq!(
+        found[0].installed.runtime_version.as_deref(),
+        Some("0.2.1-rc.2")
+    );
 }
 
 #[test]

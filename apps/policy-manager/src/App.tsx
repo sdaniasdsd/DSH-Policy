@@ -176,7 +176,7 @@ export function App({ api = tauriManagerApi }: { api?: ManagerApi }) {
             {view === item.id && <span className="nav-indicator" />}
           </button>)}
         </nav>
-        <div className="sidebar-footer"><span className="connection-dot" />本机管理器<span>v1.0.5</span></div>
+        <div className="sidebar-footer"><span className="connection-dot" />本机管理器<span>v1.0.6</span></div>
       </aside>
       <div className="main-column">
         <h1 className="sr-only">DSH 策略管理器</h1>

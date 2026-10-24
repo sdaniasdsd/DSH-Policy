@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "dsh-policy-manager"
-version = "1.0.5"
+version = "1.0.6"
 dependencies = [
  "ed25519-dalek",
  "reqwest 0.12.28",

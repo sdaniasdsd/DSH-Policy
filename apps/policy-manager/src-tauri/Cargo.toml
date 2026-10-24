@@ -1,6 +1,6 @@
 [package]
 name = "dsh-policy-manager"
-version = "1.0.5"
+version = "1.0.6"
 description = "Standalone manager for official DSH Desktop releases and Policy mode"
 edition = "2024"
 rust-version = "1.90"
