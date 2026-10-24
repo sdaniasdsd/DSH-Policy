@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture_catalog() -> Value {
     json!({
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "catalogRevision": 1,
         "expiresAt": SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -26,6 +26,15 @@ fn fixture_catalog() -> Value {
                 "runtimeVersion": "0.2.1-rc.2",
                 "runtimeCommit": "0123456789abcdef0123456789abcdef01234567"
             }]
+        }],
+        "policyExtensions": [{
+            "package": "@deepseek-ai/dsh-policy-extension",
+            "version": "1.0.3",
+            "runtimeVersion": "0.2.1-rc.2",
+            "runtimeCommit": "0123456789abcdef0123456789abcdef01234567",
+            "tarballUrl": "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.3/dsh-policy-extension-1.0.3.tgz",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2048
         }]
     })
 }
@@ -144,11 +153,35 @@ fn maps_only_an_exact_runtime_version_and_commit() {
         catalog
             .policy_for("0.2.1-rc.2", "0123456789abcdef0123456789abcdef01234567")
             .map(|policy| policy.version.as_str()),
-        Some("1.0.2")
+        Some("1.0.3")
     );
     assert!(
         catalog
             .policy_for("0.2.1-rc.2", "fedcba9876543210fedcba9876543210fedcba98")
             .is_none()
     );
+}
+
+#[test]
+fn rejects_an_extension_asset_outside_the_fixed_repository_release_path() {
+    let mut fixture = fixture_catalog();
+    fixture["policyExtensions"][0]["tarballUrl"] = json!("https://example.invalid/payload.tgz");
+    let (bytes, signature, public_key) = sign(&fixture);
+
+    assert!(matches!(
+        ReleaseCatalog::verify(&bytes, &signature, &public_key),
+        Err(CatalogError::InvalidCatalog(_))
+    ));
+}
+
+#[test]
+fn rejects_an_extension_with_a_runtime_commit_that_is_not_a_full_hash() {
+    let mut fixture = fixture_catalog();
+    fixture["policyExtensions"][0]["runtimeCommit"] = json!("deadbeef");
+    let (bytes, signature, public_key) = sign(&fixture);
+
+    assert!(matches!(
+        ReleaseCatalog::verify(&bytes, &signature, &public_key),
+        Err(CatalogError::InvalidCatalog(_))
+    ));
 }

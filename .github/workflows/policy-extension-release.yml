@@ -1,0 +1,137 @@
+name: DSH Policy Extension Release
+
+on:
+  push:
+    tags:
+      - 'policy-extension-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dsh-policy-extension-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-pack:
+    name: Verify and pack extension
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      sha256: ${{ steps.package.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Require the exact extension release tag and destination repository
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REPOSITORY -ne 'sdaniasdsd/DSH-Policy') { throw "This release workflow is authorized only for sdaniasdsd/DSH-Policy (got $env:GITHUB_REPOSITORY)." }
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -or $env:GITHUB_REF_NAME -notmatch '^policy-extension-v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$') { throw 'Expected an exact policy-extension-v<semver> tag.' }
+          $tagVersion = $env:GITHUB_REF_NAME.Substring('policy-extension-v'.Length)
+          $package = Get-Content -Raw -LiteralPath 'packages/policy-extension/package.json' | ConvertFrom-Json
+          if ($tagVersion -ne $package.version) { throw "Tag version $tagVersion does not match package version $($package.version)." }
+      - name: Install workspace dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Build policy extension
+        run: npm --prefix packages/policy-extension run build
+      - name: Run extension tests
+        run: corepack pnpm exec vitest run packages/policy-extension/tests
+      - name: Pack, validate metadata and record SHA256
+        id: package
+        shell: pwsh
+        run: |
+          $package = Get-Content -Raw -LiteralPath 'packages/policy-extension/package.json' | ConvertFrom-Json
+          $packDirectory = Join-Path $env:RUNNER_TEMP 'policy-extension-pack'
+          $assetDirectory = Join-Path $env:RUNNER_TEMP 'policy-extension-release'
+          New-Item -ItemType Directory -Force -Path $packDirectory, $assetDirectory | Out-Null
+          Push-Location 'packages/policy-extension'
+          try {
+            npm pack --ignore-scripts --pack-destination $packDirectory
+            if ($LASTEXITCODE -ne 0) { throw 'npm pack failed.' }
+          } finally {
+            Pop-Location
+          }
+          $tarballs = @(Get-ChildItem -LiteralPath $packDirectory -Filter '*.tgz' -File)
+          if ($tarballs.Count -ne 1) { throw "Expected exactly one npm tarball; found $($tarballs.Count)." }
+          $tarball = $tarballs[0]
+          node 'packages/policy-extension/scripts/verify-release-package.mjs' $tarball.FullName $package.version $assetDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'The packed extension failed release validation.' }
+          $assetName = "dsh-policy-extension-$($package.version).tgz"
+          $assetPath = Join-Path $assetDirectory $assetName
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath (Join-Path $assetDirectory 'SHA256SUMS.txt') -Encoding ascii
+          "version=$($package.version)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          "sha256=$hash" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          "::notice title=Policy extension SHA256::$hash  $assetName"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dsh-policy-extension-release
+          path: |
+            ${{ runner.temp }}/policy-extension-release/dsh-policy-extension-*.tgz
+            ${{ runner.temp }}/policy-extension-release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish verified extension asset
+    needs: verify-and-pack
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: dsh-policy-extension-release
+          path: ${{ runner.temp }}/policy-extension-release
+      - name: Attach immutable package and checksum to the matching GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: sdaniasdsd/DSH-Policy
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.verify-and-pack.outputs.version }}
+          EXPECTED_SHA256: ${{ needs.verify-and-pack.outputs.sha256 }}
+        run: |
+          if ($env:GITHUB_REPOSITORY -ne $env:GH_REPO) { throw 'Refusing to publish outside sdaniasdsd/DSH-Policy.' }
+          if ($env:RELEASE_TAG -ne "policy-extension-v$($env:RELEASE_VERSION)") { throw 'Release tag and verified package version differ.' }
+          $directory = Join-Path $env:RUNNER_TEMP 'policy-extension-release'
+          $assetName = "dsh-policy-extension-$($env:RELEASE_VERSION).tgz"
+          $assetPath = Join-Path $directory $assetName
+          $checksumPath = Join-Path $directory 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $assetPath) -or -not (Test-Path -LiteralPath $checksumPath)) { throw 'The verified package artifact is incomplete.' }
+          $actualHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:EXPECTED_SHA256) { throw 'The downloaded package SHA256 differs from the verified build output.' }
+          gh release view $env:RELEASE_TAG --repo $env:GH_REPO *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --verify-tag --title "DSH Policy Extension v$($env:RELEASE_VERSION)" --notes "Standalone DSH Policy extension package for the pinned official DSH runtime.\n\nAsset: $assetName\nSHA256: $actualHash"
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the extension GitHub release.' }
+          }
+          $release = gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json assets | ConvertFrom-Json
+          foreach ($name in @($assetName, 'SHA256SUMS.txt')) {
+            if ($release.assets.name -contains $name) {
+              $existingDirectory = Join-Path $env:RUNNER_TEMP 'existing-release-assets'
+              New-Item -ItemType Directory -Force -Path $existingDirectory | Out-Null
+              gh release download $env:RELEASE_TAG --repo $env:GH_REPO --pattern $name --dir $existingDirectory
+              if ($LASTEXITCODE -ne 0) { throw "Could not verify existing release asset $name." }
+              $existingPath = Join-Path $existingDirectory $name
+              $expectedPath = if ($name -eq $assetName) { $assetPath } else { $checksumPath }
+              $existingHash = (Get-FileHash -LiteralPath $existingPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              $expectedAssetHash = (Get-FileHash -LiteralPath $expectedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($existingHash -ne $expectedAssetHash) { throw "Existing release asset $name has different content; refusing to overwrite a published asset." }
+            } else {
+              gh release upload $env:RELEASE_TAG (Join-Path $directory $name) --repo $env:GH_REPO
+              if ($LASTEXITCODE -ne 0) { throw "Could not upload release asset $name." }
+            }
+          }
+          "Published $assetName (SHA256 $actualHash) to $env:GH_REPO/$env:RELEASE_TAG"

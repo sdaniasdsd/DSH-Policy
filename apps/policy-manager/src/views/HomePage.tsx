@@ -5,15 +5,19 @@ interface HomePageProps {
   state: ManagerSnapshot
   onLaunch: () => void
   onChooseHome: (path: string) => void
+  onSelectInstallation: (path: string) => void
+  onRefresh: () => void
+  onResetSelection: () => void
+  busy: boolean
 }
 
-export function HomePage({ state, onLaunch, onChooseHome }: HomePageProps) {
+export function HomePage({ state, onLaunch, onChooseHome, onSelectInstallation, onRefresh, onResetSelection, busy }: HomePageProps) {
   const homeChoice = state.homeChoice
   const exactPolicyActive = state.mode === 'policy'
     && state.policyCompatible
     && state.policyVersion !== null
     && state.policyVersion === state.compatiblePolicy?.version
-  const modeLabel = exactPolicyActive
+  const modeLabel = state.installationEdition === 'policy' ? '策略整合版' : !state.installed ? '未选择安装' : exactPolicyActive
     ? '策略模式'
     : state.policyVersion
       ? '策略包需要处理'
@@ -26,10 +30,24 @@ export function HomePage({ state, onLaunch, onChooseHome }: HomePageProps) {
           <h2 id="home-heading">DSH 环境</h2>
           <p className="muted">管理官方桌面应用及其兼容的策略配置。</p>
         </div>
-        <button className="button button--primary" onClick={onLaunch} disabled={!state.installed || Boolean(state.homeChoice)}>
-          启动 DSH
-        </button>
+        <div className="mode-actions"><button className="button" onClick={onRefresh} disabled={busy}>重新检测</button>
+          <button className="button button--primary" onClick={onLaunch} disabled={busy || !state.installed || Boolean(state.homeChoice)}>
+            启动 DSH
+          </button></div>
       </div>
+
+      <article className="card detail-card">
+        <h3>本机安装与管理目标</h3>
+        <p className="muted">自动检测官方版与策略整合版；可选择要管理和启动的安装。</p>
+        {state.selectedInstallationPath && <div className="saved-selection"><div><p className="muted">已保存的管理目标{!state.installed ? '（当前不可用）' : ''}</p><code>{state.selectedInstallationPath}</code></div><button className="button" disabled={busy} onClick={onResetSelection}>恢复自动选择</button></div>}
+        {state.installations.length ? <ul className="installation-list">{state.installations.map((item) => {
+          const selected = item.installed.installLocation === state.installed?.installLocation
+          return <li key={item.installed.installLocation}>
+            <div className="installation-copy"><strong>{item.displayName}</strong><span className="muted">{item.edition === 'official' ? '官方版' : '策略整合应用'} · {item.installed.desktopVersion}</span><code>{item.installed.installLocation}</code><span className="muted">运行时 {item.installed.runtimeVersion ?? '未知'} · 提交 {item.installed.runtimeCommit ?? '无法读取'}{item.installed.buildDirty ? ' · 含未提交改动' : ''}</span></div>
+            <button className={`button${selected ? ' button--selected' : ''}`} aria-label={`管理 ${item.displayName}`} disabled={busy || selected} onClick={() => onSelectInstallation(item.installed.installLocation)}>{selected ? '当前管理目标' : '选择管理'}</button>
+          </li>
+        })}</ul> : <p className="muted">未检测到 DSH 安装，请安装后重新检测。</p>}
+      </article>
 
       {homeChoice && (
         <section className="card home-choice" aria-labelledby="home-choice-heading">
@@ -47,7 +65,7 @@ export function HomePage({ state, onLaunch, onChooseHome }: HomePageProps) {
         <article className="card summary-card">
           <span className="card-label">桌面版版本</span>
           <strong>{state.installed?.desktopVersion ?? '未安装'}</strong>
-          <span className="muted">DeepSeek 官方 Harness</span>
+          <span className="muted">{state.installationEdition === 'policy' ? 'DSH Policy Edition' : state.installed ? 'DeepSeek 官方 Harness' : '未检测到安装'}</span>
         </article>
         <article className="card summary-card">
           <span className="card-label">内置 DSH 运行时</span>
@@ -57,7 +75,7 @@ export function HomePage({ state, onLaunch, onChooseHome }: HomePageProps) {
         <article className="card summary-card">
           <span className="card-label">当前模式</span>
           <strong>{modeLabel}</strong>
-          <span className="muted">{state.policyVersion ? `策略包 ${state.policyVersion}` : '官方 DSH 配置'}</span>
+          <span className="muted">{state.installationEdition === 'policy' ? '策略功能随应用整合分发' : state.policyVersion ? `策略包 ${state.policyVersion}` : '官方 DSH 配置'}</span>
         </article>
       </div>
 

@@ -16,10 +16,12 @@ export function createWorkflowExecutor(
   engine: Pick<WorkflowEngine, 'start'>,
   parent: WorkflowStartRequest['parent'],
   request: (step: TaskStep, prompt: string) => Omit<WorkflowStartRequest, 'parent' | 'signal'>,
+  onRun?: (run: WorkflowRun) => void,
 ): TaskExecutor {
   return async (step, prompt, signal) => {
     signal.throwIfAborted()
     const run: WorkflowRun = engine.start({ ...request(step, prompt), parent, signal })
+    onRun?.(run)
     try {
       return stageResult(await run.result)
     } finally {

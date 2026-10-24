@@ -3,6 +3,10 @@ use crate::catalog::{PolicyRelease, ReleaseCatalog};
 use crate::installed_dsh::InstalledDsh;
 use crate::installer::{DesktopProcessProbe, SystemDesktopProcessProbe};
 use crate::manager_state::ManagerMode;
+use crate::policy_package::{
+    GithubPolicyPackageFetcher, PolicyPackageFetcher, artifact_path, publish_staged_artifact,
+    validate_policy_release,
+};
 use crate::recovery::preserved_home_path;
 use crate::transaction::{JournalError, TransitionJournal, TransitionStage};
 use serde_json::Value;
@@ -170,6 +174,8 @@ pub enum ModeChangeError {
     InvalidCommandOutput,
     #[error("official DSH CLI could not start: {0}")]
     ProcessStart(String),
+    #[error("Policy extension package could not be downloaded or verified: {0}")]
+    PackageDownload(String),
     #[error("DSH profile mode could not be verified after the package operation")]
     VerificationFailed,
     #[error("the profile could not be safely restored; manual recovery is required")]
@@ -188,7 +194,7 @@ pub struct ModeChangeResult {
     pub mode: ManagerMode,
     pub changed: bool,
     pub policy_version: Option<String>,
-    pub backup: BackupRecord,
+    pub backup: Option<BackupRecord>,
 }
 
 pub struct ProfileModeManager {
@@ -197,6 +203,7 @@ pub struct ProfileModeManager {
     journal: TransitionJournal,
     runner: Arc<dyn DesktopCliRunner>,
     process_probe: Arc<dyn DesktopProcessProbe>,
+    package_fetcher: Arc<dyn PolicyPackageFetcher>,
     timeout: Duration,
 }
 
@@ -215,8 +222,14 @@ impl ProfileModeManager {
             journal,
             runner,
             process_probe,
+            package_fetcher: Arc::new(GithubPolicyPackageFetcher),
             timeout,
         }
+    }
+
+    pub fn with_package_fetcher(mut self, fetcher: Arc<dyn PolicyPackageFetcher>) -> Self {
+        self.package_fetcher = fetcher;
+        self
     }
 
     pub fn system(
@@ -265,23 +278,8 @@ impl ProfileModeManager {
             return Err(ModeChangeError::DesktopRunning);
         }
 
-        let backup = self.backups.create(home)?;
         let operation_id = Uuid::new_v4();
-        self.journal
-            .advance(operation_id, TransitionStage::Prepared)?;
-        self.journal
-            .advance(operation_id, TransitionStage::BackedUp)?;
-
-        let installed_package = match self.list_policy(installation, home) {
-            Ok(version) => version,
-            Err(error) => {
-                self.journal
-                    .advance(operation_id, TransitionStage::Verifying)?;
-                self.journal
-                    .advance(operation_id, TransitionStage::Committed)?;
-                return Err(error);
-            }
-        };
+        let installed_package = self.list_policy(installation, home)?;
         let desired_policy_version = policy.as_ref().map(|value| value.version.clone());
         let needs_change = match (&policy, &installed_package) {
             (Some(desired), Some(installed)) => installed != &desired.version,
@@ -291,30 +289,67 @@ impl ProfileModeManager {
         };
 
         if !needs_change {
-            self.journal
-                .advance(operation_id, TransitionStage::Verifying)?;
-            self.journal
-                .advance(operation_id, TransitionStage::Committed)?;
             return Ok(ModeChangeResult {
                 operation_id,
                 mode: target,
                 changed: false,
                 policy_version: desired_policy_version,
-                backup,
+                backup: None,
             });
         }
 
+        // Download and verify before touching the profile or creating its recovery point.
+        let staged_package = if let Some(desired) = policy.as_ref() {
+            let staging = std::env::temp_dir().join(format!(
+                "dsh-policy-{}-{}.tgz",
+                desired.version,
+                Uuid::new_v4()
+            ));
+            if let Err(error) = self.package_fetcher.fetch(desired, &staging) {
+                let _ = fs::remove_file(&staging);
+                return Err(ModeChangeError::PackageDownload(error));
+            }
+            Some(staging)
+        } else {
+            None
+        };
+
+        let backup = match self.backups.create(home) {
+            Ok(backup) => backup,
+            Err(error) => {
+                if let Some(staging) = &staged_package { let _ = fs::remove_file(staging); }
+                return Err(error.into());
+            }
+        };
+        self.journal
+            .advance(operation_id, TransitionStage::Prepared)?;
+        self.journal
+            .advance(operation_id, TransitionStage::BackedUp)?;
+
         self.journal
             .advance(operation_id, TransitionStage::ProfileUpdating)?;
+        if let (Some(desired), Some(staging)) = (policy.as_ref(), staged_package.as_ref()) {
+            let destination = artifact_path(&profile, desired);
+            if let Err(error) = publish_staged_artifact(staging, &destination, desired) {
+                let _ = fs::remove_file(staging);
+                self.rollback(operation_id, home, &backup)?;
+                return Err(ModeChangeError::PackageDownload(error.to_string()));
+            }
+        }
         let mutation_args = match policy.as_ref() {
-            Some(desired) => vec![
-                "plugin".into(),
-                "--profile".into(),
-                "desktop".into(),
-                "add".into(),
-                format!("{}@{}", POLICY_PACKAGE, desired.version),
-                "--save-exact".into(),
-            ],
+            Some(desired) => {
+                let artifact = artifact_path(&profile, desired);
+                let filename = artifact.file_name().and_then(|name| name.to_str())
+                    .ok_or(ModeChangeError::InvalidCommandOutput)?;
+                vec![
+                    "plugin".into(),
+                    "--profile".into(),
+                    "desktop".into(),
+                    "add".into(),
+                    format!("file:.dsh-policy-artifacts/{filename}"),
+                    "--save-exact".into(),
+                ]
+            }
             None => vec![
                 "plugin".into(),
                 "--profile".into(),
@@ -346,6 +381,12 @@ impl ProfileModeManager {
             self.rollback(operation_id, home, &backup)?;
             return Err(ModeChangeError::VerificationFailed);
         }
+        if let Some(desired) = policy.as_ref() {
+            if !verify_installed_package(&profile, desired) {
+                self.rollback(operation_id, home, &backup)?;
+                return Err(ModeChangeError::VerificationFailed);
+            }
+        }
         self.journal
             .advance(operation_id, TransitionStage::Committed)?;
         Ok(ModeChangeResult {
@@ -353,7 +394,7 @@ impl ProfileModeManager {
             mode: target,
             changed: true,
             policy_version: desired_policy_version,
-            backup,
+            backup: Some(backup),
         })
     }
 
@@ -391,7 +432,7 @@ impl ProfileModeManager {
             installation.runtime_version.as_deref()?,
             installation.runtime_commit.as_deref()?,
         )?;
-        if !safe_policy_version(&policy.version) {
+        if !safe_policy_version(&policy.version) || !validate_policy_release(policy) {
             return None;
         }
         Some(policy.clone())
@@ -504,6 +545,24 @@ fn safe_policy_version(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-'))
+}
+
+fn verify_installed_package(profile: &Path, release: &PolicyRelease) -> bool {
+    let package_dir = profile.join("node_modules/@deepseek-ai/dsh-policy-extension");
+    let Ok(resolved) = package_dir.canonicalize() else { return false; };
+    let Ok(node_modules) = profile.join("node_modules").canonicalize() else { return false; };
+    if !resolved.starts_with(&node_modules) { return false; }
+    let Ok(package_bytes) = fs::read(resolved.join("package.json")) else { return false; };
+    let Ok(package) = serde_json::from_slice::<Value>(&package_bytes) else { return false; };
+    let package_matches = package.get("name").and_then(Value::as_str) == Some(POLICY_PACKAGE)
+        && package.get("version").and_then(Value::as_str) == Some(release.version.as_str())
+        && package.pointer("/engines/dsh").and_then(Value::as_str) == Some(release.runtime_version.as_str());
+    if !package_matches { return false; }
+    let Ok(compatibility_bytes) = fs::read(resolved.join("compatibility.json")) else { return false; };
+    let Ok(compatibility) = serde_json::from_slice::<Value>(&compatibility_bytes) else { return false; };
+    compatibility.get("policyVersion").and_then(Value::as_str) == Some(release.version.as_str())
+        && compatibility.get("dshVersion").and_then(Value::as_str) == Some(release.runtime_version.as_str())
+        && compatibility.get("runtimeBuildCommit").and_then(Value::as_str) == Some(release.runtime_commit.as_str())
 }
 
 fn parse_policy_version(output: &str) -> Result<Option<String>, ModeChangeError> {

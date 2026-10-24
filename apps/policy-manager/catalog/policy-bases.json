@@ -1,0 +1,110 @@
+[
+  {
+    "policyTag": "policy-v0.2.0",
+    "policyCommit": "c3b319a2517a598ba21d26d77fd95c994ceb2a12",
+    "officialBase": {
+      "version": "0.2.1-alpha.2",
+      "tag": "dsh-v0.2.1-alpha.2",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/c3b319a2517a598ba21d26d77fd95c994ceb2a12",
+      "verification": "declared",
+      "note": "发布构建记录的 dshBase 与 README 均声明 alpha.2；未记录可验证的官方基线提交。"
+    }
+  },
+  {
+    "policyTag": "policy-v0.2.1",
+    "policyCommit": "16ba488cb8621d57343f5b8fc0e834d8a1eb47cc",
+    "officialBase": {
+      "version": "0.2.1-alpha.2",
+      "tag": "dsh-v0.2.1-alpha.2",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/16ba488cb8621d57343f5b8fc0e834d8a1eb47cc",
+      "verification": "declared",
+      "note": "该发布 README 声明沿用 alpha.2，与源码版本一致；未记录可验证的官方基线提交。"
+    }
+  },
+  {
+    "policyTag": "policy-v0.2.1-alpha.3",
+    "policyCommit": "48042f4bd5b5a4ee6e20d6de40427d09982bc2fd",
+    "officialBase": {
+      "version": "0.2.1-alpha.2",
+      "tag": "dsh-v0.2.1-alpha.2",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/48042f4bd5b5a4ee6e20d6de40427d09982bc2fd",
+      "verification": "declared",
+      "note": "README 仍声明 alpha.2；此发布把整合版包版本改为 alpha.3，不能据此认定已升级到官方 alpha.3。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.0",
+    "policyCommit": "f1027ec259beeae97229c4e5916c82a2923695c6",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/f1027ec259beeae97229c4e5916c82a2923695c6",
+      "verification": "declared",
+      "note": "README 和发布说明声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.0-test.20261019.1",
+    "policyCommit": "6c2e6ae79cb46a19ca54371b1646e1a4c627f720",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/6c2e6ae79cb46a19ca54371b1646e1a4c627f720",
+      "verification": "declared",
+      "note": "继承的 README 声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.0-test.20261021.1",
+    "policyCommit": "95ee3ee06fa85c40f3bbbb4daf07f5bc43102e36",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/95ee3ee06fa85c40f3bbbb4daf07f5bc43102e36",
+      "verification": "declared",
+      "note": "继承的 README 声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.2",
+    "policyCommit": "7b8c168917e09788e982fcbae0281ae570534408",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/7b8c168917e09788e982fcbae0281ae570534408",
+      "verification": "declared",
+      "note": "继承的 README 声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。1.0.2 是整合版自身版本。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.3",
+    "policyCommit": "19b049f8eaedcb2aba2c0fd0e7b0345becfe40f3",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/19b049f8eaedcb2aba2c0fd0e7b0345becfe40f3",
+      "verification": "declared",
+      "note": "继承的 README 声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。独立增强包的 rc.2 映射不适用于此整合包。"
+    }
+  },
+  {
+    "policyTag": "policy-v1.0.4",
+    "policyCommit": "d9d8a440a60980738ece2fbc5f766d4fb9511c81",
+    "officialBase": {
+      "version": "0.2.1-alpha.3",
+      "tag": "dsh-v0.2.1-alpha.3",
+      "commit": null,
+      "sourceUrl": "https://github.com/sdaniasdsd/DSH-Policy/tree/d9d8a440a60980738ece2fbc5f766d4fb9511c81",
+      "verification": "declared",
+      "note": "继承的 README 声明基于 alpha.3 源码线；尚未确认完整上游升级及官方基线提交。独立增强包的 rc.2 映射不适用于此整合包。"
+    }
+  }
+]

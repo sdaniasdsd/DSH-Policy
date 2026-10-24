@@ -4,6 +4,7 @@ use thiserror::Error;
 
 pub const RELEASE_CATALOG_BASE_URL: &str =
     "https://github.com/sdaniasdsd/DSH-Policy/releases/download/dsh-policy-manager-catalog/";
+const RELEASE_CATALOG_PUBLIC_KEY: &str = include_str!("../../catalog/public-key.hex");
 
 #[derive(Debug, Error)]
 pub enum CatalogUpdateError {
@@ -32,11 +33,10 @@ pub struct VerifiedCatalog {
 }
 
 impl CatalogClient {
-    /// Loads the public key embedded from `DSH_POLICY_CATALOG_PUBLIC_KEY` at build time.
+    /// Loads the release catalog key pinned in this manager source version.
     pub fn from_embedded_key() -> Result<Self, CatalogUpdateError> {
-        let encoded = option_env!("DSH_POLICY_CATALOG_PUBLIC_KEY")
+        let key = decode_public_key(RELEASE_CATALOG_PUBLIC_KEY.trim())
             .ok_or(CatalogUpdateError::MissingTrustKey)?;
-        let key = decode_public_key(encoded).ok_or(CatalogUpdateError::MissingTrustKey)?;
         Ok(Self::new(key)?)
     }
 
@@ -206,8 +206,8 @@ fn is_approved_github_host(host: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CatalogUpdateError, ensure_revision_not_rolled_back, is_approved_catalog_url,
-        verify_catalog_candidate,
+        CatalogClient, CatalogUpdateError, ensure_revision_not_rolled_back,
+        is_approved_catalog_url, verify_catalog_candidate,
     };
     use crate::catalog::CatalogError;
     use ed25519_dalek::SigningKey;
@@ -223,6 +223,11 @@ mod tests {
         assert!(!is_approved_catalog_url(
             "https://github.com/attacker/project/releases/download/dsh-policy-manager-catalog/manager-catalog.json"
         ));
+    }
+
+    #[test]
+    fn loads_the_catalog_trust_key_pinned_in_source() {
+        assert!(CatalogClient::from_embedded_key().is_ok());
     }
 
     #[test]

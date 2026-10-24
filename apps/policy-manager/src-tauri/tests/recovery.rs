@@ -105,6 +105,7 @@ fn catalog(release: DesktopRelease) -> ReleaseCatalog {
         catalog_revision: 1,
         expires_at: u64::MAX,
         desktop_releases: vec![release],
+        policy_extensions: vec![],
     }
 }
 

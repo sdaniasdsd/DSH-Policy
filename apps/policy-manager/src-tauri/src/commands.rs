@@ -1,8 +1,9 @@
 use crate::backup::{BackupRecord, BackupStore};
 use crate::catalog::{DesktopRelease, ReleaseCatalog};
 use crate::catalog_update::CatalogClient;
+use crate::github_releases::{GithubReleaseIndex, GithubReleasesClient};
 use crate::harness_home::{HarnessHome, HomeResolution};
-use crate::installed_dsh::InstalledDsh;
+use crate::installed_dsh::{DetectedInstallation, InstallationEdition, InstalledDsh};
 use crate::installer::{DesktopProcessProbe, InstallerManager, SystemDesktopProcessProbe};
 use crate::launcher::DshLauncher;
 use crate::manager_state::{ManagerMode, ManagerState, ProfileSnapshot};
@@ -31,6 +32,10 @@ pub struct HomeChoice {
 #[serde(rename_all = "camelCase")]
 pub struct ManagerSnapshot {
     pub installed: Option<InstalledDsh>,
+    pub installations: Vec<DetectedInstallation>,
+    pub installation_edition: Option<InstallationEdition>,
+    pub selected_installation_path: Option<PathBuf>,
+    pub known_policy: KnownPolicyCompatibility,
     pub home: Option<PathBuf>,
     pub home_choice: Option<HomeChoice>,
     pub mode: ManagerMode,
@@ -40,6 +45,15 @@ pub struct ManagerSnapshot {
     pub unavailable_reason: Option<String>,
     pub catalog_revision: u64,
     pub catalog_status: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownPolicyCompatibility {
+    pub policy_version: String,
+    pub dsh_version: String,
+    pub dsh_commit: String,
+    pub dsh_tag: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -54,6 +68,7 @@ struct CachedCatalog {
 #[serde(default)]
 struct ManagerSettings {
     selected_home: Option<PathBuf>,
+    selected_installation: Option<PathBuf>,
     requested_mode: ManagerMode,
     last_policy_version: Option<String>,
 }
@@ -62,6 +77,7 @@ impl Default for ManagerSettings {
     fn default() -> Self {
         Self {
             selected_home: None,
+            selected_installation: None,
             requested_mode: ManagerMode::Official,
             last_policy_version: None,
         }
@@ -187,6 +203,18 @@ impl ManagerServices {
         }
     }
 
+    fn installations(&self) -> Result<Vec<DetectedInstallation>, String> {
+        #[cfg(windows)]
+        {
+            use crate::installed_dsh::WindowsInstallRegistry;
+            InstalledDsh::discover(&WindowsInstallRegistry).map_err(|error| error.to_string())
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(Vec::new())
+        }
+    }
+
     fn snapshot(&self) -> Result<ManagerSnapshot, String> {
         let catalog = self.catalog()?;
         let resolution = self.resolve_home()?;
@@ -197,11 +225,17 @@ impl ManagerServices {
             }
             HomeResolution::InspectionFailed { reason, .. } => return Err(reason),
         };
-        let installed = self.installed()?;
         let settings = self.settings()?;
+        let installations = self.installations()?;
+        let selection =
+            select_detected_installation(&installations, settings.selected_installation.as_deref());
+        let installation_edition = selection.map(|choice| choice.edition.clone());
+        let integrated_policy = matches!(installation_edition, Some(InstallationEdition::Policy));
+        let installed = selection.map(|choice| choice.installed.clone());
         let (policy_version, requested_mode) = match (&installed, &home) {
             (Some(installation), Some(home))
-                if !SystemDesktopProcessProbe.is_running().unwrap_or(true) =>
+                if !integrated_policy
+                    && !SystemDesktopProcessProbe.is_running().unwrap_or(true) =>
             {
                 let manager = ProfileModeManager::system(
                     catalog.clone(),
@@ -224,6 +258,7 @@ impl ManagerServices {
                     ),
                 }
             }
+            _ if integrated_policy => (None, ManagerMode::Policy),
             _ => (
                 settings.last_policy_version.clone(),
                 settings.requested_mode,
@@ -237,9 +272,17 @@ impl ManagerServices {
             },
             &catalog,
         );
-        let compatible_policy = state.compatible_policy;
-        let policy_compatible = state.policy_compatible;
-        let unavailable_reason = if installed.is_none() {
+        let compatible_policy = if integrated_policy {
+            None
+        } else {
+            state.compatible_policy
+        };
+        let policy_compatible = !integrated_policy && state.policy_compatible;
+        let unavailable_reason = if integrated_policy {
+            Some("当前管理的是内置策略的整合版。切换官方模式请先选择已检测到的官方 DSH；整合版不能通过移除独立增强包变成官方版。".to_owned())
+        } else if installed.is_none() && !installations.is_empty() {
+            Some("请从检测到的安装中选择管理目标。".to_owned())
+        } else if installed.is_none() {
             Some("Install an official DSH Desktop release to manage its profile.".to_owned())
         } else if catalog.expires_at <= now_unix() {
             Some(
@@ -279,9 +322,20 @@ impl ManagerServices {
             .unwrap_or_default();
         Ok(ManagerSnapshot {
             installed,
+            installations,
+            installation_edition,
+            selected_installation_path: settings.selected_installation,
+            known_policy: serde_json::from_str(include_str!(
+                "../../../../packages/policy-extension/compatibility.json"
+            ))
+            .map_err(|_| "built-in Policy compatibility declaration is invalid".to_owned())?,
             home,
             home_choice,
-            mode: state.mode,
+            mode: if integrated_policy {
+                ManagerMode::Policy
+            } else {
+                state.mode
+            },
             policy_version,
             policy_compatible,
             compatible_policy,
@@ -310,6 +364,135 @@ impl ManagerServices {
             settings.last_policy_version = policy_version;
         }
         self.save_settings()
+    }
+}
+
+fn select_detected_installation<'a>(
+    choices: &'a [DetectedInstallation],
+    selected_path: Option<&Path>,
+) -> Option<&'a DetectedInstallation> {
+    if let Some(path) = selected_path {
+        return choices
+            .iter()
+            .find(|choice| same_path_or_value(&choice.installed.install_location, path));
+    }
+    let mut official = choices
+        .iter()
+        .filter(|choice| matches!(choice.edition, InstallationEdition::Official));
+    match (official.next(), official.next()) {
+        (Some(choice), None) => Some(choice),
+        _ if choices.len() == 1 => choices.first(),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+pub async fn select_installation(
+    path: String,
+    services: State<'_, Arc<ManagerServices>>,
+) -> Result<ManagerSnapshot, String> {
+    let services = Arc::clone(services.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        services.ensure_no_pending_recovery()?;
+        let choices = services.installations()?;
+        let path = PathBuf::from(path);
+        let choice = select_detected_installation(&choices, Some(&path))
+            .ok_or_else(|| "所选安装已不可用，请重新检测本机 DSH。".to_owned())?;
+        {
+            let mut settings = services
+                .settings
+                .lock()
+                .map_err(|_| "manager settings are unavailable".to_owned())?;
+            settings.selected_installation = Some(choice.installed.install_location.clone());
+            settings.requested_mode = ManagerMode::Official;
+            settings.last_policy_version = None;
+        }
+        services.save_settings()?;
+        services.snapshot()
+    })
+    .await
+    .map_err(|_| "installation selection worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub async fn reset_installation_selection(
+    services: State<'_, Arc<ManagerServices>>,
+) -> Result<ManagerSnapshot, String> {
+    let services = Arc::clone(services.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        services.ensure_no_pending_recovery()?;
+        {
+            let mut settings = services
+                .settings
+                .lock()
+                .map_err(|_| "manager settings are unavailable".to_owned())?;
+            settings.selected_installation = None;
+            settings.requested_mode = ManagerMode::Official;
+            settings.last_policy_version = None;
+        }
+        services.save_settings()?;
+        services.snapshot()
+    })
+    .await
+    .map_err(|_| "installation selection worker failed".to_owned())?
+}
+
+#[tauri::command]
+pub async fn refresh_github_releases() -> Result<GithubReleaseIndex, String> {
+    GithubReleasesClient::new()
+        .map_err(|error| error.to_string())?
+        .fetch()
+        .await
+        .map_err(|error| format!("无法读取 GitHub 发行版：{error}"))
+}
+
+fn github_release_url_allowed(value: &str) -> bool {
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    if url.scheme() != "https"
+        || url.host_str() != Some("github.com")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return false;
+    }
+    let path = url.path();
+    let source_commit = path.strip_prefix("/sdaniasdsd/DSH-Policy/tree/");
+    (path.starts_with("/sdaniasdsd/DSH-Policy/releases/tag/policy-v")
+        || path.starts_with("/sdaniasdsd/DSH-Policy/releases/download/policy-v")
+        || source_commit.is_some_and(|commit| {
+            commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+        }))
+        && !path.contains('%')
+        && !path.contains('\\')
+}
+
+#[tauri::command]
+pub fn open_github_url(url: String) -> Result<(), String> {
+    if !github_release_url_allowed(&url) {
+        return Err(
+            "只能打开 DSH-Policy 仓库中的发行版、安装包或已固定提交的源码链接。".to_owned(),
+        );
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let windows = std::env::var_os("WINDIR")
+            .ok_or_else(|| "Windows directory is unavailable".to_owned())?;
+        std::process::Command::new(PathBuf::from(windows).join("explorer.exe"))
+            .arg(url)
+            .creation_flags(0x08000000)
+            .spawn()
+            .map_err(|_| "无法打开系统浏览器。".to_owned())?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err("此管理器仅支持 Windows。".to_owned())
     }
 }
 
@@ -652,6 +835,14 @@ fn set_mode_inner(
 ) -> Result<ModeCommandResult, String> {
     services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
+    if matches!(
+        snapshot.installation_edition,
+        Some(InstallationEdition::Policy)
+    ) {
+        return Err(
+            "策略整合版不能通过增删独立增强包切换官方模式，请选择官方 DSH 安装。".to_owned(),
+        );
+    }
     let installation = snapshot
         .installed
         .ok_or_else(|| "official DSH Desktop is not installed".to_owned())?;
@@ -666,7 +857,7 @@ fn set_mode_inner(
     Ok(ModeCommandResult {
         mode,
         changed: result.changed,
-        backup_id: result.backup.id.to_string(),
+        backup_id: result.backup.map(|backup| backup.id.to_string()),
     })
 }
 
@@ -675,7 +866,7 @@ fn set_mode_inner(
 pub struct ModeCommandResult {
     pub mode: ManagerMode,
     pub changed: bool,
-    pub backup_id: String,
+    pub backup_id: Option<String>,
 }
 
 #[tauri::command]
@@ -697,6 +888,18 @@ fn launch_dsh_inner(services: &ManagerServices) -> Result<LaunchCommandResult, S
     let home = snapshot
         .home
         .ok_or_else(|| "choose a Harness home before launching".to_owned())?;
+    if matches!(
+        snapshot.installation_edition,
+        Some(InstallationEdition::Policy)
+    ) {
+        let process_id = DshLauncher::system()
+            .launch_official_initialization(&installation, &home)
+            .map_err(|error| error.to_string())?;
+        return Ok(LaunchCommandResult {
+            launched: true,
+            process_id,
+        });
+    }
     let requested = if snapshot.mode == ManagerMode::Policy && snapshot.policy_compatible {
         ManagerMode::Policy
     } else {
@@ -882,6 +1085,19 @@ fn install_release_inner(
 ) -> Result<InstallCommandResult, String> {
     services.ensure_no_pending_recovery()?;
     let snapshot = services.snapshot()?;
+    if matches!(
+        snapshot.installation_edition,
+        Some(InstallationEdition::Policy)
+    ) {
+        return Err(
+            "当前选择的是策略整合版。官方安装事务只适用于官方 DSH，请先选择官方安装。".to_owned(),
+        );
+    }
+    validate_official_upgrade_target(
+        &snapshot.installations,
+        snapshot.installed.as_ref(),
+        snapshot.selected_installation_path.is_some(),
+    )?;
     let home = snapshot
         .home
         .ok_or_else(|| "choose a Harness home before installing a release".to_owned())?;
@@ -1074,6 +1290,25 @@ fn install_release_inner(
     })
 }
 
+fn validate_official_upgrade_target(
+    choices: &[DetectedInstallation],
+    selected: Option<&InstalledDsh>,
+    has_saved_target: bool,
+) -> Result<(), String> {
+    if choices
+        .iter()
+        .filter(|choice| matches!(choice.edition, InstallationEdition::Official))
+        .count()
+        > 1
+    {
+        return Err("检测到多个官方 DSH 安装。自动安装器不能保证升级所选路径，请保留当前安装并手动处理版本。".to_owned());
+    }
+    if selected.is_none() && (has_saved_target || !choices.is_empty()) {
+        return Err("所选安装已失效或尚未选择目标，请在概览中重新选择或恢复自动选择。".to_owned());
+    }
+    Ok(())
+}
+
 fn install_fresh_release(
     services: &ManagerServices,
     target: &DesktopRelease,
@@ -1231,8 +1466,103 @@ fn load_catalog_cache(
 
 #[cfg(test)]
 mod tests {
-    use super::ManagerServices;
+    use super::{
+        ManagerServices, github_release_url_allowed, select_detected_installation,
+        validate_official_upgrade_target,
+    };
+    use crate::installed_dsh::{DetectedInstallation, InstallationEdition, InstalledDsh};
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
+
+    fn detected(path: &str, edition: InstallationEdition) -> DetectedInstallation {
+        DetectedInstallation {
+            display_name: path.to_owned(),
+            edition,
+            installed: InstalledDsh {
+                install_location: PathBuf::from(path),
+                desktop_version: "1.0.4".to_owned(),
+                runtime_version: None,
+                runtime_commit: None,
+                build_dirty: false,
+            },
+        }
+    }
+
+    #[test]
+    fn installed_target_defaults_to_the_unique_official_installation() {
+        let choices = vec![
+            detected("policy", InstallationEdition::Policy),
+            detected("official", InstallationEdition::Official),
+        ];
+        assert_eq!(
+            select_detected_installation(&choices, None)
+                .unwrap()
+                .installed
+                .install_location,
+            PathBuf::from("official")
+        );
+        assert_eq!(
+            select_detected_installation(&choices, Some(Path::new("policy")))
+                .unwrap()
+                .edition,
+            InstallationEdition::Policy
+        );
+    }
+
+    #[test]
+    fn ambiguous_or_missing_selected_installations_require_an_explicit_choice() {
+        let choices = vec![
+            detected("first", InstallationEdition::Official),
+            detected("second", InstallationEdition::Official),
+        ];
+        assert!(select_detected_installation(&choices, None).is_none());
+        assert!(select_detected_installation(&choices, Some(Path::new("removed"))).is_none());
+        assert!(select_detected_installation(&[], None).is_none());
+        assert!(
+            select_detected_installation(&[detected("policy", InstallationEdition::Policy)], None)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn release_links_cannot_open_another_repository_or_local_program() {
+        assert!(github_release_url_allowed(
+            "https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-v1.0.4"
+        ));
+        assert!(github_release_url_allowed(
+            "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-v1.0.4/setup.exe"
+        ));
+        assert!(github_release_url_allowed(
+            "https://github.com/sdaniasdsd/DSH-Policy/tree/d9d8a440a60980738ece2fbc5f766d4fb9511c81"
+        ));
+        for url in [
+            "file:///C:/Windows/System32/cmd.exe",
+            "https://github.com/other/repo/releases/tag/policy-v1.0.4",
+            "https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-v1.0.4?x=1",
+            "https://github.com@attacker.example/sdaniasdsd/DSH-Policy/releases/tag/policy-v1.0.4",
+            "https://github.com/sdaniasdsd/DSH-Policy/tree/main",
+            "https://github.com/sdaniasdsd/DSH-Policy/tree/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/other",
+        ] {
+            assert!(!github_release_url_allowed(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn stale_selection_and_multiple_official_installs_cannot_start_installation() {
+        assert!(validate_official_upgrade_target(&[], None, true).is_err());
+        assert!(validate_official_upgrade_target(&[], None, false).is_ok());
+        let choices = vec![
+            detected("first", InstallationEdition::Official),
+            detected("second", InstallationEdition::Official),
+        ];
+        assert!(
+            validate_official_upgrade_target(&choices, Some(&choices[0].installed), true).is_err()
+        );
+        assert!(
+            validate_official_upgrade_target(&choices[..1], Some(&choices[0].installed), true)
+                .is_ok()
+        );
+    }
 
     #[test]
     fn manager_starts_with_the_empty_development_catalog() {

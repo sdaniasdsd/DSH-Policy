@@ -3,7 +3,6 @@ import { open, readFile, rename, unlink } from 'node:fs/promises'
 
 const [catalogPath, signaturePath, option] = process.argv.slice(2)
 const signingSeed = process.env.DSH_POLICY_CATALOG_SIGNING_KEY
-const configuredPublicKey = process.env.DSH_POLICY_CATALOG_PUBLIC_KEY
 
 function fail(message) {
   throw new Error(message)
@@ -17,8 +16,9 @@ async function main() {
   if (!signingSeed || !/^[0-9a-fA-F]{64}$/.test(signingSeed)) {
     fail('DSH_POLICY_CATALOG_SIGNING_KEY must be a 32-byte hexadecimal Ed25519 seed')
   }
-  if (!configuredPublicKey || !/^[0-9a-fA-F]{64}$/.test(configuredPublicKey)) {
-    fail('DSH_POLICY_CATALOG_PUBLIC_KEY must be a 32-byte hexadecimal key')
+  const configuredPublicKey = (await readFile(new URL('../catalog/public-key.hex', import.meta.url), 'utf8')).trim()
+  if (!/^[0-9a-fA-F]{64}$/.test(configuredPublicKey)) {
+    fail('catalog/public-key.hex must contain a 32-byte hexadecimal key')
   }
 
   const seed = Buffer.from(signingSeed, 'hex')
@@ -30,7 +30,7 @@ async function main() {
   const publicKeyDer = createPublicKey(privateKey).export({ format: 'der', type: 'spki' })
   const derivedPublicKey = publicKeyDer.subarray(-32)
   if (!derivedPublicKey.equals(Buffer.from(configuredPublicKey, 'hex'))) {
-    fail('signing seed does not match the configured public key')
+    fail('signing seed does not match the pinned public key')
   }
 
   const catalogBytes = await readFile(catalogPath)
@@ -40,16 +40,19 @@ async function main() {
   } catch {
     fail('catalog is not valid UTF-8 JSON')
   }
-  if (catalog.schemaVersion !== 1
+  if (![1, 2].includes(catalog.schemaVersion)
     || !Number.isSafeInteger(catalog.catalogRevision)
     || catalog.catalogRevision <= 0
     || !Number.isSafeInteger(catalog.expiresAt)
     || catalog.expiresAt <= Math.floor(Date.now() / 1000)
-    || !Array.isArray(catalog.desktopReleases)) {
+    || !Array.isArray(catalog.desktopReleases)
+    || !Array.isArray(catalog.policyExtensions ?? [])) {
     fail('catalog fields are invalid or expired')
   }
-  if (option === '--require-installable-release' && catalog.desktopReleases.length === 0) {
-    fail('cannot publish a manager release with an empty install catalog')
+  if (option === '--require-installable-release'
+    && catalog.desktopReleases.length === 0
+    && (catalog.policyExtensions ?? []).length === 0) {
+    fail('cannot publish a manager release with no installable Desktop or Policy extension')
   }
   const identities = new Set()
   for (const release of catalog.desktopReleases) {
@@ -81,6 +84,30 @@ async function main() {
       }
       policyVersions.add(policy.version)
     }
+  }
+  const extensionVersions = new Set()
+  for (const extension of catalog.policyExtensions ?? []) {
+    const version = extension.version
+    const expectedUrl = `https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v${version}/dsh-policy-extension-${version}.tgz`
+    const identity = `${version}/${extension.runtimeVersion}/${extension.runtimeCommit}`
+    if (extension.package !== '@deepseek-ai/dsh-policy-extension'
+      || typeof version !== 'string'
+      || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/.test(version)
+      || typeof extension.runtimeVersion !== 'string'
+      || !extension.runtimeVersion.trim()
+      || !/^[0-9a-fA-F]{40}$/.test(extension.runtimeCommit)
+      || !/^[0-9a-fA-F]{64}$/.test(extension.sha256)
+      || !Number.isSafeInteger(extension.size)
+      || extension.size <= 0
+      || extension.size > 128 * 1024 * 1024
+      || extension.tarballUrl !== expectedUrl
+      || extensionVersions.has(identity)) {
+      fail('catalog contains an invalid standalone Policy extension asset or compatibility mapping')
+    }
+    extensionVersions.add(identity)
+  }
+  if (catalog.schemaVersion === 2 && extensionVersions.size === 0) {
+    fail('schemaVersion 2 requires at least one standalone Policy extension')
   }
 
   const signature = sign(null, catalogBytes, privateKey)

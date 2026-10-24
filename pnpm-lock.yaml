@@ -11412,6 +11412,9 @@ importers:
       '@deepseek-ai/dsh-session':
         specifier: 0.2.1-rc.2
         version: 0.2.1-rc.2(@deepseek-ai/cordis@4.0.5-alpha.1)(@deepseek-ai/dsh-scope@0.2.1-rc.2(@deepseek-ai/cordis@4.0.5-alpha.1))
+      '@deepseek-ai/dsh-tools':
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2(1d7127eb5ee7aa2f0856eea8dcec62a7)
       '@deepseek-ai/dsh-workflow':
         specifier: 0.2.1-rc.2
         version: 0.2.1-rc.2(235b82bea654c3f315909edc85d3d127)

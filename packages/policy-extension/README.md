@@ -13,11 +13,15 @@ This package installs Policy through the official DSH profile Bundle path. Its `
 
 The ordinary repository build emits both plugin entries. For a focused build, run `npm run build:policy-extension` from the repository root, then install the packed package into an official DSH profile. The published archive contains the Bundle patch, Host entry, Client entry, types, and compatibility metadata. The official profile loader checks the exact DSH version before importing the plugin.
 
+GitHub releases publish a fixed `dsh-policy-extension-<version>.tgz` asset for the exact `policy-extension-v<version>` tag. The release workflow builds and tests the package, checks the packed metadata and exact DSH peer pins, rejects install lifecycle scripts, and publishes a matching `SHA256SUMS.txt` file.
+
 The Host export provides `StrategyRegistry`, `captureStrategy`, and `TaskRun`. A captured strategy retains its author callback after unregistration. `TaskRun` owns the binding epoch, stage cursor, cumulative results and task limits. It snapshots supplemental context before a stage starts, applies a reserved replacement after that stage drains, and retains the existing strategy when replacement admission fails. A resume command continues that retained cursor. Executors must honor cancellation and settle only after releasing children; cancellation waits for their settlement.
 
 ## Model Experience
 
-The Bundle activation currently contributes no model-visible text or tools. Consumers of the exported controller supply the executor and stage preparation. Execution prompts retain the original task, captured stage instructions, and selected prior-stage results. Supplemental context affects future stages without changing a running prompt.
+The Host entry registers a `policy_run` tool. It captures the built-in `policy-default` strategy, creates one owned `policy` Job, and executes its single stage through the official `ctx.workflowEngine`. The tool returns a Job id immediately. The Job progress line follows workflow phases; its observer log streams the phase, `workflow/log`, and child start/end events, so the official DSH job surface can show ongoing work. Final output is retained in the Job result. This requires the official Jobs provider and `dsh-tool-jobs` controller to be present in the composition.
+
+The exported controller remains available to packages that want to register their own strategies. The first Host integration intentionally exposes one fixed strategy; it does not yet load arbitrary strategy files or a manager configuration.
 
 #### KV Cache effect
 
@@ -25,6 +29,6 @@ Bundle activation does not change model requests or cache reuse. Controller cons
 
 ## Known Limitations and Deferred Work
 
-- Host and Client activation remain empty. The extracted controller is independently importable; native task Jobs, task-scoped durable records, bounded feedback intake, member controls, and Web controls remain in the legacy distribution.
-- The pinned official DSH public API lacks result-bearing child continuation with exact activation disposal, active-only message admission, and capability-declared child tool restrictions. The native service awaits those public capabilities; the package neither substitutes message delivery for continuation nor uses fork-only implementation code. Member messaging remains a native executor capability and is not exposed by the pure controller.
+- The Client entry has no custom policy controls yet; the Host tool and live state use official DSH tools, workflow, and Jobs services.
+- The pinned official DSH public API lacks result-bearing continuation of the same child activation, active-only child message admission, and per-child tool sandbox configuration. This Host path starts one fresh workflow child per task stage and does not expose those controls or claim that the child is restricted to a task-specific tool set.
 - No process-restart recovery is provided by the extracted controller.

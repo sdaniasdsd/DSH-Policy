@@ -1,12 +1,14 @@
 pub mod backup;
 pub mod catalog;
 pub mod catalog_update;
+pub mod github_releases;
 pub mod harness_home;
 pub mod installed_dsh;
 pub mod installer;
 pub mod launcher;
 pub mod manager_state;
 pub mod profile_mode;
+pub mod policy_package;
 pub mod recovery;
 pub mod transaction;
 
@@ -28,6 +30,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_manager_state,
+            commands::select_installation,
+            commands::reset_installation_selection,
+            commands::refresh_github_releases,
+            commands::open_github_url,
             commands::list_releases,
             commands::list_backups,
             commands::get_activity,

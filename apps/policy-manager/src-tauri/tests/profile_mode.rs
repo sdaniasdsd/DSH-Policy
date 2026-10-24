@@ -6,16 +6,26 @@ use dsh_policy_manager_lib::manager_state::ManagerMode;
 use dsh_policy_manager_lib::profile_mode::{
     CliOutput, DesktopCliRunner, ModeChangeError, ProfileModeManager,
 };
+use dsh_policy_manager_lib::policy_package::PolicyPackageFetcher;
 use dsh_policy_manager_lib::transaction::{TransitionJournal, TransitionStage};
 use std::fs::{create_dir_all, read, write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use uuid::Uuid;
 
 const PACKAGE: &str = "@deepseek-ai/dsh-policy-extension";
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+const PACKAGE_BYTES: &[u8] = b"policy package test fixture";
+
+struct Fetcher;
+impl PolicyPackageFetcher for Fetcher {
+    fn fetch(&self, _release: &PolicyRelease, destination: &Path) -> Result<(), String> {
+        write(destination, PACKAGE_BYTES).map_err(|error| error.to_string())
+    }
+}
 
 struct Protector;
 impl DataProtector for Protector {
@@ -66,6 +76,12 @@ impl DesktopCliRunner for Runner {
             home: home.to_path_buf(),
             args: args.to_vec(),
         });
+        if args.iter().any(|argument| argument == "add") {
+            let installed_package = home.join("profiles/desktop/node_modules/@deepseek-ai/dsh-policy-extension");
+            create_dir_all(&installed_package).unwrap();
+            write(installed_package.join("package.json"), br#"{"name":"@deepseek-ai/dsh-policy-extension","version":"1.0.3","engines":{"dsh":"0.2.1-rc.2"}}"#).unwrap();
+            write(installed_package.join("compatibility.json"), format!(r#"{{"policyVersion":"1.0.3","dshVersion":"0.2.1-rc.2","runtimeBuildCommit":"{COMMIT}"}}"#)).unwrap();
+        }
         let mut outputs = self.outputs.lock().unwrap();
         if outputs.is_empty() {
             return Ok(output(0, "[]"));
@@ -94,8 +110,9 @@ fn installed() -> InstalledDsh {
 }
 
 fn catalog() -> ReleaseCatalog {
+    let sha256 = Sha256::digest(PACKAGE_BYTES).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     ReleaseCatalog {
-        schema_version: 1,
+        schema_version: 2,
         catalog_revision: 1,
         expires_at: u64::MAX,
         desktop_releases: vec![DesktopRelease {
@@ -112,7 +129,19 @@ fn catalog() -> ReleaseCatalog {
                 version: "1.0.2".into(),
                 runtime_version: "0.2.1-rc.2".into(),
                 runtime_commit: COMMIT.into(),
+                tarball_url: String::new(),
+                sha256: String::new(),
+                size: 0,
             }],
+        }],
+        policy_extensions: vec![PolicyRelease {
+            package: PACKAGE.into(),
+            version: "1.0.3".into(),
+            runtime_version: "0.2.1-rc.2".into(),
+            runtime_commit: COMMIT.into(),
+            tarball_url: "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.3/dsh-policy-extension-1.0.3.tgz".into(),
+            sha256,
+            size: PACKAGE_BYTES.len() as u64,
         }],
     }
 }
@@ -134,7 +163,7 @@ fn manager(temp: &Path, runner: Arc<Runner>, probe: Arc<Probe>) -> ProfileModeMa
         runner,
         probe,
         Duration::from_millis(50),
-    )
+    ).with_package_fetcher(Arc::new(Fetcher))
 }
 
 fn initialize_home(home: &Path) {
@@ -152,7 +181,7 @@ fn installs_the_exact_policy_version_and_rechecks_the_profile() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("home");
     initialize_home(&home);
-    let policy_output = policy("1.0.2");
+    let policy_output = policy("1.0.3");
     let runner = Arc::new(Runner::new(vec![
         output(0, no_policy()),
         output(0, ""),
@@ -175,17 +204,11 @@ fn installs_the_exact_policy_version_and_rechecks_the_profile() {
             "--depth=0"
         ]
     );
-    assert_eq!(
-        runner.calls.lock().unwrap()[1].args,
-        vec![
-            "plugin",
-            "--profile",
-            "desktop",
-            "add",
-            "@deepseek-ai/dsh-policy-extension@1.0.2",
-            "--save-exact"
-        ]
-    );
+    let add_args = runner.calls.lock().unwrap()[1].args.clone();
+    assert_eq!(&add_args[..4], ["plugin", "--profile", "desktop", "add"]);
+    assert!(add_args[4].starts_with("file:.dsh-policy-artifacts/dsh-policy-extension-1.0.3-"));
+    assert!(add_args[4].ends_with(".tgz"));
+    assert_eq!(add_args[5], "--save-exact");
     assert_eq!(
         runner.calls.lock().unwrap()[2].args,
         vec![
@@ -205,7 +228,8 @@ fn installs_the_exact_policy_version_and_rechecks_the_profile() {
             .iter()
             .all(|call| call.home == home && call.installation == installed().install_location)
     );
-    assert!(result.backup.archive_path.exists());
+    assert!(result.backup.as_ref().unwrap().archive_path.exists());
+    assert_eq!(read(home.join("profiles/desktop/.dsh-policy-artifacts").join(format!("dsh-policy-extension-1.0.3-{}.tgz", Sha256::digest(PACKAGE_BYTES).iter().map(|byte| format!("{byte:02x}")).collect::<String>()))).unwrap(), PACKAGE_BYTES);
 }
 
 #[test]
@@ -213,7 +237,7 @@ fn removes_only_the_policy_bundle_for_official_mode() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("home");
     initialize_home(&home);
-    let policy_output = policy("1.0.2");
+    let policy_output = policy("1.0.3");
     let runner = Arc::new(Runner::new(vec![
         output(0, &policy_output),
         output(0, ""),
@@ -234,12 +258,14 @@ fn reports_no_change_when_policy_is_already_at_the_exact_version() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("home");
     initialize_home(&home);
-    let runner = Arc::new(Runner::new(vec![output(0, &policy("1.0.2"))]));
+    let runner = Arc::new(Runner::new(vec![output(0, &policy("1.0.3"))]));
     let result = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
         .apply(ManagerMode::Policy, &installed(), &home)
         .unwrap();
     assert!(!result.changed);
     assert_eq!(runner.calls.lock().unwrap().len(), 1);
+    assert!(result.backup.is_none());
+    assert!(!temp.path().join("backups").exists());
 }
 
 #[test]
@@ -386,7 +412,7 @@ fn rejects_policy_versions_that_could_change_cli_argument_parsing() {
     let home = temp.path().join("home");
     initialize_home(&home);
     let mut release_catalog = catalog();
-    release_catalog.desktop_releases[0].policies[0].version = "1.0.2 --config=evil".into();
+    release_catalog.policy_extensions[0].version = "1.0.3 --config=evil".into();
     let runner = Arc::new(Runner::new(vec![]));
     let result = ProfileModeManager::new(
         release_catalog,

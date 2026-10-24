@@ -22,6 +22,8 @@ pub struct ReleaseCatalog {
     pub catalog_revision: u64,
     pub expires_at: u64,
     pub desktop_releases: Vec<DesktopRelease>,
+    #[serde(default)]
+    pub policy_extensions: Vec<PolicyRelease>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -45,6 +47,12 @@ pub struct PolicyRelease {
     pub version: String,
     pub runtime_version: String,
     pub runtime_commit: String,
+    #[serde(default)]
+    pub tarball_url: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub size: u64,
 }
 
 impl ReleaseCatalog {
@@ -71,16 +79,15 @@ impl ReleaseCatalog {
         runtime_version: &str,
         runtime_commit: &str,
     ) -> Option<&PolicyRelease> {
-        self.desktop_releases
+        self.policy_extensions
             .iter()
-            .flat_map(|release| &release.policies)
             .find(|policy| {
                 policy.runtime_version == runtime_version && policy.runtime_commit == runtime_commit
             })
     }
 
     fn validate(&self) -> Result<(), CatalogError> {
-        if self.schema_version != 1 {
+        if !matches!(self.schema_version, 1 | 2) {
             return invalid("unsupported catalog schema version");
         }
         if self.catalog_revision == 0 {
@@ -135,6 +142,28 @@ impl ReleaseCatalog {
                 }
             }
         }
+        let mut extension_versions = HashSet::new();
+        for extension in &self.policy_extensions {
+            if extension.package != "@deepseek-ai/dsh-policy-extension"
+                || !safe_version(&extension.version)
+                || extension.runtime_version.trim().is_empty()
+                || !is_hex(&extension.runtime_commit, 40)
+                || !is_hex(&extension.sha256, 64)
+                || extension.size == 0
+                || extension.size > 128 * 1024 * 1024
+                || !is_expected_policy_tarball_url(&extension.tarball_url, &extension.version)
+                || !extension_versions.insert((
+                    extension.version.as_str(),
+                    extension.runtime_version.as_str(),
+                    extension.runtime_commit.as_str(),
+                ))
+            {
+                return invalid("Policy extension release identity, asset, or compatibility is invalid");
+            }
+        }
+        if self.schema_version == 2 && self.policy_extensions.is_empty() {
+            return invalid("catalog schema version 2 requires at least one standalone Policy extension");
+        }
         Ok(())
     }
 }
@@ -145,6 +174,21 @@ fn invalid<T>(message: &str) -> Result<T, CatalogError> {
 
 fn is_hex(value: &str, expected_len: usize) -> bool {
     value.len() == expected_len && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn safe_version(value: &str) -> bool {
+    !value.is_empty()
+        && value.as_bytes()[0].is_ascii_digit()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'+' | b'-'))
+}
+
+fn is_expected_policy_tarball_url(value: &str, version: &str) -> bool {
+    let expected = format!(
+        "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v{version}/dsh-policy-extension-{version}.tgz"
+    );
+    value == expected
 }
 
 fn is_first_party_installer_url(value: &str) -> bool {

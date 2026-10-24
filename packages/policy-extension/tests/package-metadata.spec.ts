@@ -32,7 +32,7 @@ describe('Policy extension package', () => {
   it('packageMetadataDeclaresAnOfficialBundle', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
-    expect(pkg.version).toBe('1.0.2')
+    expect(pkg.version).toBe('1.0.3')
     expect(pkg.engines?.dsh).toBe('0.2.1-rc.2')
     expect(pkg.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
     expect(pkg.dsh?.client?.platform).toBe('web')
@@ -79,15 +79,16 @@ describe('Policy extension package', () => {
       })) as PackageManifest
       const packedCompatibility = JSON.parse(execFileSync('tar', ['-xOf', tarball, 'package/compatibility.json'], {
         encoding: 'utf8',
-      })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string }
+      })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
-      expect(packed.version).toBe('1.0.2')
+      expect(packed.version).toBe('1.0.3')
       expect(packed.engines.dsh).toBe('0.2.1-rc.2')
       expect(packedCompatibility).toMatchObject({
-        policyVersion: '1.0.2',
+        policyVersion: '1.0.3',
         dshVersion: '0.2.1-rc.2',
         dshTag: 'dsh-v0.2.1-rc.2',
         dshCommit: '687f282e8625c6b8d11ff58211a90524be2e4317',
+        runtimeBuildCommit: '332895e0f7c9d4dbfb29729f5eb367fa263ff986',
       })
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
       const packedDshPeers = Object.entries(packed.peerDependencies)

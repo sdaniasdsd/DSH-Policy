@@ -24,7 +24,19 @@ fn catalog(runtime: &str, commit: &str) -> ReleaseCatalog {
                 version: "1.0.2".to_owned(),
                 runtime_version: runtime.to_owned(),
                 runtime_commit: commit.to_owned(),
+                tarball_url: String::new(),
+                sha256: String::new(),
+                size: 0,
             }],
+        }],
+        policy_extensions: vec![PolicyRelease {
+            package: "@deepseek-ai/dsh-policy-extension".to_owned(),
+            version: "1.0.3".to_owned(),
+            runtime_version: runtime.to_owned(),
+            runtime_commit: commit.to_owned(),
+            tarball_url: "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.3/dsh-policy-extension-1.0.3.tgz".to_owned(),
+            sha256: "b".repeat(64),
+            size: 1234,
         }],
     }
 }
@@ -56,7 +68,7 @@ fn enables_policy_only_for_the_exact_runtime_version_and_commit() {
             .compatible_policy
             .as_ref()
             .map(|policy| policy.version.as_str()),
-        Some("1.0.2")
+        Some("1.0.3")
     );
     assert_eq!(state.mode, ManagerMode::Official);
 }

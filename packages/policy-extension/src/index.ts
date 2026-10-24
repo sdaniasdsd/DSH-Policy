@@ -1,5 +1,6 @@
 /** Host plugin entry for the Policy extension Bundle. */
 import type { Context } from '@deepseek-ai/cordis'
+import { registerPolicyHost } from './host-entry.ts'
 
 export { POLICY_COMPATIBILITY, type PolicyCompatibility } from './compatibility.ts'
 export { TaskRun } from './task-runtime/task-run.ts'
@@ -16,7 +17,7 @@ export type * from './task-runtime/verification-types.ts'
 export type * from './task-runtime/workflow-types.ts'
 
 /**
- * Host activation placeholder; the native task service requires additional official public APIs.
+ * Register the model-facing task entry once the official services are available.
  * @param _ctx - official profile plugin context.
  */
-export function apply(_ctx: Context): void {}
+export function apply(ctx: Context): void { registerPolicyHost(ctx) }

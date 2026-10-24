@@ -85,8 +85,6 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-    env:
-      DSH_POLICY_CATALOG_PUBLIC_KEY: ${{ vars.DSH_POLICY_CATALOG_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -99,15 +97,16 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - name: Require a tagged manager release and configured trust key
+      - name: Require a tagged manager release and valid catalog
         shell: pwsh
         run: |
           if (-not $env:GITHUB_REF_NAME.StartsWith('dsh-policy-manager-v')) { throw 'Publish must run from a dsh-policy-manager-v* tag.' }
           $managerVersion = (Get-Content -Raw -LiteralPath 'apps/policy-manager/package.json' | ConvertFrom-Json).version
           if ($env:GITHUB_REF_NAME -ne "dsh-policy-manager-v$managerVersion") { throw 'The manager release tag must match the manager package version.' }
-          if ($env:DSH_POLICY_CATALOG_PUBLIC_KEY -notmatch '^[0-9a-fA-F]{64}$') { throw 'Configure the DSH_POLICY_CATALOG_PUBLIC_KEY repository variable before publishing.' }
+          $publicKey = (Get-Content -Raw -LiteralPath 'apps/policy-manager/catalog/public-key.hex').Trim()
+          if ($publicKey -notmatch '^[0-9a-fA-F]{64}$') { throw 'The pinned catalog public key is invalid.' }
           $catalog = Get-Content -Raw -LiteralPath 'apps/policy-manager/catalog/releases.json' | ConvertFrom-Json
-          if ($catalog.desktopReleases.Count -eq 0) { throw 'The verified DSH installer catalog is empty; no public manager release can be published yet.' }
+          if ($catalog.desktopReleases.Count -eq 0 -and $catalog.policyExtensions.Count -eq 0) { throw 'The verified install catalog contains neither a DSH installer nor a standalone Policy extension.' }
       - name: Install manager workspace dependencies
         run: corepack pnpm install --filter @deepseek-ai/dsh-policy-manager... --frozen-lockfile
       - name: Install stable Rust target
@@ -115,6 +114,24 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
           rustup default stable
+      - name: Verify every indexed extension asset against GitHub
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $catalog = Get-Content -Raw -LiteralPath 'apps/policy-manager/catalog/releases.json' | ConvertFrom-Json
+          foreach ($extension in $catalog.policyExtensions) {
+            $tag = "policy-extension-v$($extension.version)"
+            $asset = "dsh-policy-extension-$($extension.version).tgz"
+            $downloadDir = Join-Path $env:RUNNER_TEMP "policy-extension-$($extension.version)"
+            New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $downloadDir --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Could not fetch indexed extension asset $tag/$asset." }
+            $file = Join-Path $downloadDir $asset
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $size = (Get-Item -LiteralPath $file).Length
+            if ($hash -ne $extension.sha256.ToLowerInvariant() -or $size -ne $extension.size) { throw "Catalog hash or size does not match $tag/$asset." }
+          }
       - name: Sign catalog with protected release key
         shell: pwsh
         env:
@@ -124,7 +141,7 @@ jobs:
           node apps/policy-manager/scripts/sign-catalog.mjs apps/policy-manager/catalog/releases.json "$env:RUNNER_TEMP/manager-catalog.json.sig" --require-installable-release
           if ($LASTEXITCODE -ne 0) { throw 'The release catalog could not be signed and verified.' }
           Copy-Item -LiteralPath 'apps/policy-manager/catalog/releases.json' -Destination "$env:RUNNER_TEMP/manager-catalog.json"
-      - name: Build manager with the matching catalog trust key
+      - name: Build manager with the source-pinned catalog trust key
         run: corepack pnpm --filter @deepseek-ai/dsh-policy-manager package
       - name: Hash release assets
         shell: pwsh

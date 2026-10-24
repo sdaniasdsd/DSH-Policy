@@ -1,6 +1,8 @@
 use dsh_policy_manager_lib::backup::{BackupError, BackupStore, DataProtector, DpapiProtector};
 use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, read, write};
+#[cfg(unix)]
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::Arc;
 use tempfile::tempdir;
@@ -86,6 +88,76 @@ fn backs_up_an_uncreated_home_as_an_empty_snapshot() {
     store.restore(&record, &destination).unwrap();
     assert!(destination.is_dir());
     assert_eq!(std::fs::read_dir(destination).unwrap().count(), 0);
+}
+
+#[cfg(any(windows, unix))]
+#[test]
+fn skips_a_symlinked_node_modules_directory_and_keeps_other_files() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    let runtime_modules = home.join("runtime/node_modules");
+    create_dir_all(&runtime_modules).unwrap();
+    write(runtime_modules.join("generated.js"), b"reinstallable").unwrap();
+    create_dir_all(home.join("projects/run")).unwrap();
+    write(home.join("settings.json"), b"settings").unwrap();
+    let dependency_link = home.join("projects/run/node_modules");
+    #[cfg(windows)]
+    assert!(std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "New-Item -ItemType Junction -Path $env:DSH_TEST_LINK -Target $env:DSH_TEST_TARGET | Out-Null",
+        ])
+        .env("DSH_TEST_LINK", &dependency_link)
+        .env("DSH_TEST_TARGET", &runtime_modules)
+        .status()
+        .unwrap()
+        .success());
+    #[cfg(unix)]
+    symlink(&runtime_modules, &dependency_link).unwrap();
+    let store = store(&temp.path().join("backups"));
+
+    let record = store.create(&home).unwrap();
+    let destination = temp.path().join("restored");
+    store.restore(&record, &destination).unwrap();
+
+    assert_eq!(
+        read(destination.join("settings.json")).unwrap(),
+        b"settings"
+    );
+    assert!(!destination.join("projects/run/node_modules").exists());
+    assert!(!destination.join("runtime/node_modules").exists());
+}
+
+#[cfg(any(windows, unix))]
+#[test]
+fn rejects_symbolic_links_outside_dependency_directories() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    let target = home.join("target");
+    create_dir_all(&target).unwrap();
+    write(target.join("private.json"), b"private").unwrap();
+    let link = home.join("linked-data");
+    #[cfg(windows)]
+    assert!(std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "New-Item -ItemType Junction -Path $env:DSH_TEST_LINK -Target $env:DSH_TEST_TARGET | Out-Null",
+        ])
+        .env("DSH_TEST_LINK", &link)
+        .env("DSH_TEST_TARGET", &target)
+        .status()
+        .unwrap()
+        .success());
+    #[cfg(unix)]
+    symlink(&target, &link).unwrap();
+    let store = store(&temp.path().join("backups"));
+
+    assert!(matches!(
+        store.create(&home),
+        Err(BackupError::UnsupportedEntry(path)) if path == link
+    ));
 }
 
 #[test]

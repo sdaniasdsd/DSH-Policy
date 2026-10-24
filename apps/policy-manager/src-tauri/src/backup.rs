@@ -258,6 +258,13 @@ fn collect_files(
     for entry in entries {
         let path = entry.path();
         let metadata = fs::symlink_metadata(&path)?;
+        if path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("node_modules"))
+            && (metadata.is_dir() || metadata.file_type().is_symlink())
+        {
+            continue;
+        }
         if metadata.file_type().is_symlink() {
             return Err(BackupError::UnsupportedEntry(path));
         }
