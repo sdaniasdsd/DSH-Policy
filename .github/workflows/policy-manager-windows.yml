@@ -63,14 +63,20 @@ jobs:
       - name: Record package hashes
         shell: pwsh
         run: |
-          $packages = Get-ChildItem -LiteralPath 'apps/policy-manager/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File
-          if ($packages.Count -eq 0) { throw 'Tauri did not produce a Windows NSIS installer.' }
-          $packages | ForEach-Object { $artifact = $_; $hash = Get-FileHash -LiteralPath $artifact.FullName -Algorithm SHA256; "$($hash.Hash.ToLower())  $($artifact.Name)" } | Set-Content -LiteralPath 'apps/policy-manager/SHA256SUMS.txt' -Encoding ascii
+          $bundle = 'apps/policy-manager/src-tauri/target/release/bundle/nsis'
+          $installer = Get-ChildItem -LiteralPath $bundle -Filter '*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer.' }
+          $version = (Get-Content -Raw -LiteralPath 'apps/policy-manager/package.json' | ConvertFrom-Json).version
+          $assetName = "dsh-policy-manager-$version-windows-x64-setup.exe"
+          $assetPath = Join-Path $bundle $assetName
+          Copy-Item -LiteralPath $installer -Destination $assetPath -Force
+          $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $assetName" | Set-Content -LiteralPath 'apps/policy-manager/SHA256SUMS.txt' -Encoding ascii
       - uses: actions/upload-artifact@v7.0.1
         with:
           name: dsh-policy-manager-windows-ci
           path: |
-            apps/policy-manager/src-tauri/target/release/bundle/nsis/*.exe
+            apps/policy-manager/src-tauri/target/release/bundle/nsis/dsh-policy-manager-*-windows-x64-setup.exe
             apps/policy-manager/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
@@ -143,12 +149,22 @@ jobs:
           Copy-Item -LiteralPath 'apps/policy-manager/catalog/releases.json' -Destination "$env:RUNNER_TEMP/manager-catalog.json"
       - name: Build manager with the source-pinned catalog trust key
         run: corepack pnpm --filter @deepseek-ai/dsh-policy-manager package
+      - name: Stage ASCII-named manager installer
+        shell: pwsh
+        run: |
+          $bundle = 'apps/policy-manager/src-tauri/target/release/bundle/nsis'
+          $installer = Get-ChildItem -LiteralPath $bundle -Filter '*.exe' -File | Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer.' }
+          $version = (Get-Content -Raw -LiteralPath 'apps/policy-manager/package.json' | ConvertFrom-Json).version
+          $assetName = "dsh-policy-manager-$version-windows-x64-setup.exe"
+          Copy-Item -LiteralPath $installer -Destination (Join-Path $bundle $assetName) -Force
       - name: Hash release assets
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -LiteralPath 'apps/policy-manager/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File | Select-Object -First 1
-          if (-not $installer) { throw 'Tauri did not produce a Windows NSIS installer.' }
-          $assets = @($installer.FullName, "$env:RUNNER_TEMP/manager-catalog.json", "$env:RUNNER_TEMP/manager-catalog.json.sig")
+          $version = (Get-Content -Raw -LiteralPath 'apps/policy-manager/package.json' | ConvertFrom-Json).version
+          $installer = Join-Path 'apps/policy-manager/src-tauri/target/release/bundle/nsis' "dsh-policy-manager-$version-windows-x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) { throw 'The ASCII-named Windows NSIS installer is missing.' }
+          $assets = @($installer, "$env:RUNNER_TEMP/manager-catalog.json", "$env:RUNNER_TEMP/manager-catalog.json.sig")
           $assets | ForEach-Object { $hash = Get-FileHash -LiteralPath $_ -Algorithm SHA256; "$($hash.Hash.ToLower())  $([IO.Path]::GetFileName($_))" } | Set-Content -LiteralPath "$env:RUNNER_TEMP/SHA256SUMS.txt" -Encoding ascii
       - name: Publish manager and catalog assets
         shell: pwsh
@@ -156,12 +172,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          $installer = Get-ChildItem -LiteralPath 'apps/policy-manager/src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File | Select-Object -First 1
+          $version = (Get-Content -Raw -LiteralPath 'apps/policy-manager/package.json' | ConvertFrom-Json).version
+          $installer = Join-Path 'apps/policy-manager/src-tauri/target/release/bundle/nsis' "dsh-policy-manager-$version-windows-x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) { throw 'The ASCII-named Windows NSIS installer is missing.' }
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $installer.FullName "$env:RUNNER_TEMP/SHA256SUMS.txt" --clobber --repo $env:GITHUB_REPOSITORY
+            gh release upload $tag $installer "$env:RUNNER_TEMP/SHA256SUMS.txt" --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $tag $installer.FullName "$env:RUNNER_TEMP/SHA256SUMS.txt" --title "DSH Policy Manager $tag" --notes 'Windows x64 manager and signed catalog.' --repo $env:GITHUB_REPOSITORY
+            gh release create $tag $installer "$env:RUNNER_TEMP/SHA256SUMS.txt" --title "DSH Policy Manager $tag" --notes 'Windows x64 manager and signed catalog.' --repo $env:GITHUB_REPOSITORY
           }
           if ($LASTEXITCODE -ne 0) { throw 'The manager release assets could not be published.' }
           $catalogTag = 'dsh-policy-manager-catalog'
