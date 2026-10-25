@@ -79,8 +79,13 @@ export function compileReferencedProjects(
  * @throws If any compiler or bundler fails.
  */
 export function buildLibraryArtifacts(root: string, hostOnly: boolean, mode: CompilationMode = 'checked'): void {
-  compileReferencedProjects(root, 'host', mode)
+  // A clean checkout needs the generated Host contracts before the checked
+  // Host and Client projects can resolve their remote types. Emit Host once
+  // without checks, let tsdown generate those contracts, then do the checked
+  // build used by the release artifacts.
+  compileReferencedProjects(root, 'host', 'benchmark-emit')
   runPnpmCommand(root, ['exec', 'tsdown', '--config-loader', 'native', '--env.DSH_BUILD_FACE', 'host'])
+  compileReferencedProjects(root, 'host', mode)
   runPnpmCommand(root, ['--filter', '@deepseek-ai/dsh-desktop', 'run', 'bundle'])
   if (hostOnly) return
   compileReferencedProjects(root, 'client', mode)

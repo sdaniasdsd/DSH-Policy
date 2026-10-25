@@ -14,6 +14,7 @@ const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORDIS_PACKAGE = '@deepseek-ai/cordis'
 const NESTED_DSH_ALIAS = 'dsh-previous'
 const NESTED_DSH_PATH = `node_modules/${NESTED_DSH_ALIAS}`
+const NON_RUNTIME_DSH_PACKAGES = new Set(['@deepseek-ai/dsh-policy-manager'])
 const DEPENDENCY_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const
 
 /**
@@ -68,7 +69,8 @@ export interface DshInstallLayoutSummary {
 }
 
 function isDshPackage(name: string): boolean {
-  return name === DSH_PACKAGE || name.startsWith(`${DSH_PACKAGE}-`)
+  return !NON_RUNTIME_DSH_PACKAGES.has(name)
+    && (name === DSH_PACKAGE || name.startsWith(`${DSH_PACKAGE}-`))
 }
 
 function cloneForVersion(manifest: object, version: string): MutableRegistryManifest {
