@@ -11,7 +11,7 @@ use crate::recovery::preserved_home_path;
 use crate::transaction::{JournalError, TransitionJournal, TransitionStage};
 use serde_json::Value;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -280,12 +280,13 @@ impl ProfileModeManager {
 
         let operation_id = Uuid::new_v4();
         let installed_package = self.list_policy(installation, home)?;
+        let policy_selected = policy_bundle_enabled(&manifest)?;
         let desired_policy_version = policy.as_ref().map(|value| value.version.clone());
         let needs_change = match (&policy, &installed_package) {
-            (Some(desired), Some(installed)) => installed != &desired.version,
+            (Some(desired), Some(installed)) if installed == &desired.version => !policy_selected,
+            (Some(_), Some(_)) => true,
             (Some(_), None) => true,
-            (None, Some(_)) => true,
-            (None, None) => false,
+            (None, Some(_)) | (None, None) => policy_selected,
         };
 
         if !needs_change {
@@ -294,6 +295,24 @@ impl ProfileModeManager {
                 mode: target,
                 changed: false,
                 policy_version: desired_policy_version,
+                backup: None,
+            });
+        }
+
+        // When the exact package is already installed, mode changes only alter the
+        // selected DSH bundle. This avoids pnpm add/remove and a full DSH_HOME backup.
+        let can_toggle_in_place = match (&policy, &installed_package) {
+            (Some(desired), Some(installed)) => installed == &desired.version,
+            (None, _) => policy_selected,
+            _ => false,
+        };
+        if can_toggle_in_place {
+            set_policy_bundle_enabled(&manifest, target == ManagerMode::Policy)?;
+            return Ok(ModeChangeResult {
+                operation_id,
+                mode: target,
+                changed: true,
+                policy_version: installed_package,
                 backup: None,
             });
         }
@@ -314,10 +333,23 @@ impl ProfileModeManager {
             None
         };
 
+        // Publish or reuse the immutable, verified download before taking the full-home
+        // recovery snapshot. A repeated install must not create a large backup only to
+        // fail because the same signed artifact is already cached in the profile.
+        if let (Some(desired), Some(staging)) = (policy.as_ref(), staged_package.as_ref()) {
+            let destination = artifact_path(&profile, desired);
+            if let Err(error) = publish_staged_artifact(staging, &destination, desired) {
+                let _ = fs::remove_file(staging);
+                return Err(ModeChangeError::PackageDownload(error.to_string()));
+            }
+        }
+
         let backup = match self.backups.create(home) {
             Ok(backup) => backup,
             Err(error) => {
-                if let Some(staging) = &staged_package { let _ = fs::remove_file(staging); }
+                if let Some(staging) = &staged_package {
+                    let _ = fs::remove_file(staging);
+                }
                 return Err(error.into());
             }
         };
@@ -328,18 +360,12 @@ impl ProfileModeManager {
 
         self.journal
             .advance(operation_id, TransitionStage::ProfileUpdating)?;
-        if let (Some(desired), Some(staging)) = (policy.as_ref(), staged_package.as_ref()) {
-            let destination = artifact_path(&profile, desired);
-            if let Err(error) = publish_staged_artifact(staging, &destination, desired) {
-                let _ = fs::remove_file(staging);
-                self.rollback(operation_id, home, &backup)?;
-                return Err(ModeChangeError::PackageDownload(error.to_string()));
-            }
-        }
         let mutation_args = match policy.as_ref() {
             Some(desired) => {
                 let artifact = artifact_path(&profile, desired);
-                let filename = artifact.file_name().and_then(|name| name.to_str())
+                let filename = artifact
+                    .file_name()
+                    .and_then(|name| name.to_str())
                     .ok_or(ModeChangeError::InvalidCommandOutput)?;
                 vec![
                     "plugin".into(),
@@ -418,6 +444,17 @@ impl ProfileModeManager {
             return Err(ModeChangeError::ProfileBusy);
         }
         self.list_policy(installation, home)
+    }
+
+    pub fn inspect_policy_enabled(&self, home: &Path) -> Result<bool, ModeChangeError> {
+        let manifest = home.join("profiles/desktop/package.json");
+        if !manifest.is_file() {
+            return Err(ModeChangeError::UninitializedProfile);
+        }
+        if manifest.with_file_name("package.json.lock").exists() {
+            return Err(ModeChangeError::ProfileBusy);
+        }
+        policy_bundle_enabled(&manifest)
     }
 
     fn compatible_policy(&self, installation: &InstalledDsh) -> Option<PolicyRelease> {
@@ -539,6 +576,84 @@ impl ProfileModeManager {
     }
 }
 
+fn policy_bundle_enabled(manifest: &Path) -> Result<bool, ModeChangeError> {
+    let metadata = fs::symlink_metadata(manifest)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(ModeChangeError::InvalidCommandOutput);
+    }
+    let bytes = fs::read(manifest)?;
+    let value: Value =
+        serde_json::from_slice(&bytes).map_err(|_| ModeChangeError::InvalidCommandOutput)?;
+    let bundles = value
+        .get("dsh")
+        .and_then(Value::as_object)
+        .and_then(|dsh| dsh.get("profile"))
+        .and_then(Value::as_object)
+        .and_then(|profile| profile.get("bundles"));
+    let Some(bundles) = bundles else {
+        return Ok(false);
+    };
+    let bundles = bundles
+        .as_array()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    Ok(bundles
+        .iter()
+        .any(|bundle| bundle.as_str() == Some(POLICY_PACKAGE)))
+}
+
+fn set_policy_bundle_enabled(manifest: &Path, enabled: bool) -> Result<bool, ModeChangeError> {
+    let metadata = fs::symlink_metadata(manifest)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return Err(ModeChangeError::InvalidCommandOutput);
+    }
+    let bytes = fs::read(manifest)?;
+    let mut value: Value =
+        serde_json::from_slice(&bytes).map_err(|_| ModeChangeError::InvalidCommandOutput)?;
+    let root = value
+        .as_object_mut()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    let dsh = root
+        .entry("dsh")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    let profile = dsh
+        .entry("profile")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    let bundles = profile
+        .entry("bundles")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    let selected = bundles
+        .iter()
+        .any(|bundle| bundle.as_str() == Some(POLICY_PACKAGE));
+    if selected == enabled {
+        return Ok(false);
+    }
+    if enabled {
+        bundles.push(Value::String(POLICY_PACKAGE.to_owned()));
+    } else {
+        bundles.retain(|bundle| bundle.as_str() != Some(POLICY_PACKAGE));
+    }
+
+    let mut serialized =
+        serde_json::to_vec_pretty(&value).map_err(|_| ModeChangeError::InvalidCommandOutput)?;
+    serialized.push(b'\n');
+    let parent = manifest
+        .parent()
+        .ok_or(ModeChangeError::InvalidCommandOutput)?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
+    staged.write_all(&serialized)?;
+    staged.as_file().sync_all()?;
+    staged
+        .persist(manifest)
+        .map_err(|error| ModeChangeError::Io(error.error))?;
+    Ok(true)
+}
+
 fn safe_policy_version(value: &str) -> bool {
     !value.is_empty()
         && value.as_bytes()[0].is_ascii_digit()
@@ -549,20 +664,41 @@ fn safe_policy_version(value: &str) -> bool {
 
 fn verify_installed_package(profile: &Path, release: &PolicyRelease) -> bool {
     let package_dir = profile.join("node_modules/@deepseek-ai/dsh-policy-extension");
-    let Ok(resolved) = package_dir.canonicalize() else { return false; };
-    let Ok(node_modules) = profile.join("node_modules").canonicalize() else { return false; };
-    if !resolved.starts_with(&node_modules) { return false; }
-    let Ok(package_bytes) = fs::read(resolved.join("package.json")) else { return false; };
-    let Ok(package) = serde_json::from_slice::<Value>(&package_bytes) else { return false; };
+    let Ok(resolved) = package_dir.canonicalize() else {
+        return false;
+    };
+    let Ok(node_modules) = profile.join("node_modules").canonicalize() else {
+        return false;
+    };
+    if !resolved.starts_with(&node_modules) {
+        return false;
+    }
+    let Ok(package_bytes) = fs::read(resolved.join("package.json")) else {
+        return false;
+    };
+    let Ok(package) = serde_json::from_slice::<Value>(&package_bytes) else {
+        return false;
+    };
     let package_matches = package.get("name").and_then(Value::as_str) == Some(POLICY_PACKAGE)
         && package.get("version").and_then(Value::as_str) == Some(release.version.as_str())
-        && package.pointer("/engines/dsh").and_then(Value::as_str) == Some(release.runtime_version.as_str());
-    if !package_matches { return false; }
-    let Ok(compatibility_bytes) = fs::read(resolved.join("compatibility.json")) else { return false; };
-    let Ok(compatibility) = serde_json::from_slice::<Value>(&compatibility_bytes) else { return false; };
+        && package.pointer("/engines/dsh").and_then(Value::as_str)
+            == Some(release.runtime_version.as_str());
+    if !package_matches {
+        return false;
+    }
+    let Ok(compatibility_bytes) = fs::read(resolved.join("compatibility.json")) else {
+        return false;
+    };
+    let Ok(compatibility) = serde_json::from_slice::<Value>(&compatibility_bytes) else {
+        return false;
+    };
     compatibility.get("policyVersion").and_then(Value::as_str) == Some(release.version.as_str())
-        && compatibility.get("dshVersion").and_then(Value::as_str) == Some(release.runtime_version.as_str())
-        && compatibility.get("runtimeBuildCommit").and_then(Value::as_str) == Some(release.runtime_commit.as_str())
+        && compatibility.get("dshVersion").and_then(Value::as_str)
+            == Some(release.runtime_version.as_str())
+        && compatibility
+            .get("runtimeBuildCommit")
+            .and_then(Value::as_str)
+            == Some(release.runtime_commit.as_str())
 }
 
 fn parse_policy_version(output: &str) -> Result<Option<String>, ModeChangeError> {

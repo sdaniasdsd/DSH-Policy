@@ -79,11 +79,9 @@ impl ReleaseCatalog {
         runtime_version: &str,
         runtime_commit: &str,
     ) -> Option<&PolicyRelease> {
-        self.policy_extensions
-            .iter()
-            .find(|policy| {
-                policy.runtime_version == runtime_version && policy.runtime_commit == runtime_commit
-            })
+        self.policy_extensions.iter().find(|policy| {
+            policy.runtime_version == runtime_version && policy.runtime_commit == runtime_commit
+        })
     }
 
     fn validate(&self) -> Result<(), CatalogError> {
@@ -158,11 +156,15 @@ impl ReleaseCatalog {
                     extension.runtime_commit.as_str(),
                 ))
             {
-                return invalid("Policy extension release identity, asset, or compatibility is invalid");
+                return invalid(
+                    "Policy extension release identity, asset, or compatibility is invalid",
+                );
             }
         }
         if self.schema_version == 2 && self.policy_extensions.is_empty() {
-            return invalid("catalog schema version 2 requires at least one standalone Policy extension");
+            return invalid(
+                "catalog schema version 2 requires at least one standalone Policy extension",
+            );
         }
         Ok(())
     }

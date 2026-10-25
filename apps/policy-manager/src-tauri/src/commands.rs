@@ -245,7 +245,10 @@ impl ManagerServices {
                 );
                 match manager.inspect_policy_version(installation, home) {
                     Ok(version) => {
-                        let mode = if version.is_some() {
+                        let mode = if manager
+                            .inspect_policy_enabled(home)
+                            .unwrap_or(settings.requested_mode == ManagerMode::Policy)
+                        {
                             ManagerMode::Policy
                         } else {
                             ManagerMode::Official
@@ -840,7 +843,7 @@ fn set_mode_inner(
         Some(InstallationEdition::Policy)
     ) {
         return Err(
-            "策略整合版不能通过增删独立增强包切换官方模式，请选择官方 DSH 安装。".to_owned(),
+            "策略独立包不能通过增删增强包切换官方模式，请选择官方 DSH 安装。".to_owned(),
         );
     }
     let installation = snapshot
@@ -1090,7 +1093,7 @@ fn install_release_inner(
         Some(InstallationEdition::Policy)
     ) {
         return Err(
-            "当前选择的是策略整合版。官方安装事务只适用于官方 DSH，请先选择官方安装。".to_owned(),
+            "当前选择的是策略独立包。官方安装事务只适用于官方 DSH，请先选择官方安装。".to_owned(),
         );
     }
     validate_official_upgrade_target(

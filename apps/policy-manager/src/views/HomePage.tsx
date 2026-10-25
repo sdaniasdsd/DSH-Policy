@@ -17,7 +17,7 @@ export function HomePage({ state, onLaunch, onChooseHome, onSelectInstallation, 
     && state.policyCompatible
     && state.policyVersion !== null
     && state.policyVersion === state.compatiblePolicy?.version
-  const modeLabel = state.installationEdition === 'policy' ? '策略整合版' : !state.installed ? '未选择安装' : exactPolicyActive
+  const modeLabel = state.installationEdition === 'policy' ? '策略独立版' : !state.installed ? '未选择安装' : exactPolicyActive
     ? '策略模式'
     : state.policyVersion
       ? '策略包需要处理'
@@ -38,12 +38,12 @@ export function HomePage({ state, onLaunch, onChooseHome, onSelectInstallation, 
 
       <article className="card detail-card">
         <h3>本机安装与管理目标</h3>
-        <p className="muted">自动检测官方版与策略整合版；可选择要管理和启动的安装。</p>
+        <p className="muted">自动检测官方版与策略独立版；可选择要管理和启动的安装。</p>
         {state.selectedInstallationPath && <div className="saved-selection"><div><p className="muted">已保存的管理目标{!state.installed ? '（当前不可用）' : ''}</p><code>{state.selectedInstallationPath}</code></div><button className="button" disabled={busy} onClick={onResetSelection}>恢复自动选择</button></div>}
         {state.installations.length ? <ul className="installation-list">{state.installations.map((item) => {
           const selected = item.installed.installLocation === state.installed?.installLocation
           return <li key={item.installed.installLocation}>
-            <div className="installation-copy"><strong>{item.displayName}</strong><span className="muted">{item.edition === 'official' ? '官方版' : '策略整合应用'} · {item.installed.desktopVersion}</span><code>{item.installed.installLocation}</code><span className="muted">运行时 {item.installed.runtimeVersion ?? '未知'} · 提交 {item.installed.runtimeCommit ?? '无法读取'}{item.installed.buildDirty ? ' · 含未提交改动' : ''}</span></div>
+            <div className="installation-copy"><strong>{item.displayName}</strong><span className="muted">{item.edition === 'official' ? '官方版' : '策略独立应用'} · {item.installed.desktopVersion}</span><code>{item.installed.installLocation}</code><span className="muted">运行时 {item.installed.runtimeVersion ?? '未知'} · 提交 {item.installed.runtimeCommit ?? '无法读取'}{item.installed.buildDirty ? ' · 含未提交改动' : ''}</span></div>
             <button className={`button${selected ? ' button--selected' : ''}`} aria-label={`管理 ${item.displayName}`} disabled={busy || selected} onClick={() => onSelectInstallation(item.installed.installLocation)}>{selected ? '当前管理目标' : '选择管理'}</button>
           </li>
         })}</ul> : <p className="muted">未检测到 DSH 安装，请安装后重新检测。</p>}

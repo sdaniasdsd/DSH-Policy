@@ -7,8 +7,8 @@ pub mod installed_dsh;
 pub mod installer;
 pub mod launcher;
 pub mod manager_state;
-pub mod profile_mode;
 pub mod policy_package;
+pub mod profile_mode;
 pub mod recovery;
 pub mod transaction;
 

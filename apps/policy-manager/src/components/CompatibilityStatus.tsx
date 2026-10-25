@@ -14,7 +14,7 @@ function unavailableReasonZh(reason: string | null | undefined) {
 
 export function CompatibilityStatus({ state }: { state: ManagerSnapshot }) {
   if (state.installationEdition === 'policy') {
-    return <div className="compatibility compatibility--muted">当前为策略整合版，发布关联请查看版本页。</div>
+    return <div className="compatibility compatibility--muted">当前为策略独立版，发布关联请查看版本页。</div>
   }
   if (!state.installed) {
     return <div className="compatibility compatibility--muted">未检测到官方 DSH 桌面版。</div>

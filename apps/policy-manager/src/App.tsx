@@ -7,6 +7,7 @@ import { OperationProgress } from './components/OperationProgress'
 import { InstallationGuide } from './components/InstallationGuide'
 import { tauriManagerApi } from './manager-api'
 import type { ActivityItem, BackupItem, DesktopRelease, GithubReleaseIndex, ManagerApi, ManagerMode, ManagerSnapshot, ViewId } from './manager-types'
+import packageMetadata from '../package.json'
 import './manager.css'
 
 export type { ManagerApi } from './manager-types'
@@ -176,7 +177,7 @@ export function App({ api = tauriManagerApi }: { api?: ManagerApi }) {
             {view === item.id && <span className="nav-indicator" />}
           </button>)}
         </nav>
-        <div className="sidebar-footer"><span className="connection-dot" />本机管理器<span>v1.0.6</span></div>
+        <div className="sidebar-footer"><span className="connection-dot" />本机管理器<span>v{packageMetadata.version}</span></div>
       </aside>
       <div className="main-column">
         <h1 className="sr-only">DSH 策略管理器</h1>

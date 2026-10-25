@@ -159,11 +159,15 @@ impl GithubReleasesClient {
             for release in raw {
                 let release = resolve_release_source(release, &source_tags);
                 if let Some(extension) = policy_extension_release(&release) {
-                    if tags.insert(extension.tag.clone()) { policy_extensions.push(extension); }
+                    if tags.insert(extension.tag.clone()) {
+                        policy_extensions.push(extension);
+                    }
                     continue;
                 }
                 if let Some(policy) = policy_release(release, &bases) {
-                    if tags.insert(policy.tag.clone()) { releases.push(policy); }
+                    if tags.insert(policy.tag.clone()) {
+                        releases.push(policy);
+                    }
                 }
             }
             if complete {
@@ -342,36 +346,67 @@ fn policy_release(release: ApiRelease, bases: &[PolicyBaseRecord]) -> Option<Git
 }
 
 fn policy_extension_release(release: &ApiRelease) -> Option<GithubPolicyExtensionRelease> {
-    if release.draft { return None; }
+    if release.draft {
+        return None;
+    }
     let version = release.tag_name.strip_prefix("policy-extension-v")?;
-    if version.is_empty() || !safe_path_component(version) { return None; }
+    if version.is_empty() || !safe_path_component(version) {
+        return None;
+    }
     let expected_page = format!(
         "https://github.com/{POLICY_REPOSITORY}/releases/tag/{}",
         release.tag_name
     );
-    if release.html_url != expected_page { return None; }
+    if release.html_url != expected_page {
+        return None;
+    }
     let expected_name = format!("dsh-policy-extension-{version}.tgz");
     let tarball = release.assets.iter().find_map(|asset| {
-        if asset.name != expected_name || !safe_path_component(&asset.name) { return None; }
+        if asset.name != expected_name || !safe_path_component(&asset.name) {
+            return None;
+        }
         let expected_url = format!(
             "https://github.com/{POLICY_REPOSITORY}/releases/download/{}/{}",
             release.tag_name, asset.name
         );
-        if asset.browser_download_url != expected_url { return None; }
-        let sha256 = asset.digest.as_deref()
+        if asset.browser_download_url != expected_url {
+            return None;
+        }
+        let sha256 = asset
+            .digest
+            .as_deref()
             .and_then(|digest| digest.strip_prefix("sha256:"))
             .filter(|digest| is_hex(digest, 64))
             .map(str::to_ascii_lowercase);
-        Some(GithubInstaller { name: asset.name.clone(), url: asset.browser_download_url.clone(), sha256, size: asset.size })
+        Some(GithubInstaller {
+            name: asset.name.clone(),
+            url: asset.browser_download_url.clone(),
+            sha256,
+            size: asset.size,
+        })
     });
-    let source_commit = release.target_commitish.as_deref().filter(|value| is_hex(value, 40)).map(str::to_owned);
+    let source_commit = release
+        .target_commitish
+        .as_deref()
+        .filter(|value| is_hex(value, 40))
+        .map(str::to_owned);
     Some(GithubPolicyExtensionRelease {
-        tag: release.tag_name.clone(), version: version.to_owned(),
+        tag: release.tag_name.clone(),
+        version: version.to_owned(),
         package: "@deepseek-ai/dsh-policy-extension".to_owned(),
-        name: release.name.as_deref().filter(|name| !name.trim().is_empty()).unwrap_or(&release.tag_name).to_owned(),
-        published_at: release.published_at.clone(), prerelease: release.prerelease,
-        html_url: release.html_url.clone(), source_commit,
-        runtime_version: None, runtime_commit: None, tarball,
+        name: release
+            .name
+            .as_deref()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or(&release.tag_name)
+            .to_owned(),
+        published_at: release.published_at.clone(),
+        prerelease: release.prerelease,
+        html_url: release.html_url.clone(),
+        source_commit,
+        runtime_version: None,
+        runtime_commit: None,
+        tarball,
     })
 }
 
@@ -435,7 +470,12 @@ mod tests {
     fn rejects_an_extension_asset_with_a_different_release_path() {
         let mut release = extension_release();
         release.assets[0].browser_download_url = "https://example.invalid/payload.tgz".into();
-        assert!(policy_extension_release(&release).unwrap().tarball.is_none());
+        assert!(
+            policy_extension_release(&release)
+                .unwrap()
+                .tarball
+                .is_none()
+        );
     }
 
     fn release() -> ApiRelease {

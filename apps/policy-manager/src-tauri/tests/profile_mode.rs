@@ -3,16 +3,16 @@ use dsh_policy_manager_lib::catalog::{DesktopRelease, PolicyRelease, ReleaseCata
 use dsh_policy_manager_lib::installed_dsh::InstalledDsh;
 use dsh_policy_manager_lib::installer::DesktopProcessProbe;
 use dsh_policy_manager_lib::manager_state::ManagerMode;
+use dsh_policy_manager_lib::policy_package::PolicyPackageFetcher;
 use dsh_policy_manager_lib::profile_mode::{
     CliOutput, DesktopCliRunner, ModeChangeError, ProfileModeManager,
 };
-use dsh_policy_manager_lib::policy_package::PolicyPackageFetcher;
 use dsh_policy_manager_lib::transaction::{TransitionJournal, TransitionStage};
+use sha2::{Digest, Sha256};
 use std::fs::{create_dir_all, read, write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use uuid::Uuid;
 
@@ -77,7 +77,8 @@ impl DesktopCliRunner for Runner {
             args: args.to_vec(),
         });
         if args.iter().any(|argument| argument == "add") {
-            let installed_package = home.join("profiles/desktop/node_modules/@deepseek-ai/dsh-policy-extension");
+            let installed_package =
+                home.join("profiles/desktop/node_modules/@deepseek-ai/dsh-policy-extension");
             create_dir_all(&installed_package).unwrap();
             write(installed_package.join("package.json"), br#"{"name":"@deepseek-ai/dsh-policy-extension","version":"1.0.3","engines":{"dsh":"0.2.1-rc.2"}}"#).unwrap();
             write(installed_package.join("compatibility.json"), format!(r#"{{"policyVersion":"1.0.3","dshVersion":"0.2.1-rc.2","runtimeBuildCommit":"{COMMIT}"}}"#)).unwrap();
@@ -110,7 +111,10 @@ fn installed() -> InstalledDsh {
 }
 
 fn catalog() -> ReleaseCatalog {
-    let sha256 = Sha256::digest(PACKAGE_BYTES).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    let sha256 = Sha256::digest(PACKAGE_BYTES)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     ReleaseCatalog {
         schema_version: 2,
         catalog_revision: 1,
@@ -163,7 +167,8 @@ fn manager(temp: &Path, runner: Arc<Runner>, probe: Arc<Probe>) -> ProfileModeMa
         runner,
         probe,
         Duration::from_millis(50),
-    ).with_package_fetcher(Arc::new(Fetcher))
+    )
+    .with_package_fetcher(Arc::new(Fetcher))
 }
 
 fn initialize_home(home: &Path) {
@@ -229,28 +234,136 @@ fn installs_the_exact_policy_version_and_rechecks_the_profile() {
             .all(|call| call.home == home && call.installation == installed().install_location)
     );
     assert!(result.backup.as_ref().unwrap().archive_path.exists());
-    assert_eq!(read(home.join("profiles/desktop/.dsh-policy-artifacts").join(format!("dsh-policy-extension-1.0.3-{}.tgz", Sha256::digest(PACKAGE_BYTES).iter().map(|byte| format!("{byte:02x}")).collect::<String>()))).unwrap(), PACKAGE_BYTES);
+    assert_eq!(
+        read(
+            home.join("profiles/desktop/.dsh-policy-artifacts")
+                .join(format!(
+                    "dsh-policy-extension-1.0.3-{}.tgz",
+                    Sha256::digest(PACKAGE_BYTES)
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect::<String>()
+                ))
+        )
+        .unwrap(),
+        PACKAGE_BYTES
+    );
 }
 
 #[test]
-fn removes_only_the_policy_bundle_for_official_mode() {
+fn retries_policy_install_by_reusing_the_existing_verified_artifact() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("home");
     initialize_home(&home);
+    let digest = Sha256::digest(PACKAGE_BYTES)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let artifact = home
+        .join("profiles/desktop/.dsh-policy-artifacts")
+        .join(format!("dsh-policy-extension-1.0.3-{digest}.tgz"));
+    create_dir_all(artifact.parent().unwrap()).unwrap();
+    write(&artifact, PACKAGE_BYTES).unwrap();
+
     let policy_output = policy("1.0.3");
     let runner = Arc::new(Runner::new(vec![
-        output(0, &policy_output),
-        output(0, ""),
         output(0, no_policy()),
+        output(0, ""),
+        output(0, &policy_output),
     ]));
+    let result = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
+        .apply(ManagerMode::Policy, &installed(), &home)
+        .unwrap();
+
+    assert!(result.changed);
+    assert_eq!(result.policy_version.as_deref(), Some("1.0.3"));
+    assert_eq!(read(&artifact).unwrap(), PACKAGE_BYTES);
+    assert_eq!(runner.calls.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn rejects_a_corrupt_existing_artifact_before_creating_a_backup() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    initialize_home(&home);
+    let digest = Sha256::digest(PACKAGE_BYTES)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let artifact = home
+        .join("profiles/desktop/.dsh-policy-artifacts")
+        .join(format!("dsh-policy-extension-1.0.3-{digest}.tgz"));
+    create_dir_all(artifact.parent().unwrap()).unwrap();
+    write(&artifact, b"corrupt cached package").unwrap();
+
+    let runner = Arc::new(Runner::new(vec![output(0, no_policy())]));
+    let error = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
+        .apply(ManagerMode::Policy, &installed(), &home)
+        .unwrap_err();
+
+    assert!(matches!(error, ModeChangeError::PackageDownload(_)));
+    assert!(!temp.path().join("backups").exists());
+    assert_eq!(runner.calls.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn disables_only_the_policy_bundle_for_official_mode() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    initialize_home(&home);
+    write(
+        home.join("profiles/desktop/package.json"),
+        format!(
+            r#"{{"name":"desktop","dependencies":{{"{PACKAGE}":"1.0.3"}},"dsh":{{"profile":{{"bundles":["@deepseek-ai/dsh-base","{PACKAGE}"]}}}}}}"#
+        ),
+    )
+    .unwrap();
+    let policy_output = policy("1.0.3");
+    let runner = Arc::new(Runner::new(vec![output(0, &policy_output)]));
     let result = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
         .apply(ManagerMode::Official, &installed(), &home)
         .unwrap();
     assert!(result.changed);
+    assert!(result.backup.is_none());
+    assert_eq!(runner.calls.lock().unwrap().len(), 1);
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&read(home.join("profiles/desktop/package.json")).unwrap()).unwrap();
+    assert_eq!(manifest["dependencies"][PACKAGE], "1.0.3");
     assert_eq!(
-        runner.calls.lock().unwrap()[1].args,
-        vec!["plugin", "--profile", "desktop", "remove", PACKAGE]
+        manifest["dsh"]["profile"]["bundles"],
+        serde_json::json!(["@deepseek-ai/dsh-base"])
     );
+}
+
+#[test]
+fn enables_an_already_installed_policy_without_running_pnpm_or_downloading() {
+    let temp = tempdir().unwrap();
+    let home = temp.path().join("home");
+    initialize_home(&home);
+    write(
+        home.join("profiles/desktop/package.json"),
+        format!(
+            r#"{{"name":"desktop","dependencies":{{"{PACKAGE}":"1.0.3"}},"dsh":{{"profile":{{"bundles":["@deepseek-ai/dsh-base"]}}}}}}"#
+        ),
+    )
+    .unwrap();
+    let runner = Arc::new(Runner::new(vec![output(0, &policy("1.0.3"))]));
+
+    let result = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
+        .apply(ManagerMode::Policy, &installed(), &home)
+        .unwrap();
+
+    assert!(result.changed);
+    assert!(result.backup.is_none());
+    assert_eq!(runner.calls.lock().unwrap().len(), 1);
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&read(home.join("profiles/desktop/package.json")).unwrap()).unwrap();
+    assert_eq!(manifest["dependencies"][PACKAGE], "1.0.3");
+    assert_eq!(
+        manifest["dsh"]["profile"]["bundles"],
+        serde_json::json!(["@deepseek-ai/dsh-base", PACKAGE])
+    );
+    assert!(!temp.path().join("backups").exists());
 }
 
 #[test]
@@ -258,6 +371,13 @@ fn reports_no_change_when_policy_is_already_at_the_exact_version() {
     let temp = tempdir().unwrap();
     let home = temp.path().join("home");
     initialize_home(&home);
+    write(
+        home.join("profiles/desktop/package.json"),
+        format!(
+            r#"{{"name":"desktop","dependencies":{{"{PACKAGE}":"1.0.3"}},"dsh":{{"profile":{{"bundles":["{PACKAGE}"]}}}}}}"#
+        ),
+    )
+    .unwrap();
     let runner = Arc::new(Runner::new(vec![output(0, &policy("1.0.3"))]));
     let result = manager(temp.path(), runner.clone(), Arc::new(Probe(false)))
         .apply(ManagerMode::Policy, &installed(), &home)
