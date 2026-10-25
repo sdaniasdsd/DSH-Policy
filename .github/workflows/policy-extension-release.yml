@@ -44,6 +44,8 @@ jobs:
         run: corepack pnpm install --frozen-lockfile
       - name: Build official DSH host contracts required by the extension
         run: npm run build:lib:host
+      - name: Build official DSH client contracts required by the extension
+        run: npm run typecheck:contracts-ready
       - name: Build policy extension
         run: npm --prefix packages/policy-extension run build
       - name: Run extension tests
