@@ -17,7 +17,7 @@ interface PackageManifest {
   name: string
   version: string
   engines: { dsh: string }
-  dsh: { bundle: { patch: string }; client: { platform: string } }
+  dsh: { bundle: { patch: string }; client: { platform: string; inject?: string[] } }
   exports: Record<string, { default: string } | string>
   peerDependencies: Record<string, string>
   devDependencies: Record<string, string>
@@ -32,10 +32,16 @@ describe('Policy extension package', () => {
   it('packageMetadataDeclaresAnOfficialBundle', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
-    expect(pkg.version).toBe('1.0.3')
+    expect(pkg.version).toBe('1.0.4')
     expect(pkg.engines?.dsh).toBe('0.2.1-rc.2')
     expect(pkg.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
     expect(pkg.dsh?.client?.platform).toBe('web')
+    expect(pkg.dsh.client.inject).toEqual([
+      '@deepseek-ai/dsh-client-locale',
+      '@deepseek-ai/dsh-client-ui-conversation',
+      '@deepseek-ai/dsh-client-ui-renderer',
+      '@deepseek-ai/dsh-client-ui-settings',
+    ])
     expect(pkg.exports['.']).toMatchObject({ default: './lib/index.js' })
     expect(pkg.exports['./client']).toMatchObject({ default: './lib/client.js' })
     const patch = yaml.load(readFileSync(new URL('../dsh.bundle.patch.yml', import.meta.url), 'utf8'), {
@@ -81,16 +87,23 @@ describe('Policy extension package', () => {
         encoding: 'utf8',
       })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
-      expect(packed.version).toBe('1.0.3')
+      expect(packed.version).toBe('1.0.4')
       expect(packed.engines.dsh).toBe('0.2.1-rc.2')
       expect(packedCompatibility).toMatchObject({
-        policyVersion: '1.0.3',
+        policyVersion: '1.0.4',
         dshVersion: '0.2.1-rc.2',
         dshTag: 'dsh-v0.2.1-rc.2',
         dshCommit: '687f282e8625c6b8d11ff58211a90524be2e4317',
         runtimeBuildCommit: '332895e0f7c9d4dbfb29729f5eb367fa263ff986',
       })
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
+      const client = execFileSync('tar', ['-xOf', tarball, 'package/lib/client.js'], {
+        encoding: 'utf8',
+      })
+      expect(client).toContain('policy.style')
+      expect(client).toContain('策略风格')
+      expect(client).toContain('superpowers-style')
+      expect(client).toContain('exports.inject')
       const packedDshPeers = Object.entries(packed.peerDependencies)
         .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
       expect(packedDshPeers.map(([name]) => name).sort()).toEqual([...packedCompatibility.requiredDshPeers].sort())

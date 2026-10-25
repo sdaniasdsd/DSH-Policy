@@ -6,33 +6,30 @@ import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowRun, WorkflowRunI
 import { TaskRun } from './task-runtime/task-run.ts'
 import { StrategyRegistry } from './task-runtime/strategy-registry.ts'
 import { createWorkflowExecutor } from './workflow-executor.ts'
+import type { PolicyStyleId } from './policy-config-types.ts'
+import type { HostPolicyExtensionConfig } from './config.ts'
+import { createStylePlan, POLICY_STYLES } from './style-plans.ts'
 
 declare module '@deepseek-ai/dsh-jobs' {
   interface JobKindMap { policy: 'policy' }
 }
-const STRATEGY_ID = 'policy-default'
 const MAX_RESULT_BYTES = 256 * 1024
 const MAX_CONCURRENT = 1
-const MAX_TASKS = 1
+const MAX_TASKS = 5
 const SCRIPT = 'const result = await agent(args.prompt)\nif (result === null) throw new Error("Policy worker failed")\nreturn result'
 
-function makeRegistry(): StrategyRegistry {
+function makeRegistry(style: PolicyStyleId, task: string): StrategyRegistry {
   const registry = new StrategyRegistry()
   registry.register({
-    id: STRATEGY_ID,
-    description: 'Execute one policy-selected stage through the official DSH workflow engine.',
-    decide: () => ({
-      name: STRATEGY_ID,
-      stages: [{ name: 'execution', serial: true, tasks: [{
-        label: 'worker', executor: 'workflow', instruction: 'Complete the user task. Follow repository and workspace instructions.',
-      }] }],
-    }),
+    id: style,
+    description: POLICY_STYLES.find(row => row.id === style)!.label,
+    decide: () => createStylePlan(style, task),
   })
   return registry
 }
 
 /** Register a visible policy tool and attach Job / Workflow observation to its lifecycle. */
-export function registerPolicyHost(ctx: Context): void {
+export function registerPolicyHost(ctx: Context, config: HostPolicyExtensionConfig): void {
   const activeRuns = new Map<string, JobHandle>()
   ctx.on('workflow/phase', (info, title) => {
     const job = activeRuns.get(info.id)
@@ -67,17 +64,17 @@ export function registerPolicyHost(ctx: Context): void {
       async execute(args, exec) {
         const parent = exec.agent
         if (parent === undefined) throw new Error('policy_run requires a calling agent')
-        const registry = makeRegistry()
-        const captured = registry.capture(STRATEGY_ID, { task: args.task })
+        const style = config.style.get()
+        const registry = makeRegistry(style, args.task)
+        const captured = registry.capture(style, { task: args.task })
         const jobId = scope.jobs.start({
-          kind: 'policy', label: `${STRATEGY_ID}: ${args.task.slice(0, 120)}`, owner: parent.id,
-          toolCall: { callId: exec.callId, rootCallId: exec.rootCallId },
+          kind: 'policy', label: `${style}: ${args.task.slice(0, 120)}`, owner: parent.id,
           run(job) {
             job.updateProgress('Starting policy workflow')
             job.append('Policy strategy accepted; starting official DSH workflow.\n', { channel: 'log' })
             const execute = createWorkflowExecutor(scope.workflowEngine, parent as unknown as WorkflowStartRequest['parent'], (_step, prompt) => ({
               script: SCRIPT,
-              meta: { name: STRATEGY_ID, description: 'Single-stage DSH Policy task execution.' },
+              meta: { name: style, description: 'Policy style stage executed by the official DSH workflow.' },
               args: { prompt }, maxTotalAgents: 1,
             }), (workflow: WorkflowRun) => {
               activeRuns.set(workflow.id, job)
@@ -105,7 +102,7 @@ export function registerPolicyHost(ctx: Context): void {
             return hooks
           },
         })
-        return { jobId, strategy: STRATEGY_ID }
+        return { jobId, strategy: style }
       },
     }))
   })

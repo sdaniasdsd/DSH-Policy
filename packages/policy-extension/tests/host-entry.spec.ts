@@ -33,16 +33,16 @@ describe('Policy Host entry', () => {
       },
     }
 
-    registerPolicyHost(ctx as never)
+    registerPolicyHost(ctx as never, { style: 'codex-style' })
     expect(registered.map(({ name }) => name)).toEqual(['policy_run'])
     const receipt = await registered[0]!.execute({ task: 'Implement the requested feature' }, {
       agent: owner,
       callId: 'call-1', rootCallId: 'call-1', signal: new AbortController().signal,
     })
-    expect(receipt).toMatchObject({ jobId: job.id, strategy: 'policy-default' })
-    expect(spec).toMatchObject({ kind: 'policy', label: 'policy-default: Implement the requested feature', owner: owner.id })
+    expect(receipt).toMatchObject({ jobId: job.id, strategy: 'codex-style' })
+    expect(spec).toMatchObject({ kind: 'policy', label: 'codex-style: Implement the requested feature', owner: owner.id })
     expect(workflowRequest).toMatchObject({
-      meta: { name: 'policy-default' },
+      meta: { name: 'codex-style' },
       args: { prompt: expect.stringContaining('Implement the requested feature') },
       parent: owner,
     })
@@ -58,5 +58,35 @@ describe('Policy Host entry', () => {
 
     result.resolve({ value: 'done', stopReason: 'completed', agentsStarted: 1 })
     expect((await hooks!.done).status).toBe('completed')
+  })
+
+  it('uses the selected style for newly accepted policy jobs', async () => {
+    const registered: { name: string; execute: (args: { task: string }, exec: any) => Promise<unknown> }[] = []
+    const job = { id: 'policy-1234567890abcdef' as JobHandle['id'], append() {}, updateProgress() {} }
+    let label = ''
+    const result = Promise.withResolvers<WorkflowResult>()
+    const started = Promise.withResolvers<void>()
+    let workflowRequest: WorkflowStartRequest | undefined
+    const owner = { id: 'session-owner' } as WorkflowStartRequest['parent']
+    const ctx = {
+      inject(_deps: string[], callback: (context: unknown) => void) { callback(this) },
+      tools: { register(tool: (typeof registered)[number]) { registered.push(tool) } },
+      jobs: { start(input: JobSpec) { label = input.label; input.run(job); return job.id } },
+      workflowEngine: { start(input: WorkflowStartRequest) {
+        workflowRequest = input
+        started.resolve()
+        return { id: 'workflow-1' as WorkflowRun['id'], meta: input.meta, result: result.promise, cancel() {}, dispose: async () => {} }
+      } },
+      on() { return () => {} },
+    }
+    registerPolicyHost(ctx as never, { style: 'superpowers-style' })
+    const receipt = await registered[0]!.execute({ task: 'Implement a verified change' }, {
+      agent: owner, callId: 'call-1', rootCallId: 'call-1', signal: new AbortController().signal,
+    })
+    await started.promise
+    expect(receipt).toMatchObject({ jobId: job.id, strategy: 'superpowers-style' })
+    expect(label).toContain('superpowers-style')
+    expect(workflowRequest?.meta.name).toBe('superpowers-style')
+    result.resolve({ value: 'done', stopReason: 'completed', agentsStarted: 1 })
   })
 })

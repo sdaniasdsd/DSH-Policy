@@ -19,9 +19,9 @@ The Host export provides `StrategyRegistry`, `captureStrategy`, and `TaskRun`. A
 
 ## Model Experience
 
-The Host entry registers a `policy_run` tool. It captures the built-in `policy-default` strategy, creates one owned `policy` Job, and executes its single stage through the official `ctx.workflowEngine`. The tool returns a Job id immediately. The Job progress line follows workflow phases; its observer log streams the phase, `workflow/log`, and child start/end events, so the official DSH job surface can show ongoing work. Final output is retained in the Job result. This requires the official Jobs provider and `dsh-tool-jobs` controller to be present in the composition.
+The Client entry places a Policy style selector beside the composer model control. It saves one profile-wide default for new Policy jobs: Codex, Claude, ZCode, or Superpowers style. The Host entry reads that setting when `policy_run` accepts a task and runs the selected staged plan through the official `ctx.workflowEngine`. The tool returns a Job id immediately. The Job progress line follows workflow phases; its observer log streams the phase, `workflow/log`, and child start/end events, so the official DSH job surface can show ongoing work. Final output is retained in the Job result. This requires the official Settings, Jobs, and `dsh-tool-jobs` providers to be present in the composition.
 
-The exported controller remains available to packages that want to register their own strategies. The first Host integration intentionally exposes one fixed strategy; it does not yet load arbitrary strategy files or a manager configuration.
+The exported controller remains available to packages that want to register their own strategies. The extension does not load arbitrary strategy files or a manager configuration.
 
 #### KV Cache effect
 
@@ -29,6 +29,5 @@ Bundle activation does not change model requests or cache reuse. Controller cons
 
 ## Known Limitations and Deferred Work
 
-- The Client entry has no custom policy controls yet; the Host tool and live state use official DSH tools, workflow, and Jobs services.
 - The pinned official DSH public API lacks result-bearing continuation of the same child activation, active-only child message admission, and per-child tool sandbox configuration. This Host path starts one fresh workflow child per task stage and does not expose those controls or claim that the child is restricted to a task-specific tool set.
 - No process-restart recovery is provided by the extracted controller.
