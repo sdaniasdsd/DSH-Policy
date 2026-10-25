@@ -1,4 +1,4 @@
-/** Minimal model-facing Host integration using only the 0.2.1-rc.2 public services. */
+/** Minimal model-facing Host integration using only the 0.2.1-rc.3 public services. */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
 import type { JobHandle, JobHooks } from '@deepseek-ai/dsh-jobs'

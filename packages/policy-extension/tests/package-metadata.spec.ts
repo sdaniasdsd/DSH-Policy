@@ -33,7 +33,7 @@ describe('Policy extension package', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
     expect(pkg.version).toBe('1.0.4')
-    expect(pkg.engines?.dsh).toBe('0.2.1-rc.2')
+    expect(pkg.engines?.dsh).toBe('0.2.1-rc.3')
     expect(pkg.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
     expect(pkg.dsh?.client?.platform).toBe('web')
     expect(pkg.dsh.client.inject).toEqual([
@@ -88,13 +88,13 @@ describe('Policy extension package', () => {
       })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
       expect(packed.version).toBe('1.0.4')
-      expect(packed.engines.dsh).toBe('0.2.1-rc.2')
+      expect(packed.engines.dsh).toBe('0.2.1-rc.3')
       expect(packedCompatibility).toMatchObject({
         policyVersion: '1.0.4',
-        dshVersion: '0.2.1-rc.2',
-        dshTag: 'dsh-v0.2.1-rc.2',
-        dshCommit: '687f282e8625c6b8d11ff58211a90524be2e4317',
-        runtimeBuildCommit: '332895e0f7c9d4dbfb29729f5eb367fa263ff986',
+        dshVersion: '0.2.1-rc.3',
+        dshTag: 'dsh-v0.2.1-rc.3',
+        dshCommit: '1f81c047fc48fa190a683e469daa699857e9afe8',
+        runtimeBuildCommit: 'be72761ee1a6736ebcdf4f3739363b083ae53c98',
       })
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
       const client = execFileSync('tar', ['-xOf', tarball, 'package/lib/client.js'], {
@@ -107,7 +107,7 @@ describe('Policy extension package', () => {
       const packedDshPeers = Object.entries(packed.peerDependencies)
         .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
       expect(packedDshPeers.map(([name]) => name).sort()).toEqual([...packedCompatibility.requiredDshPeers].sort())
-      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.2')).toBe(true)
+      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.3')).toBe(true)
       for (const section of [packed.peerDependencies, packed.dependencies ?? {}, packed.devDependencies]) {
         expect(Object.values(section).some(version => version.startsWith('workspace:'))).toBe(false)
       }

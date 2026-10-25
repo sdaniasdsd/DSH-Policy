@@ -33,7 +33,7 @@ describe('Policy Host entry', () => {
       },
     }
 
-    registerPolicyHost(ctx as never, { style: 'codex-style' })
+    registerPolicyHost(ctx as never, { style: { get: () => 'codex-style' } as never })
     expect(registered.map(({ name }) => name)).toEqual(['policy_run'])
     const receipt = await registered[0]!.execute({ task: 'Implement the requested feature' }, {
       agent: owner,
@@ -79,7 +79,7 @@ describe('Policy Host entry', () => {
       } },
       on() { return () => {} },
     }
-    registerPolicyHost(ctx as never, { style: 'superpowers-style' })
+    registerPolicyHost(ctx as never, { style: { get: () => 'superpowers-style' } as never })
     const receipt = await registered[0]!.execute({ task: 'Implement a verified change' }, {
       agent: owner, callId: 'call-1', rootCallId: 'call-1', signal: new AbortController().signal,
     })

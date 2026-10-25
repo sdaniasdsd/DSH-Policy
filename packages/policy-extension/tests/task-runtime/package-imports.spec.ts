@@ -54,8 +54,10 @@ describe('extracted package dependencies', () => {
     ])
     expect(manifest.dsh.client.inject).toEqual(clientPackages.filter(name => name !== '@deepseek-ai/dsh-client-ui-slots'))
     for (const name of clientPackages) {
-      expect(manifest.devDependencies[name]).toBe('workspace:*')
-      expect(lockfile.importers['packages/policy-extension']!.devDependencies[name]).toMatchObject({ specifier: 'workspace:*' })
+      const packagePath = name.replace('@deepseek-ai/dsh-client-', '')
+      const specifier = `file:../../packages/client/${packagePath}`
+      expect(manifest.devDependencies[name]).toBe(specifier)
+      expect(lockfile.importers['packages/policy-extension']!.devDependencies[name]).toMatchObject({ specifier })
     }
   })
 })
