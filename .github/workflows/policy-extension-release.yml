@@ -42,6 +42,8 @@ jobs:
           if ($tagVersion -ne $package.version) { throw "Tag version $tagVersion does not match package version $($package.version)." }
       - name: Install workspace dependencies
         run: corepack pnpm install --frozen-lockfile
+      - name: Build official DSH host contracts required by the extension
+        run: npm run build:lib:host
       - name: Build policy extension
         run: npm --prefix packages/policy-extension run build
       - name: Run extension tests
