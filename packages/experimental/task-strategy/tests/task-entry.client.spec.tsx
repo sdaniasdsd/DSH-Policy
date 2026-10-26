@@ -7,6 +7,8 @@ import { JobId } from '@deepseek-ai/dsh-jobs'
 import { TaskEntryCard, TaskEntryPanel } from '../src/client/TaskEntryCard.tsx'
 import type { TaskEntryCardProps } from '../src/client/TaskEntryCard.tsx'
 import type { EntryView } from '../src/entry-types.ts'
+import type { TaskMemberView } from '../src/runtime-types.ts'
+import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import { taskEntryDefinition } from '../src/client/task-entry-node.ts'
 import type { ConversationNodeContext } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
@@ -94,6 +96,35 @@ describe('task entry chat card', () => {
     language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
     expect(screen.getByText(/尚无验收结果/)).toBeTruthy()
     expect(screen.queryByText(/未验证/)).toBeNull()
+  })
+  it('shows the backend-reported active agents in the task card', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'running',
+      run: { phase: 'running', binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 1,
+        completedStages: 0, completedTasks: 0, startedTasks: 1,
+        activeMembers: [{ sessionId: SessionId('worker-session'), label: 'work:implement-ui' }] } }}
+    language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText(/正在运行的智能体.*work:implement-ui/)).toBeTruthy()
+    expect(screen.getByText('正在执行策略')).toBeTruthy()
+  })
+  it('follows an active child and shows its streamed answer in the task card', async () => {
+    const member = { sessionId: SessionId('worker-session'), label: 'work:implement-ui' }
+    const followMember = vi.fn(async function* (_view: EntryView, _member: TaskMemberView, signal: AbortSignal) {
+      yield { type: 'snapshot', assistantStream: { revision: 0 } } as unknown as SessionFollowFrame
+      yield { type: 'assistant-stream', frame: { type: 'chunk', attemptId: 'attempt' as never,
+        revision: 1, index: 0, time: 1, chunk: { type: 'text-delta', index: 0, text: '正在检查入口' } } } as unknown as SessionFollowFrame
+      await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+    })
+    const props = { node: { data: { ...base, state: 'running' as const,
+      run: { phase: 'running' as const, binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 1,
+        completedStages: 0, completedTasks: 0, startedTasks: 1, activeMembers: [member] } } },
+    t: () => 'zh', readState: async () => ({ ...base, state: 'running' as const,
+      run: { phase: 'running' as const, binding: { id: 'codex-style', revision: 'plan', epoch: 0 }, nextStage: 1,
+        completedStages: 0, completedTasks: 0, startedTasks: 1, activeMembers: [member] } }),
+    readCatalog: async () => [], onReset: () => () => {}, followMember,
+    cancel: async () => {}, switchStrategy: async () => {}, resume: async () => {} } satisfies TaskEntryCardProps
+    render(<TaskEntryCard {...props} />)
+    await vi.waitFor(() => { expect(screen.getByText('正在检查入口')).toBeTruthy() })
+    expect(followMember).toHaveBeenCalledWith(expect.objectContaining({ sessionId: base.sessionId }), member, expect.any(AbortSignal))
   })
   it('warns when a completed task has no registered verification checks', () => {
     render(<TaskEntryPanel view={{ ...base, state: 'completed',

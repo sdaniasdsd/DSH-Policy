@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DSH 策略管理器",
+  "version": "1.0.9",
+  "identifier": "ai.deepseek.dsh-policy-manager",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 1420",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "DSH 策略管理器",
+        "width": 1040,
+        "height": 720,
+        "minWidth": 820,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost https://github.com https://objects.githubusercontent.com; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["../../desktop/resources/tray-windows.ico"],
+    "category": "Utility",
+    "shortDescription": "管理 DSH 官方版本与策略模式",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

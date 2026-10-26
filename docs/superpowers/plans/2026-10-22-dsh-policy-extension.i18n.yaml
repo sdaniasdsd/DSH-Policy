@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-10-22-dsh-policy-extension.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-22-dsh-policy-extension.md
+/dsh-policy-external-extension-framework-implementation-plan:
+  en: c60d009e322cfb3b
+  zh: 66ea6f87b365224f
+/dsh-policy-external-extension-framework-implementation-plan/global-constraints:
+  en: 2776b9c51fd8997e
+  zh: abea6aa38ebf6082
+/dsh-policy-external-extension-framework-implementation-plan/review-focus:
+  en: 4bbfbbf7f61107b0
+  zh: deeed1d62ea04393
+/dsh-policy-external-extension-framework-implementation-plan/file-map:
+  en: 9fd9485395c2b1cb
+  zh: b057a26e2a1d3bf8
+/dsh-policy-external-extension-framework-implementation-plan/task-1-pin-and-enforce-the-official-dsh-release-pair:
+  en: f0aa40dd232e280c
+  zh: 39dd41e5d7b7b3be
+/dsh-policy-external-extension-framework-implementation-plan/task-2-create-the-independently-packable-extension-bundle:
+  en: 78e3e96897dd39aa
+  zh: 70f418bb21a25b51
+/dsh-policy-external-extension-framework-implementation-plan/task-3-extract-the-policy-controller-and-preserve-feedback-semantics:
+  en: 61044bf4ac5234f6
+  zh: 77f7cf45787dc801
+/dsh-policy-external-extension-framework-implementation-plan/task-4-add-the-official-workflow-script-executor-adapter:
+  en: f562c34295a8e922
+  zh: 8d517b2e82be262d
+/dsh-policy-external-extension-framework-implementation-plan/task-5-move-the-policy-client-and-remove-desktop-only-auto-injection:
+  en: 6ecc053bcccefa73
+  zh: 3d606504109973b6
+/dsh-policy-external-extension-framework-implementation-plan/task-6-verify-clean-official-installation-and-release-compatibility:
+  en: 1f910124591f7ea7
+  zh: 4269bc8fba7795ff

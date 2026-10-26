@@ -236,9 +236,11 @@ extern "C" __declspec(dllexport) BOOL __cdecl InstallerFinishProgress(HWND windo
         }
     }
     if (!IsWindow(window)) return FALSE;
+    page->progress.Tick(GetTickCount64());
+    if (page->progress.value < 100) return FALSE;
     InvalidateRect(window, nullptr, FALSE);
     UpdateWindow(window);
-    return TRUE;
+    return SetPropW(GetParent(window), L"HarnessInstaller.CompletedPercent", reinterpret_cast<HANDLE>(100));
 }
 
 static LRESULT CALLBACK FrameProc(HWND window, UINT message, WPARAM wparam,

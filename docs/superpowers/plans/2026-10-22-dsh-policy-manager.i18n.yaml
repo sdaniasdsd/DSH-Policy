@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for 2026-10-22-dsh-policy-manager.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/plans/2026-10-22-dsh-policy-manager.md
+/dsh-policy-manager-implementation-plan:
+  en: 03e11b75c85ee420
+  zh: 7f2a15598ebb0abd
+/dsh-policy-manager-implementation-plan/global-constraints:
+  en: 530a6856f0c3bb87
+  zh: 787ee4df2cc9dea9
+/dsh-policy-manager-implementation-plan/review-focus:
+  en: a50a536d7705d962
+  zh: 7f2234d6ba3815c2
+/dsh-policy-manager-implementation-plan/review-focus/task-1-manager-scaffold-and-trusted-release-catalog:
+  en: cda1a1630e3d25cb
+  zh: 49eeee8f761911f6
+/dsh-policy-manager-implementation-plan/review-focus/task-2-installed-desktop-detection-and-manager-state:
+  en: df6cbbda610410bb
+  zh: 233eb733d4416001
+/dsh-policy-manager-implementation-plan/review-focus/task-3-shared-harness-home-encrypted-backups-and-transition-journal:
+  en: 0f36e99387c578ed
+  zh: 92216eff5beaa44e
+/dsh-policy-manager-implementation-plan/review-focus/task-4-verified-installer-download-replacement-and-rollback:
+  en: 4c79b71d69dc0524
+  zh: 9f5e35e33ab29140
+/dsh-policy-manager-implementation-plan/review-focus/task-5-official-and-policy-mode-through-the-bundled-dsh-cli:
+  en: 16209e5d113d1c63
+  zh: 5c25f4581a57da7c
+/dsh-policy-manager-implementation-plan/review-focus/task-6-manager-interface-and-safe-launch:
+  en: 773621282cab148f
+  zh: 87deca4842cd9718
+/dsh-policy-manager-implementation-plan/review-focus/task-7-release-packaging-trusted-catalog-publication-and-end-to-end-recovery-checks:
+  en: b77bc4f585d4274e
+  zh: 412cc80a586918ca
+/dsh-policy-manager-implementation-plan/source-verification-recorded-while-planning:
+  en: 42d5a548af4530d3
+  zh: 42aa1208138d9020

@@ -42,6 +42,14 @@ export function createAdmission(
     signal.throwIfAborted()
     const nativeSteps: TaskStep[] = []
     for (const step of steps) {
+      if (step.continuation !== undefined) {
+        const { maxAttempts, timeoutMs } = step.continuation
+        if (step.executor !== undefined) throw new Error('Continuation settings require a native DSH task')
+        if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 16) throw new Error('Continuation maxAttempts must be an integer from 0 to 16')
+        if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647)) {
+          throw new Error('Continuation timeoutMs must be a bounded positive safe integer')
+        }
+      }
       if (step.executor === undefined) nativeSteps.push(step)
       else {
         if (executors === undefined) throw new Error(`Unknown task executor: ${step.executor}`)

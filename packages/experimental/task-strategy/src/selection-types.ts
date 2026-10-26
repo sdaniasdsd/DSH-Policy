@@ -1,7 +1,7 @@
 /** Intake choices and bounds, shared by the host contract and configuration. */
 import type { StrategyInput, StrategyTokenCost, StyleTier } from './types.ts'
 
-/** Automatic choice uses one bounded model call; named choice bypasses it. */
+/** Automatic choice permits one output-limit retry within its bounds; named choice bypasses it. */
 export type TaskSelection = { readonly kind: 'auto'; readonly workflow?: boolean } | { readonly kind: 'named'; readonly strategy: string }
 
 /** Captured catalogue with task-specific costs for supported budget tiers. */

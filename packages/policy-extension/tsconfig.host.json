@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo"
+  },
+  "include": ["src/*.ts", "src/task-runtime/**/*.ts"],
+  "references": [
+    { "path": "../jobs/jobs" },
+    { "path": "../llm/llm" },
+    { "path": "../core/session" },
+    { "path": "../core/tools" },
+    { "path": "../workflow/workflow" },
+    { "path": "../../vendor/cordis" },
+    { "path": "../../vendor/schemastery" }
+  ]
+}

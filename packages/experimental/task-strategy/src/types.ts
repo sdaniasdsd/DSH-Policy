@@ -46,6 +46,13 @@ export interface TaskStep {
   /** Optional bounded model output and child deadline, supplied by validated plugin configuration. */
   readonly maxTokens?: number
   readonly timeoutMs?: number
+  /** Native same-session output-limit recovery. Omission allows four continuations under the original deadline. */
+  readonly continuation?: {
+    /** Additional activations, 0 to 16; does not admit a new logical task. */
+    readonly maxAttempts: number
+    /** Optional fresh deadline per continuation; parent cancellation always remains effective. */
+    readonly timeoutMs?: number
+  }
 }
 
 /** Sequential stages, with concurrent children inside each stage. */
