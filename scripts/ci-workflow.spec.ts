@@ -974,6 +974,12 @@ describe('bubblewrap preparation script', () => {
 })
 
 describe('DeepSeek e2e workflow', () => {
+  it('runs the real API gate automatically only in the upstream repository', () => {
+    const e2e = workflowJob(loadWorkflow('.github/workflows/e2e.yml'), 'e2e')
+    expect(e2e.if).toContain("github.repository == 'deepseek-harness/deepseek-harness'")
+    expect(e2e.if).toContain("github.event_name == 'workflow_dispatch'")
+  })
+
   it('prepares bubblewrap from the pinned payload without a package transaction', () => {
     const workflow = loadWorkflow('.github/workflows/e2e.yml')
     const e2e = workflowJob(workflow, 'e2e')
@@ -993,6 +999,13 @@ describe('DeepSeek e2e workflow', () => {
 
     const step = e2e.steps.filter(isRecord).find(candidate => candidate.name === 'E2E tests (real DeepSeek API)')
     expect(step).toMatchObject({ env: { DSH_E2E_MAX_WORKERS: 4 } })
+  })
+})
+
+describe('Cloudflare PR preview workflow', () => {
+  it('publishes the protected upstream preview only from the upstream repository', () => {
+    const preview = workflowJob(loadWorkflow('.github/workflows/build-preview-cloudflare.yml'), 'preview')
+    expect(preview.if).toBe("${{ github.repository == 'deepseek-harness/deepseek-harness' }}")
   })
 })
 
