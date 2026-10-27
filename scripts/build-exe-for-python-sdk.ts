@@ -15,7 +15,7 @@ import { chmod, copyFile, cp, glob, mkdir, readFile, readdir, rm, writeFile } fr
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
-import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons } from './executable-native-pty.ts'
+import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons, stageNodePtyPrebuild } from './executable-native-pty.ts'
 import { officeSidecarArchives, runtimeNpmArchive, OFFICE_ASSET_IGNORES } from './build-exe-for-python-sdk-office.ts'
 import { deduplicateStagedWorkspacePackages, materializeStagedLinks } from './build-exe-for-python-sdk-staging.ts'
 import { prepareOfficeSkillAssets } from './primary-runtime/prepare.ts'
@@ -483,7 +483,7 @@ class SingleExeBuild {
     if (this.cli.dryRun) console.log(`build-exe-for-python-sdk: [dry-run] keep only node-pty prebuilds ${selected}`)
     else {
       const source = join(packageDirectory, 'prebuilds', selected)
-      if (existsSync(source)) await cp(source, join(prebuilds, selected), { recursive: true })
+      await stageNodePtyPrebuild(source, join(prebuilds, selected))
       for (const entry of await readdir(prebuilds, { withFileTypes: true })) {
         if (entry.isDirectory() && entry.name !== selected) await rm(join(prebuilds, entry.name), { recursive: true, force: true })
       }

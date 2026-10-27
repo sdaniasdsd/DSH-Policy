@@ -1,7 +1,14 @@
 /** Resolve the native node-pty input used by the SDK and SSH executable builders. */
 
 import { existsSync } from 'node:fs'
+import { cp } from 'node:fs/promises'
 import { join } from 'node:path'
+
+/** Copy a node-pty platform directory only when deploy did not include it. */
+export async function stageNodePtyPrebuild(source: string, destination: string): Promise<void> {
+  if (!existsSync(source) || existsSync(destination)) return
+  await cp(source, destination, { recursive: true })
+}
 
 /**
  * Prefer the workflow's manylinux build and fall back to node-pty's target prebuild.
