@@ -125,6 +125,7 @@ describe('CI workflow', () => {
       env: { DSH_BUILD_CLIENT_PROFILE: 'official' },
     })
     if (typeof execute?.run !== 'string') throw new TypeError('Python executable builder must define a command')
+    expect(execute.run).toContain('node ./node_modules/tsx/dist/cli.mjs scripts/build-exe-for-python-sdk.ts')
     const expression = [...execute.run.matchAll(/\$\{\{ ([^{}]+) \}\}/g)]
       .map(match => match[1]).find(value => value?.startsWith('inputs.ci'))
     expect(expression).toBe("inputs.ci && github.event_name == 'pull_request' && '--artifacts-only' || ''")
