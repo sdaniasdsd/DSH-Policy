@@ -3,6 +3,34 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { bootTaskRuntime } from './task-runtime-fixture.ts'
 
+it('distinguishes task Jobs from request entries in model-facing controls', async () => {
+  const { parent } = await bootTaskRuntime([])
+  const tools = parent.ctx.tools.schemas(parent)
+  const runTool = tools.find(tool => tool.name === 'task_strategy_run')!
+  const description = (name: string) => tools.find(tool => tool.name === name)?.description ?? ''
+  expect(description('task_strategy_run')).toContain('The returned id is a Job id, not a requestId')
+  expect(description('task_strategy_run')).toContain('Do not launch the same child work again through subagent')
+  expect(description('task_strategy_run')).toContain('A running Job with no new output is not complete')
+  expect(description('task_strategy_run')).toContain('tier names such as extreme-high are preferences, not strategy ids')
+  expect(description('task_strategy_run')).toContain('Do not cancel a Job solely because output is empty or it is still running')
+  expect(description('task_strategy_plan')).toContain('Use a registered strategy id; tier names such as extreme-high belong in preferences.tier')
+  expect(description('task_strategy_propose')).toContain('Register a task suggestion with a stable proposalId')
+  expect(description('task_strategy_propose')).toContain('Never suggest repeating the same accepted work')
+  expect(description('task_strategy_status')).toContain('Read owned task entry states')
+  expect(description('task_strategy_resume')).toContain('Resume the retained strategy after a rejected replacement')
+  expect(description('task_strategy_cancel')).toContain('Cancel one owned request')
+  const parameters = runTool.parameters as { properties?: Record<string, unknown> }
+  const plan = JSON.stringify(parameters.properties?.plan)
+  expect(plan).toContain('"oneOf"')
+  expect(plan).toContain('"object"')
+  expect(plan).toContain('"string"')
+  expect(plan).toContain('"allow"')
+  const preferences = JSON.stringify(parameters.properties?.preferences)
+  expect(preferences).toContain('"oneOf"')
+  expect(preferences).toContain('"additionalProperties":true')
+  expect(runTool.description).toContain('preset is a DSH preset name from task_strategy_list')
+})
+
 function isInspectionView(value: unknown): value is {
   readonly detailsOmitted: boolean
   readonly completedTasks: number

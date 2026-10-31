@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write apps/policy-manager/catalog/README.md
 /release-catalog:
-  en: 3f2300e03a1d2405
-  zh: 87e3ed541d2eee0f
+  en: 7a11159eb6c8a602
+  zh: 52a31bb175c4ac9d

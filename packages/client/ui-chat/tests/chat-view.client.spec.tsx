@@ -494,6 +494,7 @@ function makeHarness(
     loadImage: vi.fn(() => Promise.reject(new Error('not used'))),
     chatScroll,
     forkAt,
+    continueFromOutputLimit: vi.fn(async () => {}),
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
     t,
@@ -2313,13 +2314,19 @@ describe('ChatView', () => {
     expect(view.queryByRole('button', { name: '去充值' })).toBeNull()
   })
 
-  it('renders the max-tokens notice with localized guidance, distinct from turn errors', () => {
+  it('offers an explicit continue action on a max-tokens notice, distinct from turn errors', async () => {
     const h = makeHarness({ nodes: [user(1, 'try'), assistant(2, 'truncated'), turnMaxTokens(3)] })
+    const continueFromOutputLimit = vi.fn(async () => {})
+    h.props.continueFromOutputLimit = continueFromOutputLimit
     const view = render(<h.ChatView {...h.props} />)
     const statuses = view.getAllByRole('status')
     expect(statuses.map(status => status.textContent)).toEqual([
-      '已达到输出 token 上限回答被截断，已有输出保留在对话中。发送“继续”可让模型接着输出。',
+      '已达到输出 token 上限回答被截断，已有输出保留在对话中。继续会作为新消息发送，并保留当前草稿。继续回答',
     ])
+    await act(async () => { fireEvent.click(view.getByRole('button', { name: '继续回答' })) })
+    expect(continueFromOutputLimit).toHaveBeenCalledExactlyOnceWith(
+      '上一条回复因单次输出上限被截断。请从截断处继续，不要重写已完成内容；如果剩余内容较长，请拆分成较小部分逐段完成。',
+    )
     expect(view.queryByText('本轮运行失败')).toBeNull()
   })
 

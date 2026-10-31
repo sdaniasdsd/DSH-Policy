@@ -135,6 +135,23 @@ describe('task entry chat card', () => {
     expect(screen.getByText(/任务完成，但没有登记验收项，无法证明验收通过/)).toBeTruthy()
     expect(screen.queryByText(/尚无验收结果/)).toBeNull()
   })
+  it('shows one concise structured conclusion with bounded evidence and the next action', () => {
+    render(<TaskEntryPanel view={{ ...base, state: 'completed', run: {
+      phase: 'completed', binding: { id: 'superpowers-style', revision: 'plan', epoch: 0 }, nextStage: 6,
+      completedStages: 6, completedTasks: 7, startedTasks: 7,
+      finalSummary: { status: 'partial', conclusion: '工程状态只能部分确认。',
+        evidence: ['Unit 1 与基线一致。', 'Unit 2 编译失败。'], blocker: '缺少 Unit 2 目标符号定义。', nextStep: '补齐原型后重新编译。' },
+    } }} language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
+    expect(screen.getByText('工程状态只能部分确认。')).toBeTruthy()
+    expect(screen.getByLabelText('最终任务结论')).toBeTruthy()
+    expect(screen.getByText(/部分完成/)).toBeTruthy()
+    expect(screen.getByText(/证据:/)).toBeTruthy()
+    expect(screen.getByText(/阻塞原因:/)).toBeTruthy()
+    expect(screen.getByText(/下一步:/)).toBeTruthy()
+    expect(screen.getByText(/Unit 1 与基线一致/)).toBeTruthy()
+    expect(screen.getByText(/缺少 Unit 2 目标符号定义/)).toBeTruthy()
+    expect(screen.getByText(/补齐原型后重新编译/)).toBeTruthy()
+  })
   it('disables live controls on generation loss without a reset event', async () => {
     let lose = () => {}
     const props = { node: { data: base }, t: () => 'zh', readState: async () => base, readCatalog: async () => [], onReset: () => () => {},

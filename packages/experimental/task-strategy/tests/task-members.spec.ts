@@ -30,6 +30,7 @@ describe('active task members', () => {
     const members = new Set<SessionId>()
     const childId = SessionId('member')
     const services = { on: ctx.on.bind(ctx), get: ctx.get.bind(ctx), subagents: {
+      continueActivation: async () => { throw new Error('unexpected continuation') },
       startActivation: async () => ({ childId, messageId: MessageId('accepted'), result: result.promise,
         dispose: async () => { if (outcome === 'cleanup failure') throw new Error('cleanup failed') },
       }),

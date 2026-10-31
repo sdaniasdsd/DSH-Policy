@@ -27,6 +27,8 @@ kind: "package-reference"
 
 在 agent 需要启动、观察和停止后台任务的任何组合中加载本插件：它注册三个工具、附加生产方所需的控制器，并投递完成通知。它需要组合中已提供的 `ctx.tools`、`ctx.jobs` 与 `ctx.systemPrompt` 服务；完成通知经 `ctx.agents` 解析投递目标，凡有归属任务的组合都已提供它。
 
+模型调用 `subagent` 或 `subagent_fork` 返回的 id 标识子会话，不是后台 job。子任务结果由 subagent 运行时通过完成通知送达；不要把这些 id 传给 `job_output`、`job_list` 或 `job_kill`。若 `job_output` 收到活跃子会话 id，错误会说明 id 类型，并提示等待现有完成通知，或在后续委派中使用 `wait_for_result: true`。
+
 ### 三个工具
 
 - `job_output(job_id, wait?, timeout_ms?)`——读取任务输出。流任务只返回自上次读取以来的输出；最终输出任务在结算后返回其结果。每个响应都以 `[status: ...]` 结尾。除非 `wait: true`，否则读取是非阻塞的；`wait: true` 最多等待到配置上限，超时时仍让运行中的任务保持存活。一次读取先渲染 stdout，再把 stderr 放进一段 `[stderr]`，标注读取前已离开内存的输出，并在结算后的第一次读取恰好携带一次任务的结果（subagent 的回答）。

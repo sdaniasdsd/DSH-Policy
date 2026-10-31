@@ -1,5 +1,5 @@
 /** Assistant reasoning disclosure, independent of Tool-call presentation. */
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo } from 'react'
 import { DisclosureRow, IconThinkOutlineRegular, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatViewSlotProps, UseDisclosure, UsePresentation } from '../contract/slots.ts'
@@ -32,11 +32,11 @@ function latestCompletedParagraphFirstLine(text: string): string {
 }
 
 /**
- * Render one assistant reasoning block collapsed until the reader opens it. The
- * collapsed summary omits double-asterisk markers; expanded content renders
- * the complete Markdown with secondary typography. A streaming preview advances
- * when a paragraph's first line completes. Mode changes toggle CSS display without unmounting
- * collapsed summaries.
+ * Render one assistant reasoning block, opening it while it streams and retaining
+ * that choice after settlement. The reader may still collapse it. The collapsed
+ * summary omits double-asterisk markers; expanded content renders complete
+ * Markdown with secondary typography. A streaming preview advances when a
+ * paragraph's first line completes. Mode changes do not unmount collapsed summaries.
  * @param props.text - complete or streaming reasoning text.
  * @param props.running - whether this block is the streaming tail.
  * @param props.usePresentation - live display-policy selector for this reasoning row.
@@ -52,7 +52,10 @@ export const ReasoningRow = memo(function ReasoningRow({ text, running, usePrese
   usePresentation: UsePresentation
   t: ChatViewSlotProps['t']
 } & Pick<PropsRenderSlots<'conversation.chat.reasoning.body'>, 'renderSlot'>) {
-  const { expanded, toggle } = useDisclosure()
+  const { expanded, setExpanded, toggle } = useDisclosure()
+  useEffect(() => {
+    if (running) setExpanded(true)
+  }, [running, setExpanded])
   const summaryText = running ? latestCompletedParagraphFirstLine(text) : firstLine(text)
   const summary = useMemo(() => summaryText.replaceAll('**', ''), [summaryText])
   const preview = usePresentation(policy => !expanded && summary !== ''

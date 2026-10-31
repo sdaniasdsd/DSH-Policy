@@ -9,6 +9,22 @@ export interface WorkflowProposal {
   readonly nodes: readonly WorkflowNode[]
   readonly artifacts: readonly ArtifactCheck[]
 }
+/** Bounded intake decision; blocked requests must stop before planning or execution. */
+export interface TaskIntakeAssessment {
+  readonly decision: 'proceed' | 'blocked'
+  readonly goal: string
+  /** Empty when the request is internally consistent. */
+  readonly blocker: string
+}
+/** One user-facing conclusion synthesized only from completed task records. */
+export interface TaskConclusion {
+  readonly status: 'resolved' | 'partial' | 'unverified' | 'blocked'
+  readonly conclusion: string
+  readonly evidence: readonly string[]
+  /** Empty when there is no blocking issue. */
+  readonly blocker: string
+  readonly nextStep: string
+}
 /** A model assessment supported by a quoted read observation, not a proof of correctness. */
 export interface ReviewFinding { readonly description: string; readonly path: string; readonly excerpt: string }
 /** Supported model assessments remain separate from artifact proof. */

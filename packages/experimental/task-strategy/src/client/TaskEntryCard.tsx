@@ -94,6 +94,13 @@ export function TaskEntryPanel(props: {
       {run.verification?.checks.map(check => <p key={check.id}><code>{check.id}</code> · {copy[check.status]}</p>)}
       {run.review ? <p>{copy.review}: {run.review.status === 'passed' ? copy.reviewPassed : run.review.status === 'issues' ? copy.reviewIssues : copy.reviewUnverified}</p> : null}
       {run.review?.issues.map((issue, index) => <p key={index}><code>{issue.path}</code> · {issue.description}</p>)}
+      {run.finalSummary ? <section aria-label={copy.finalSummary}>
+        <p><strong>{copy[run.finalSummary.status === 'resolved' ? 'summaryResolved' : run.finalSummary.status === 'partial' ? 'summaryPartial'
+          : run.finalSummary.status === 'blocked' ? 'summaryBlocked' : 'summaryUnverified']}: </strong>{run.finalSummary.conclusion}</p>
+        {run.finalSummary.evidence.length > 0 ? <p>{copy.summaryEvidence}: {run.finalSummary.evidence.join(' · ')}</p> : null}
+        {run.finalSummary.blocker ? <p>{copy.summaryBlocker}: {run.finalSummary.blocker}</p> : null}
+        {run.finalSummary.nextStep ? <p>{copy.summaryNextStep}: {run.finalSummary.nextStep}</p> : null}
+      </section> : null}
       {run.usage ? <p>{copy.usage}: {run.usage.reportedCalls === 0 ? copy.unknown : run.usage.observedTokens.toLocaleString()}
         {run.usage.unknownChildren > 0 || run.usage.reportedCalls < run.usage.modelCalls ? ` · ${copy.usagePartial}` : ''}</p> : null}
       {run.usage ? <p className={css.note}>{copy.usageNote}</p> : null}
