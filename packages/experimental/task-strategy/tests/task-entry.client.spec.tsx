@@ -143,6 +143,11 @@ describe('task entry chat card', () => {
         evidence: ['Unit 1 与基线一致。', 'Unit 2 编译失败。'], blocker: '缺少 Unit 2 目标符号定义。', nextStep: '补齐原型后重新编译。' },
     } }} language="zh" connected={true} strategies={[]} cancel={async () => {}} switchStrategy={async () => {}} resume={async () => {}} />)
     expect(screen.getByText('工程状态只能部分确认。')).toBeTruthy()
+    expect(screen.getByLabelText('最终任务结论')).toBeTruthy()
+    expect(screen.getByText(/部分完成/)).toBeTruthy()
+    expect(screen.getByText(/证据:/)).toBeTruthy()
+    expect(screen.getByText(/阻塞原因:/)).toBeTruthy()
+    expect(screen.getByText(/下一步:/)).toBeTruthy()
     expect(screen.getByText(/Unit 1 与基线一致/)).toBeTruthy()
     expect(screen.getByText(/缺少 Unit 2 目标符号定义/)).toBeTruthy()
     expect(screen.getByText(/补齐原型后重新编译/)).toBeTruthy()
