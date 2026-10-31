@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { estimateContent, ROLE_OVERHEAD } from '@deepseek-ai/dsh-token-meter/estimate'
-import { StrategyRegistry, estimatePlanCost } from '../src/index.ts'
+import { executePlan, StrategyRegistry, estimatePlanCost } from '../src/index.ts'
 import type { ExecutionPlan } from '../src/types.ts'
 
 const step = { label: 'work', preset: 'standard', instruction: 'Explain briefly' }
@@ -15,6 +15,26 @@ const secondTokens = (task: string) => measure(`Task:\n${task}\n\nInstructions:\
   + JSON.stringify([{ stopReason: 'completed', output: '', stage: 'first', label: 'work' }]))
 
 describe('registered strategy token estimates', () => {
+  it('charges only selected prior rows for known prompts and output transfer', async () => {
+    const selected: ExecutionPlan = { name: 'selected', stages: [
+      { name: 'repeated', tasks: [{ ...step, label: 'plan' }, { ...step, label: 'unrelated' }] },
+      { name: 'repeated', tasks: [{ ...step, priorResults: { scope: 'current-binding', labels: ['plan'] } }] },
+    ] }
+    const prompts: string[] = []
+    const cost = estimatePlanCost(selected, 'task', 'task', (text) => { prompts.push(text); return text.length }, assumptions)
+    expect(JSON.parse(prompts[2]!.split('instructions):\n')[1]!)).toEqual([
+      { stopReason: 'completed', output: '', stage: 'repeated', label: 'plan' },
+    ])
+    expect(cost).toMatchObject({ estimatedInputTokens: 2 * (prompts.reduce((n, p) => n + p.length, 0) + 300 + 50) })
+    const actual: string[] = []
+    const result = await executePlan(selected, 'task', async (_step, prompt) => {
+      actual.push(prompt)
+      return { stopReason: 'completed', output: '' }
+    }, { maxConcurrent: 1, maxTasks: 8, maxResultBytes: 4096, signal: new AbortController().signal })
+    expect(result.status).toBe('completed')
+    expect(actual).toEqual(prompts)
+  })
+
   it('computes a detached registration estimate without evaluating the author', () => {
     const registry = new StrategyRegistry(measure)
     const decide = vi.fn(() => plan)

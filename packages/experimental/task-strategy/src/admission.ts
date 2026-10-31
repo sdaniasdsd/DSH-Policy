@@ -42,6 +42,14 @@ export function createAdmission(
     signal.throwIfAborted()
     const nativeSteps: TaskStep[] = []
     for (const step of steps) {
+      if (step.continuation !== undefined) {
+        const { maxAttempts, timeoutMs } = step.continuation
+        if (step.executor !== undefined) throw new Error('Continuation settings require a native DSH task')
+        if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 0 || maxAttempts > 16) throw new Error('Continuation maxAttempts must be an integer from 0 to 16')
+        if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2147483647)) {
+          throw new Error('Continuation timeoutMs must be a bounded positive safe integer')
+        }
+      }
       if (step.executor === undefined) nativeSteps.push(step)
       else {
         if (executors === undefined) throw new Error(`Unknown task executor: ${step.executor}`)
@@ -56,9 +64,9 @@ export function createAdmission(
     for (const step of nativeSteps) {
       if (step.preset === undefined || !allowedPresets.includes(step.preset)) throw new Error(`Strategy preset is not allowed: ${step.preset}`)
       if (step.tools !== undefined && !provider.capabilities.toolFilter) throw new Error('Strategy provider does not support tool restrictions')
-      const structuredOutputs = [step.workflowOutput, step.reviewOutput, step.intakeOutput, step.finalSummaryOutput].filter(Boolean).length
-      if (structuredOutputs > 0 && !provider.capabilities.outputSchema) throw new Error('Strategy provider does not support structured task output')
-      if (structuredOutputs > 1) throw new Error('A child cannot produce multiple structured task outputs')
+      if ((step.workflowOutput === true || step.reviewOutput === true) && !provider.capabilities.outputSchema) throw new Error('Strategy provider does not support structured workflow output')
+      if (step.workflowOutput === true && step.reviewOutput === true) throw new Error('A child cannot produce both a plan and a review')
+      if (step.reviewPaths !== undefined && step.reviewOutput !== true) throw new Error('Review paths require structured review output')
       if (step.reviewOutput === true && (step.tools?.allow === undefined || step.tools.allow.some(name => !['read', 'glob', 'grep'].includes(name)))) {
         throw new Error('Workflow review requires original read-only tools')
       }
@@ -66,7 +74,7 @@ export function createAdmission(
         throw new Error('Artifact verification requires a read-only tool filter')
       }
       if ((step.model !== undefined || step.provider !== undefined || step.maxTokens !== undefined
-        || structuredOutputs > 0) && !provider.capabilities.agentOptions) {
+        || step.workflowOutput === true || step.reviewOutput === true) && !provider.capabilities.agentOptions) {
         throw new Error('Strategy provider does not support model selection')
       }
       for (const [key, value] of Object.entries({ maxTokens: step.maxTokens, timeoutMs: step.timeoutMs })) {

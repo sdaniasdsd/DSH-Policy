@@ -1,0 +1,31 @@
+{
+  "name": "@deepseek-ai/dsh-policy-manager",
+  "version": "1.0.9",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run && node --test tests/release-qualification.test.mjs",
+    "catalog:sign": "node scripts/sign-catalog.mjs",
+    "tauri": "tauri",
+    "desktop": "tauri dev --features app",
+    "package": "tauri build --features app"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "~18.3.0",
+    "@types/node": "^22.20.1",
+    "jsdom": "^29.1.1",
+    "typescript": "^6.0.3",
+    "vite": "^6.4.3",
+    "vitest": "^4.1.11"
+  }
+}

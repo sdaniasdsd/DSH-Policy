@@ -21,7 +21,7 @@ export interface TaskSharedRecords {
   read(key: string): TaskSharedRecord | undefined
   /** Read detached latest values for this task. */
   list(): readonly TaskSharedRecord[]
-  /** Compare-and-set a JSON value and persist the new revision before returning. */
+  /** Compare-and-set a JSON value and persist the new revision before returning; cancellation after append does not hide its receipt. */
   write(key: string, value: unknown, expectedRevision: number, signal: AbortSignal): Promise<TaskSharedRecord>
   /** Wait until a record advances, the timeout elapses, or the owning task ends. */
   wait(key: string, afterRevision: number, timeoutMs: number, signal: AbortSignal): Promise<TaskRecordWaitResult>
@@ -29,7 +29,7 @@ export interface TaskSharedRecords {
 
 /** Sender-preserving message channel to an active member of the same task. */
 export interface TaskMemberMessageChannel {
-  /** Deliver text to a currently active member; acceptance does not imply adoption. */
+  /** Deliver text to a currently active member; cancellation stops unaccepted delivery, and acceptance returns its receipt. */
   send(sessionId: SessionId, text: string, signal: AbortSignal): Promise<{ readonly messageId: MessageId }>
 }
 

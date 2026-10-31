@@ -1,6 +1,8 @@
 /** Source-safe registration of the optional catalogue Remote and plugin page. */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionFollowFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-experimental-task-strategy/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -53,6 +55,10 @@ function registerUi(ctx: Context): void {
       if (!result.ok) throw result.error
       return result.value.strategies
     },
+    followMember: (view, member, signal): AsyncIterable<SessionFollowFrame> => ctx.remote.session.follow({
+      address: { kind: 'subagent', parentSessionId: view.sessionId, childSessionId: member.sessionId, mode: 'unknown' },
+      assistantStream: true,
+    }, signal),
     cancel: async (view) => {
       const result = await ctx.remote.taskStrategies.cancelEntry({ sessionId: view.sessionId, requestId: view.requestId })
       if (!result.ok) throw result.error
@@ -64,13 +70,13 @@ function registerUi(ctx: Context): void {
     },
     switchStrategy: async (view, strategy, epoch) => {
       const result = await ctx.remote.taskStrategies.switchEntry({ sessionId: view.sessionId, requestId: view.requestId,
-        request: { strategy, expectedBindingEpoch: epoch } })
+        request: { commandId: globalThis.crypto.randomUUID(), strategy, expectedBindingEpoch: epoch } })
       if (!result.ok) throw result.error
     },
     resume: async (view) => {
       if (view.run === undefined) throw new Error('Task binding is unavailable')
       const result = await ctx.remote.taskStrategies.resumeEntry({
-        sessionId: view.sessionId, requestId: view.requestId, epoch: view.run.binding.epoch,
+        sessionId: view.sessionId, requestId: view.requestId, commandId: globalThis.crypto.randomUUID(), epoch: view.run.binding.epoch,
       })
       if (!result.ok) throw result.error
     },

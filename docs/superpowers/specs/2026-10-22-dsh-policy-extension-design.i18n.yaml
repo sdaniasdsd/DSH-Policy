@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-22-dsh-policy-extension-design.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/superpowers/specs/2026-10-22-dsh-policy-extension-design.md
+/dsh-policy-external-extension-framework:
+  en: 726ccf6dd233ac8e
+  zh: 366e04b3bab7f04c
+/dsh-policy-external-extension-framework/goal:
+  en: 76be52c6b445471c
+  zh: a8d5014d43019fd5
+/dsh-policy-external-extension-framework/responsibility-boundary:
+  en: 701ecb5e7439d507
+  zh: 45bb7a57a504c542
+/dsh-policy-external-extension-framework/execution-and-feedback-model:
+  en: 0133613ca4ed7d6e
+  zh: b6045ea890845e12
+/dsh-policy-external-extension-framework/release-to-runtime-compatibility:
+  en: 0dcb70a99b0e27e4
+  zh: 645bfe04079d97ca
+/dsh-policy-external-extension-framework/alternatives-considered:
+  en: 88893e60510b43ea
+  zh: 30547649fd6f1873
+/dsh-policy-external-extension-framework/validation-goals:
+  en: 5e0bb5280f1c37b7
+  zh: 09865c17a32b3d29
+/dsh-policy-external-extension-framework/scope:
+  en: 6aff5e29a4162613
+  zh: 4f587b204bae9c0c

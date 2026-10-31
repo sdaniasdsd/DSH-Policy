@@ -68,7 +68,7 @@ try {
   }
   if (!uninstallOnly) {
     await execute(progressTest, [], childOptions)
-    await execute(presentationTest, [], childOptions)
+    await execute(presentationTest, [join(appRoot, 'installer', 'assets', 'brand.png')], childOptions)
   }
   await execute(cleanupTest, [join(output, 'ui', `cleanup-${id}`)], childOptions)
   const payloadSource = join(output, 'payload.nsi')

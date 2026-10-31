@@ -1,6 +1,8 @@
 .card { border: 1px solid var(--border-color, #80808050); border-radius: 12px; padding: 14px 18px; margin: 12px 0; background: var(--background-secondary, transparent); overflow-wrap: anywhere; }
 .card header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
 .card p { margin: 8px 0; }
+.output { border-left: 2px solid var(--border-color, #80808060); margin: 8px 0; padding: 4px 10px; }
+.output pre { margin: 4px 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font: inherit; opacity: .85; }
 .note { opacity: .7; font-size: .85em; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .controls button, .controls select { color: inherit; background: transparent; border: 1px solid var(--border-color, #80808060); border-radius: 6px; padding: 6px 10px; }

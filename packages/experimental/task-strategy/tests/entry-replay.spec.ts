@@ -49,7 +49,7 @@ describe('real incident boundary replay (no network)', () => {
     }
     else if ((result.structured as { kind: string }).kind === 'supplement') await expect(operation).rejects.toThrow('unknown owned task')
     else await expect(operation).resolves.toMatchObject(result.structured as object)
-    expect(dispose).toHaveBeenCalledOnce()
+    expect(dispose).toHaveBeenCalledTimes(result.stopReason === 'max-tokens' ? 2 : 1)
   })
   it('refuses changed request fingerprints instead of refreshing recordings', () => {
     expect(() => lookup({ ...recordings[0]!.request, route: { changed: true } })).toThrow('live calls are forbidden')

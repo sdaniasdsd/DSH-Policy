@@ -28,11 +28,13 @@ Host callers can submit a named strategy with a per-owner `requestId`, inspect i
 | `TaskRecordWaitResult` | New record or bounded timeout result |
 | `TaskCoordination` | Generic records and sender-preserving member messages exposed to an executor |
 
-Task coordination uses the original Job owner and Subagents message channel. `inspect(parent, jobId)` includes detached `activeMembers` entries with `{ sessionId, label }`; `sendMessage(parent, jobId, { childId, text }, signal)` on either `ctx.taskRuns` or `ctx.taskStrategies` returns only `{ messageId }` after inbox acceptance. The member must belong to that task and still be executing. Foreign owners, stopped tasks, idle or ended children and native executor targets reject without waking a session or changing backends. Nonempty text and the UTF-8 size of the complete serialized request are checked against the accepted task's captured `maxPlanBytes`; caller or task cancellation stops unaccepted delivery. Acceptance does not prove processing or decision adoption, and accepted messages are not retried automatically.
+Native `TaskStep.continuation` settings bound same-session output-limit recovery by additional activation count and optional per-continuation deadline. The stage retains its goal, prior results and child identity; exhaustion never advances dependent stages. See the [execution contract](../../packages/experimental/task-strategy/README.md) and [migration](../upgrade-guide/v1.0.2/task-strategy-output-recovery/guide.md).
+
+Task coordination uses the original Job owner and Subagents message channel. `inspect(parent, jobId)` includes detached `activeMembers` entries with `{ sessionId, label }`; `sendMessage(parent, jobId, { childId, text }, signal)` on either `ctx.taskRuns` or `ctx.taskStrategies` returns only `{ messageId }` after inbox acceptance. The member must belong to that task and still be executing. Foreign owners, stopped tasks, idle or ended children and native executor targets reject without waking a session or changing backends. Nonempty text and the UTF-8 size of the complete serialized request are checked against the accepted task's captured `maxPlanBytes`; caller or task cancellation stops unaccepted delivery. Once accepted, cancellation does not retract the message and the sender receives its receipt. Acceptance does not prove processing or decision adoption, and accepted messages are not retried automatically.
 
 Root model tools `task_strategy_inspect(jobId)`, `task_strategy_message(jobId, childId, text)` and `task_strategy_record_{read,list,write,wait}` use the same ownership checks, with names following `toolPrefix`. Records are scoped to the original Job; `write` uses `expectedRevision` compare-and-set, and `wait` observes a revision change or timeout. Callers define the meaning of record keys and JSON values. The tools are available when automatic root entry is enabled and disappear when the carrier unloads; execution children retain their original tools. DSH supplies generic capabilities and one common LLM tool entry. It adds no plugin-specific adapters and does not decide strategy command formats or business workflows.
 
-`ctx.taskRuns` and `ctx.taskStrategies` expose `recordRead`, `recordList`, `recordWrite` and `recordWait` for host callers. Executor callbacks may use the same operations through `TaskExecutorContext.coordination`. A record write persists the next version before returning; stale `expectedRevision` values fail with a conflict. Records survive carrier remounts as owner-session plugin records, but their runtime APIs require the original Job to remain active.
+`ctx.taskRuns` and `ctx.taskStrategies` expose `recordRead`, `recordList`, `recordWrite` and `recordWait` for host callers. Executor callbacks may use the same operations through `TaskExecutorContext.coordination`. A record write persists the next version before returning; cancellation after append does not hide the receipt for a revision that passes persistence verification. Stale `expectedRevision` values fail with a conflict. Records survive carrier remounts as owner-session plugin records, but their runtime APIs require the original Job to remain active.
 
 Carrier remount with the same module and Jobs service retains live runs; process restart does not. Captured deployment rules remain fixed for each accepted run, while provider and preset availability are checked at admission. See the package's [limitations](../../packages/experimental/task-strategy/README.md#known-limitations-and-deferred-work) for execution recovery restrictions.
 
@@ -179,18 +181,30 @@ cancel(parent: Agent, jobId: JobId, reason?: string): 'requested' | 'already-fin
  * @param parent - exact live owner.
  * @param jobId - original Job identity.
  * @param resolve - synchronous policy capture from the unchanged task text.
- * @param request - observed binding epoch and optional target cursor.
- * @returns reservation command number.
+ * @param request - command identity, observed binding epoch and optional target cursor.
+ * @returns first recorded outcome for that command identity.
  */
-requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, 'expectedBindingEpoch' | 'startStage'>): number
+requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch' | 'startStage'>): TaskCommandOutcome
 
 /**
  * Resume a retained waiting binding.
  * @param parent - exact live owner.
  * @param jobId - original Job identity.
- * @param epoch - observed binding epoch.
+ * @param request - command identity and observed binding epoch.
+ * @returns first recorded outcome for that command identity.
  */
-resume(parent: Agent, jobId: JobId, epoch: number): void
+resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome
+
+/**
+ * Await one submitted control command's settled outcome.
+ * @param parent - exact live owner.
+ * @param jobId - original Job identity.
+ * @param commandId - identity already submitted to this run.
+ * @param timeoutMs - bounded wait in milliseconds.
+ * @param signal - caller cancellation.
+ * @returns the settled outcome, or a timeout marker when the command stays queued.
+ */
+waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>
 ```
 
 Types: [Agent](core.md) · [JobId](jobs.md)
@@ -297,15 +311,17 @@ captureOrchestrationPreferences(owner: Agent): Readonly<Record<string, string>>
 
 /**
  * Reserve an owned task replacement at the next stage boundary.
- * @param args - live root, owned request and replacement with observed binding epoch.
+ * @param args - live root, owned request and replacement with command identity and observed binding epoch.
+ * @returns recorded outcome for that command identity.
  */
-@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): void
+@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): TaskCommandOutcome
 
 /**
  * Resume an owned waiting binding using the observed epoch.
- * @param args - live root, owned request and observed retained binding epoch.
+ * @param args - live root, owned request, command identity and observed retained binding epoch.
+ * @returns recorded outcome for that command identity.
  */
-@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; epoch: number }): void
+@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; commandId: string; epoch: number }): TaskCommandOutcome
 
 /**
  * Evaluate an author policy and validate its execution choices.
@@ -396,18 +412,30 @@ recordWait(parent: Agent, jobId: JobId, key: string, afterRevision: number, time
  * Reserve replacement by a current named strategy at the next stage barrier.
  * @param parent - exact live Agent owning the Job.
  * @param jobId - accepted task identity.
- * @param request - target strategy, observed binding epoch, preferences and optional explicit stage cursor.
- * @returns reservation command number; inspect state or Job output for commitment or failure.
+ * @param request - target strategy, command identity, observed binding epoch, preferences and optional explicit stage cursor.
+ * @returns recorded outcome for that command identity; inspect state or Job output for commitment or failure.
  */
-requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number
+requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): TaskCommandOutcome
 
 /**
  * Continue the retained strategy after a rejected replacement.
  * @param parent - exact live Agent owning the Job.
  * @param jobId - waiting task identity.
- * @param expectedBindingEpoch - binding epoch observed by the caller; stale expectations cannot resume a different binding.
+ * @param request - command identity and binding epoch observed by the caller; stale expectations cannot resume a different binding.
+ * @returns recorded outcome for that command identity.
  */
-resume(parent: Agent, jobId: JobId, expectedBindingEpoch: number): void
+resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome
+
+/**
+ * Await one submitted replacement command's settled outcome.
+ * @param parent - exact live Agent owning the Job.
+ * @param jobId - accepted task identity.
+ * @param commandId - identity already submitted for this task.
+ * @param timeoutMs - bounded wait in milliseconds.
+ * @param signal - caller cancellation.
+ * @returns the settled outcome, or a timeout marker when the command stays queued.
+ */
+waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>
 
 /**
  * Start an original DSH owned job from an upper-authored or policy-authored plan.

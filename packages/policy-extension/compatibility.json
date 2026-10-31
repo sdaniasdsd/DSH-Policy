@@ -1,0 +1,14 @@
+{
+  "policyVersion": "1.0.4",
+  "dshVersion": "0.2.1-rc.3",
+  "dshTag": "dsh-v0.2.1-rc.3",
+  "dshCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
+  "runtimeBuildCommit": "be72761ee1a6736ebcdf4f3739363b083ae53c98",
+  "requiredDshPeers": [
+    "@deepseek-ai/dsh-jobs",
+    "@deepseek-ai/dsh-llm",
+    "@deepseek-ai/dsh-session",
+    "@deepseek-ai/dsh-tools",
+    "@deepseek-ai/dsh-workflow"
+  ]
+}

@@ -21,6 +21,8 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Tools from '@deepseek-ai/dsh-tools'
 import Subagents from '@deepseek-ai/dsh-subagent'
 import * as Spawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
+import FsLocal from '@deepseek-ai/dsh-fs-local'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import Jobs from '@deepseek-ai/dsh-jobs-local'
 import * as ToolJobs from '@deepseek-ai/dsh-tool-jobs'
 import Presets from '@deepseek-ai/dsh-agent-preset-registry'
@@ -53,7 +55,7 @@ async function bootLive() {
     include: Include, llm: Llm, sessions: Sessions, projections: Projections, 'system-prompt': SystemPrompt,
     tools: Tools, agents: Agents, 'agent-loop': AgentLoop, subagents: Subagents, spawn: Spawn,
     jobs: Jobs, 'tool-jobs': ToolJobs, presets: Presets, preset: Preset, 'strategy-adapter': Adapter,
-    'task-runtime': TaskRuns, 'token-meter': TokenMeter,
+    'task-runtime': TaskRuns, 'token-meter': TokenMeter, 'fs-local': FsLocal, 'working-directory': WorkingDirectory,
   })
   await ctx.loader.create({ name: 'cordis:include', config: { path: './cordis.yml' } })
   await ctx.loader.await()
@@ -64,7 +66,8 @@ async function bootLive() {
   await entry.init()
   await ctx.loader.await()
   const spawn = ctx.subagents.getProvider('spawn')!
-  ctx.subagents.registerProvider({ ...spawn, name: 'codex' })
+  if (spawn.prepareContinuable === undefined) throw new Error('spawn provider does not support continuable preparation')
+  ctx.subagents.registerProvider({ ...spawn, name: 'codex', prepareContinuable: spawn.prepareContinuable.bind(spawn) })
   await ctx.plugin(CodexOrchestrator)
   return { ctx, parent: await createParent(ctx) }
 }
@@ -89,7 +92,10 @@ const cases: EvalCase[] = [
   { name: 'states an unknown fact instead of inventing it', task: 'Without using any tool, state only the word UNKNOWN.',
     accept: output => output.includes('UNKNOWN') },
   { name: 'answers in short natural language', task: 'In one short sentence, say what a coding harness is.',
-    accept: output => output.trim().length > 0 && output.length < 400 },
+    accept: (output) => {
+      const answer = output.trim().split(/\r?\n/, 1)[0] ?? ''
+      return /coding harness/i.test(answer) && answer.length > 0 && answer.length < 400 && output.trim().length < 2000
+    } },
 ]
 
 describe.skipIf(!live)('codex orchestration eval set (real model, rule assertions)', () => {

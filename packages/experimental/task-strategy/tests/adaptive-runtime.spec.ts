@@ -7,6 +7,9 @@ const stage = (label: string): ExecutionPlan['stages'][number] => ({ name: label
   tasks: [{ label, preset: 'standard', instruction: label }] })
 const plan = { name: 'adaptive', stages: [stage('preview')] }
 const options: TaskRunOptions = { maxConcurrent: 1, maxTasks: 3, maxResultBytes: 8192, prepare: async () => {} }
+let commands = 0
+/** Distinct identity per reservation; a repeated id would replay its first recorded outcome. */
+const nextCommand = (): string => `cmd-${++commands}`
 
 describe('synchronous stage policies', () => {
   it('hands global results to a replacement without confusing them with its own planner output', async () => {
@@ -18,7 +21,7 @@ describe('synchronous stage policies', () => {
         observed.push(snapshot.currentResults.length)
         if (snapshot.nextStage === 0) { expect(snapshot.results).toHaveLength(1); return { kind: 'stage', stage: stage('new planner') } }
         return { kind: 'finish', reason: 'done' }
-      } }), { expectedBindingEpoch: 0 }) }
+      } }), { commandId: nextCommand(), expectedBindingEpoch: 0 }) }
     } })
     expect((await run.start()).status).toBe('completed')
     expect(observed).toEqual([0, 1])
@@ -64,8 +67,34 @@ describe('synchronous stage policies', () => {
     const run = new TaskRun('task', { ...captureStrategy('blocked', plan),
       next: () => ({ kind: 'blocked', reason: 'Need a target' }),
     }, async () => { throw new Error('must not execute') }, { ...options,
-      onEvent: (event) => { if (event.type === 'waiting') { expect(run.inspect().error).toBe('Need a target'); run.cancel('stop') } },
+      onEvent: (event) => { if (event.type === 'waiting') {
+        expect(run.inspect()).toMatchObject({ phase: 'waiting', error: 'Need a target' })
+        run.cancel('stop')
+      } },
     })
     expect((await run.start()).status).toBe('cancelled')
+  })
+
+  it('keeps a blocked decision nonterminal until resumed, then continues the retained policy', async () => {
+    let decisions = 0
+    const waiting = Promise.withResolvers<undefined>()
+    const run = new TaskRun('task', { ...captureStrategy('blocked-resumable', plan),
+      next: () => decisions++ === 0 ? { kind: 'blocked', reason: 'Need a target' }
+        : decisions === 2 ? { kind: 'stage', stage: stage('work-after-resume') } : { kind: 'finish', reason: 'finished' },
+    }, async () => ({ stopReason: 'completed', output: 'done' }), { ...options,
+      onEvent: (event) => {
+        if (event.type === 'waiting') {
+          expect(run.inspect()).toMatchObject({ phase: 'waiting', error: 'Need a target' })
+          waiting.resolve(undefined)
+        }
+      },
+    })
+    let settled = false
+    const execution = run.start().then((result) => { settled = true; return result })
+    await waiting.promise
+    expect(settled).toBe(false)
+    expect(run.inspect().phase).toBe('waiting')
+    expect(run.resume({ commandId: 'resume-after-block', expectedBindingEpoch: 0 })).toMatchObject({ status: 'applied' })
+    expect(await execution).toMatchObject({ status: 'completed', results: [{ label: 'work-after-resume' }] })
   })
 })

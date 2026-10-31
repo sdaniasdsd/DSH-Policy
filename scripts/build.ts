@@ -54,11 +54,13 @@ function main(): void {
 
   rmSync(resolve(root, CLIENT_BUILD_RECORD_PATH), { force: true })
   runScript('build:native-system', buildEnvironment)
-  if (values['artifacts-only']) {
-    runCommand(['exec', 'tsx', 'scripts/compile-referenced-projects.ts', 'libraries'], buildEnvironment, 'artifact libraries')
-  } else {
-    runScript('build:lib', buildEnvironment)
-  }
+  // Both clean artifact builds and normal builds need generated Host contracts
+  // before checked Host and Client projects resolve their Remote types.
+  runCommand(
+    ['exec', 'tsx', 'scripts/compile-referenced-projects.ts', 'libraries'],
+    buildEnvironment,
+    values['artifacts-only'] ? 'artifact libraries' : 'libraries',
+  )
   runScript('build:web', buildEnvironment)
   const record = writeClientBuildRecord(root, clientEnvironment)
   console.log(

@@ -2,7 +2,7 @@ name: CI master
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       suite:
@@ -15,7 +15,7 @@ on:
           - consolidated-runner-benchmark
           - ssh-helper
 
-# New master pushes and manual runs replace obsolete checks in this workflow/ref.
+# New main/master pushes and manual runs replace obsolete checks in this workflow/ref.
 # Standby drills share cancellation; use completed runs as readiness evidence.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -40,7 +40,7 @@ jobs:
 
   # These native runtime carriers are post-merge checks; release keeps all targets.
   python-runtime:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     name: python runtime / macOS and Linux ARM64
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -51,7 +51,7 @@ jobs:
 
   # Wine runs once here, independently of the native serial standby aggregates.
   windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     name: windows node 24 / wine
     timeout-minutes: 15
@@ -139,7 +139,7 @@ jobs:
   # persistent pnpm store and tool caches make them redundant (and saving here
   # would poison the hosted cache namespace with self-hosted paths).
   serial-linux-selfhosted:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
     steps:
@@ -229,7 +229,7 @@ jobs:
   # (and saving here would poison the hosted cache namespace with self-hosted
   # paths).
   serial-windows:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
     name: serial / windows (self-hosted standby)
     runs-on: [self-hosted, dsh-win-ci, windows]
     timeout-minutes: 120

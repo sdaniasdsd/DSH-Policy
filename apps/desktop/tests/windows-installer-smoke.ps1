@@ -104,7 +104,8 @@ function Finish-Setup([Diagnostics.Process]$Process, [bool]$Launch, [string]$The
     }
     $window = [InstallerCapture]::Find($Process.Id)
     if ([InstallerCapture]::GetProp($window, 'HarnessInstaller.Stage').ToInt32() -ne 4) { throw 'Installation did not reach cleanup' }
-    if ([InstallerCapture]::Bounds($window) -ne $Bounds) { throw 'Completion page moved or resized the installer' }
+    $completedBounds = [InstallerCapture]::Bounds($window)
+    if ($completedBounds -ne $Bounds) { throw "Completion page moved or resized the installer (expected $Bounds, got $completedBounds)" }
     [void][InstallerCapture]::Save($window, (Join-Path $OutputDirectory ($Theme + '-finish.png')))
     if ($Launch) {
         $hiddenApp = $appPath + '.hold'

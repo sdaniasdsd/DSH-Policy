@@ -5,7 +5,7 @@ import { loadStoredSession } from '../../../subagent/subagent/tests/persistence-
 import { pluginRecordOf } from '@deepseek-ai/dsh-session'
 import * as activationResults from '../../../subagent/subagent/src/activation.ts'
 import type { TaskMemberTurnOutcome } from '../src/member-session-types.ts'
-import type { TaskRecordWaitResult } from '../src/coordination-types.ts'
+import type { TaskRecordWaitResult, TaskSharedRecord } from '../src/coordination-types.ts'
 import type { ExecutionPlan } from '../src/types.ts'
 
 const signal = new AbortController().signal
@@ -251,6 +251,90 @@ it('waits for a persisted shared-record revision and rejects a stale compare-and
     return record?.type === 'plugin:task-strategy/shared-record' ? [record.data] : []
   })
   expect(records).toHaveLength(2)
+})
+
+it('returns and publishes a shared-record receipt when cancellation arrives during its persistence barrier', async () => {
+  const { ctx, parent } = await bootTaskRuntime([], undefined, true)
+  const caller = new AbortController()
+  const enteredFlush = Promise.withResolvers<undefined>()
+  const continueFlush = Promise.withResolvers<undefined>()
+  const actualFlush = ctx.sessions.flush.bind(ctx.sessions)
+  const flush = vi.spyOn(ctx.sessions, 'flush').mockImplementation(async (session) => {
+    enteredFlush.resolve(undefined)
+    await continueFlush.promise
+    return actualFlush(session)
+  })
+  let receipt: TaskSharedRecord | undefined
+  let readResult: TaskSharedRecord | undefined
+  let waitResult: TaskRecordWaitResult | undefined
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'commit receipt cancellation', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing coordination context')
+      const waiting = context.coordination.records.wait('issue/commit', 0, 5000, childSignal)
+      const write = context.coordination.records.write('issue/commit', { status: 'saved' }, 0, caller.signal)
+      await enteredFlush.promise
+      caller.abort(new Error('caller cancelled after append'))
+      continueFlush.resolve(undefined)
+      receipt = await write
+      readResult = context.coordination.records.read('issue/commit')
+      waitResult = await waiting
+      return { stopReason: 'completed', output: 'committed' }
+    } })
+  try {
+    const id = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+    expect((await ctx.jobs.wait(id, 5000, parent.id)).status).toBe('completed')
+    expect(receipt).toMatchObject({ key: 'issue/commit', revision: 1, value: { status: 'saved' } })
+    expect(readResult).toEqual(receipt)
+    expect(waitResult).toMatchObject({ timedOut: false, record: receipt })
+    const stored = await loadStoredSession(ctx.sessionPersistence, parent.id)
+    const records = stored.events.flatMap((event) => {
+      const record = pluginRecordOf(event)
+      return record?.type === 'plugin:task-strategy/shared-record'
+        && typeof record.data === 'object' && record.data !== null
+        && 'key' in record.data && record.data.key === 'issue/commit'
+        ? [record.data] : []
+    })
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({ revision: 1, value: { status: 'saved' } })
+  } finally { flush.mockRestore(); continueFlush.resolve(undefined) }
+})
+
+it('returns an accepted message receipt when the task stops immediately after inbox acceptance', async () => {
+  const gate = Promise.withResolvers<undefined>()
+  const { ctx, parent, model } = await bootTaskRuntime([
+    { chunks: textResponse('first turn'), gate: gate.promise }, { chunks: textResponse('accepted adjustment') },
+  ])
+  let jobId: Awaited<ReturnType<typeof ctx.taskRuns.start>> | undefined
+  let receipt: { readonly messageId: string } | undefined
+  let acceptedMessageId: string | undefined
+  ctx.taskRuns.registerExecutor({ id: 'conversation', description: 'accepted message receipt cancellation', check: () => {},
+    execute: async (_parent, _step, _prompt, childSignal, context) => {
+      if (context === undefined) throw new Error('Missing coordination context')
+      const first = context.members.open(step, 'initial', childSignal)
+      await vi.waitFor(() => { expect(model.requests).toHaveLength(1) })
+      const sessionId = model.requests[0]?.sessionId
+      if (sessionId === undefined) throw new Error('Missing active member session')
+      const sendMessage = ctx.subagents.sendMessage.bind(ctx.subagents)
+      const send = vi.spyOn(ctx.subagents, 'sendMessage').mockImplementation(async (...args) => {
+        const messageId = await sendMessage(...args)
+        acceptedMessageId = messageId
+        if (jobId === undefined) throw new Error('Task job was not assigned')
+        ctx.taskRuns.cancel(parent, jobId)
+        return messageId
+      })
+      try {
+        receipt = await context.coordination.messages.send(sessionId, 'accepted before stop', childSignal)
+      } finally { send.mockRestore() }
+      const outcome = await first
+      if (outcome.kind !== 'settled') throw new Error(outcome.error)
+      return outcome.result
+    } })
+  try {
+    jobId = await ctx.taskRuns.start(parent, 'work', plan, rules, signal)
+    await ctx.jobs.wait(jobId, 5000, parent.id)
+    expect(receipt).toEqual({ messageId: acceptedMessageId })
+    expect(acceptedMessageId).toEqual(expect.any(String))
+  } finally { gate.resolve(undefined) }
 })
 
 it('delivers coordination-facade messages to an active local member with the task owner as sender', async () => {

@@ -1,7 +1,7 @@
 {
   "extends": "../../../tsconfig.base.client.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo" },
-  "include": ["src/client", "src/css-modules.d.ts", "src/selection-types.ts", "src/types.ts", "src/entry-types.ts", "src/runtime-types.ts", "src/policy-types.ts", "src/verification-types.ts", "src/workflow-types.ts"],
+  "include": ["src/client", "src/css-modules.d.ts", "src/selection-types.ts", "src/types.ts", "src/entry-types.ts", "src/runtime-types.ts", "src/policy-types.ts", "src/capacity-types.ts", "src/verification-types.ts", "src/workflow-types.ts"],
   "references": [
     { "path": "../../client/connection/tsconfig.client.json" },
     { "path": "../../client/ui-chat/tsconfig.client.json" }, { "path": "../../client/ui-conversation/tsconfig.client.json" },

@@ -408,6 +408,37 @@ describe('client bundle activation', () => {
     )
   })
 
+  it('composes one client bundle from multiple package plugin subpaths', () => {
+    const packageName = '@fixture/multi-plugin-package'
+    const clientPath = writePackage(packageName)
+    const packageRoot = dirname(dirname(clientPath))
+    mkdirSync(dirname(clientPath), { recursive: true })
+    writeFileSync(clientPath, 'module.exports = {}\n')
+    const paths = new Map([
+      [`${packageName}/plugins/claude-style`, join(packageRoot, 'lib', 'plugin-claude-style.js')],
+      [`${packageName}/plugins/codex-style`, join(packageRoot, 'lib', 'plugin-codex-style.js')],
+    ])
+    for (const path of paths.values()) {
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, 'export default {}\n')
+    }
+    const internal = {
+      version: 'v2' as const,
+      resolveSync: (_baseUrl: string, options: { specifier: string }) => {
+        const path = paths.get(options.specifier)
+        if (path === undefined) throw new Error(`unexpected loader specifier: ${options.specifier}`)
+        return { format: 'module' as const, url: pathToFileURL(path).href }
+      },
+    }
+
+    const { service } = constructWithRoute([...paths.keys()], {
+      internal: internal as NonNullable<Context['loader']['internal']>,
+    })
+
+    expect(service.clientPath(packageName)).toBe(clientPath)
+    expect(service.graph().entries.map(entry => entry.id)).toEqual([packageName])
+  })
+
   it('promotes the remaining Loader source after the selected alias unloads', async () => {
     const packageName = '@fixture/duplicate-source-recovery'
     const clientPath = writePackage(packageName)

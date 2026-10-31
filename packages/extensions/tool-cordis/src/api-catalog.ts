@@ -3185,15 +3185,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'original Jobs cancellation disposition; completion still awaits child cleanup.',
       },
       {
-        signature: 'requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, \'expectedBindingEpoch\' | \'startStage\'>): number',
+        signature: 'requestSwitch(parent: Agent, jobId: JobId, resolve: (task: string) => CapturedStrategy, request: Pick<TaskSwitch, \'commandId\' | \'expectedBindingEpoch\' | \'startStage\'>): TaskCommandOutcome',
         description: 'Reserve a synchronous binding replacement at the next drained stage boundary.',
-        parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'resolve', description: 'synchronous policy capture from the unchanged task text.' }, { name: 'request', description: 'observed binding epoch and optional target cursor.' }],
-        returns: 'reservation command number.',
+        parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'resolve', description: 'synchronous policy capture from the unchanged task text.' }, { name: 'request', description: 'command identity, observed binding epoch and optional target cursor.' }],
+        returns: 'first recorded outcome for that command identity.',
       },
       {
-        signature: 'resume(parent: Agent, jobId: JobId, epoch: number): void',
+        signature: 'resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, \'commandId\' | \'expectedBindingEpoch\'>): TaskCommandOutcome',
         description: 'Resume a retained waiting binding.',
-        parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'epoch', description: 'observed binding epoch.' }],
+        parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'request', description: 'command identity and observed binding epoch.' }],
+        returns: 'first recorded outcome for that command identity.',
+      },
+      {
+        signature: 'waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>',
+        description: 'Await one submitted control command\'s settled outcome.',
+        parameters: [{ name: 'parent', description: 'exact live owner.' }, { name: 'jobId', description: 'original Job identity.' }, { name: 'commandId', description: 'identity already submitted to this run.' }, { name: 'timeoutMs', description: 'bounded wait in milliseconds.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the settled outcome, or a timeout marker when the command stays queued.',
       },
     ],
   },
@@ -3280,14 +3287,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'args', description: 'live root session and its request identity.' }],
       },
       {
-        signature: '@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): void',
+        signature: '@Remote switchEntry(args: { sessionId: SessionId; requestId: string; request: TaskSwitch }): TaskCommandOutcome',
         description: 'Reserve an owned task replacement at the next stage boundary.',
-        parameters: [{ name: 'args', description: 'live root, owned request and replacement with observed binding epoch.' }],
+        parameters: [{ name: 'args', description: 'live root, owned request and replacement with command identity and observed binding epoch.' }],
+        returns: 'recorded outcome for that command identity.',
       },
       {
-        signature: '@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; epoch: number }): void',
+        signature: '@Remote resumeEntry(args: { sessionId: SessionId; requestId: string; commandId: string; epoch: number }): TaskCommandOutcome',
         description: 'Resume an owned waiting binding using the observed epoch.',
-        parameters: [{ name: 'args', description: 'live root, owned request and observed retained binding epoch.' }],
+        parameters: [{ name: 'args', description: 'live root, owned request, command identity and observed retained binding epoch.' }],
+        returns: 'recorded outcome for that command identity.',
       },
       {
         signature: 'async decide(id: string, input: StrategyInput): Promise<ExecutionPlan>',
@@ -3344,15 +3353,22 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the newer record or a timeout result.',
       },
       {
-        signature: 'requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): number',
+        signature: 'requestSwitch(parent: Agent, jobId: JobId, request: TaskSwitch): TaskCommandOutcome',
         description: 'Reserve replacement by a current named strategy at the next stage barrier.',
-        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity.' }, { name: 'request', description: 'target strategy, observed binding epoch, preferences and optional explicit stage cursor.' }],
-        returns: 'reservation command number; inspect state or Job output for commitment or failure.',
+        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity.' }, { name: 'request', description: 'target strategy, command identity, observed binding epoch, preferences and optional explicit stage cursor.' }],
+        returns: 'recorded outcome for that command identity; inspect state or Job output for commitment or failure.',
       },
       {
-        signature: 'resume(parent: Agent, jobId: JobId, expectedBindingEpoch: number): void',
+        signature: 'resume(parent: Agent, jobId: JobId, request: Pick<TaskSwitch, \'commandId\' | \'expectedBindingEpoch\'>): TaskCommandOutcome',
         description: 'Continue the retained strategy after a rejected replacement.',
-        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'waiting task identity.' }, { name: 'expectedBindingEpoch', description: 'binding epoch observed by the caller; stale expectations cannot resume a different binding.' }],
+        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'waiting task identity.' }, { name: 'request', description: 'command identity and binding epoch observed by the caller; stale expectations cannot resume a different binding.' }],
+        returns: 'recorded outcome for that command identity.',
+      },
+      {
+        signature: 'waitCommand(parent: Agent, jobId: JobId, commandId: string, timeoutMs: number, signal: AbortSignal): Promise<TaskCommandWaitResult>',
+        description: 'Await one submitted replacement command\'s settled outcome.',
+        parameters: [{ name: 'parent', description: 'exact live Agent owning the Job.' }, { name: 'jobId', description: 'accepted task identity.' }, { name: 'commandId', description: 'identity already submitted for this task.' }, { name: 'timeoutMs', description: 'bounded wait in milliseconds.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the settled outcome, or a timeout marker when the command stays queued.',
       },
       {
         signature: 'async start(parent: Agent, task: string, plan: ExecutionPlan, signal: AbortSignal): Promise<JobId>',
@@ -4836,7 +4852,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AdapterConfig',
-    declaration: 'export interface AdapterConfig {\n    readonly entry?: {\n        readonly enabled: boolean;\n    };\n    readonly selection: SelectionConfig;\n    readonly provider: string;\n    readonly toolPrefix: string;\n    readonly allowedPresets: string[];\n    readonly allowedExecutors?: string[] | undefined;\n    readonly strategies: StrategyDefinition[];\n    readonly maxConcurrent: number;\n    readonly maxTasks: number;\n    readonly maxPlanBytes: number;\n    readonly maxResultBytes: number;\n    readonly maxOutputBytes: number;\n}',
+    declaration: 'export interface AdapterConfig {\n    readonly entry?: {\n        readonly enabled: boolean;\n    };\n    readonly selection: SelectionConfig;\n    readonly provider: string;\n    readonly toolPrefix: string;\n    readonly allowedPresets: string[];\n    readonly allowedExecutors?: string[] | undefined;\n    readonly strategies: StrategyDefinition[];\n    readonly maxConcurrent: number;\n    readonly maxTasks: number;\n    readonly maxPlanBytes: number;\n    readonly maxResultBytes: number;\n    readonly maxOutputBytes: number;\n    readonly capacity: {\n        readonly waitMs: number;\n        readonly retryMs: number;\n    };\n}',
   },
   {
     name: 'AdapterRegistrationHandle',
@@ -5137,6 +5153,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ButtonProps',
     declaration: 'export interface ButtonProps {\n    readonly label: string;\n    readonly hotkey?: string | undefined;\n    readonly disabled?: boolean | undefined;\n    readonly onPress?: (() => unknown) | undefined;\n}',
+  },
+  {
+    name: 'CapacityResource',
+    declaration: 'export type CapacityResource = \'subagent\';',
   },
   {
     name: 'CapturedStrategy',
@@ -6527,8 +6547,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PluginSpecInspection = {\n    readonly status: \'accepted\';\n    readonly kind: InstallSpecKind;\n    readonly name?: string;\n    readonly version?: string;\n    readonly description?: string;\n    readonly bundle: boolean | null;\n    readonly registry: Registry;\n    readonly host?: string;\n} | {\n    readonly status: \'refused\';\n    readonly problem: PluginInspectProblem;\n    readonly reason: string;\n    readonly registries?: Registry[];\n};',
   },
   {
+    name: 'PolicySignal',
+    declaration: 'export type PolicySignal = {\n    readonly kind: \'capacity\';\n    readonly resource: CapacityResource;\n    readonly code: string;\n    readonly waits: number;\n    readonly waitedMs: number;\n    readonly exhausted: boolean;\n};',
+  },
+  {
     name: 'PolicySnapshot',
-    declaration: 'export interface PolicySnapshot {\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly remainingTasks: number;\n    readonly bindingEpoch: number;\n    readonly results: readonly TaskResult[];\n    readonly currentResults: readonly TaskResult[];\n}',
+    declaration: 'export interface PolicySnapshot {\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly remainingTasks: number;\n    readonly bindingEpoch: number;\n    readonly results: readonly TaskResult[];\n    readonly currentResults: readonly TaskResult[];\n    readonly signals: readonly PolicySignal[];\n}',
   },
   {
     name: 'PostToolDecision',
@@ -6577,6 +6601,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreToolDecision',
     declaration: 'export type PreToolDecision = {\n    kind: \'allow\';\n} | {\n    kind: \'deny\';\n    reason: string;\n    info?: ToolErrorInfo;\n} | {\n    kind: \'cancel\';\n} | {\n    kind: \'ask\';\n    reason?: string;\n    displayReason?: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n};',
+  },
+  {
+    name: 'PriorResultSelector',
+    declaration: 'export interface PriorResultSelector {\n    readonly scope: \'all\' | \'current-binding\';\n    readonly labels?: readonly string[];\n}',
   },
   {
     name: 'ProductEvent',
@@ -8083,12 +8111,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
+    name: 'TaskCommandOutcome',
+    declaration: 'export interface TaskCommandOutcome {\n    readonly commandId: string;\n    readonly command: number;\n    readonly status: TaskCommandStatus;\n    readonly epoch?: number;\n    readonly effectiveAt?: string;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'TaskCommandStatus',
+    declaration: 'export type TaskCommandStatus = \'queued\' | \'applied\' | \'rejected\';',
+  },
+  {
+    name: 'TaskCommandWaitResult',
+    declaration: 'export interface TaskCommandWaitResult {\n    readonly timedOut: boolean;\n    readonly outcome?: TaskCommandOutcome;\n}',
+  },
+  {
     name: 'TaskCoordination',
     declaration: 'export interface TaskCoordination {\n    readonly records: TaskSharedRecords;\n    readonly messages: TaskMemberMessageChannel;\n}',
   },
   {
     name: 'TaskExecutorContext',
-    declaration: 'export interface TaskExecutorContext {\n    readonly members: TaskMemberSessions;\n    readonly coordination: TaskCoordination;\n}',
+    declaration: 'export interface TaskExecutorContext {\n    readonly members: TaskMemberSessions;\n    readonly workspaceRoot?: string;\n    readonly coordination: TaskCoordination;\n}',
   },
   {
     name: 'TaskExecutorProvider',
@@ -8140,11 +8180,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskRuntimeRules',
-    declaration: 'export type TaskRuntimeRules = Pick<AdapterConfig, \'provider\' | \'allowedPresets\' | \'allowedExecutors\' | \'maxConcurrent\' | \'maxTasks\' | \'maxPlanBytes\' | \'maxResultBytes\' | \'maxOutputBytes\'>;',
+    declaration: 'export type TaskRuntimeRules = Pick<AdapterConfig, \'provider\' | \'allowedPresets\' | \'allowedExecutors\' | \'maxConcurrent\' | \'maxTasks\' | \'maxPlanBytes\' | \'maxResultBytes\' | \'maxOutputBytes\' | \'capacity\'>;',
   },
   {
     name: 'TaskRunView',
-    declaration: 'export interface TaskRunView {\n    readonly phase: \'queued\' | \'boundary\' | \'preparing\' | \'running\' | \'waiting\' | \'stopping\' | \'completed\' | \'failed\' | \'cancelled\';\n    readonly binding: {\n        readonly id: string;\n        readonly revision: string;\n        readonly epoch: number;\n    };\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly startedTasks: number;\n    readonly results: TaskResult[];\n    readonly activeMembers?: readonly TaskMemberView[];\n    readonly pendingSwitch?: number;\n    readonly error?: string;\n    readonly verification?: VerificationReport;\n    readonly review?: ReviewReport;\n    readonly usage?: ObservedUsage & {\n        readonly unknownChildren: number;\n    };\n    readonly execution?: {\n        readonly revision: string;\n        readonly provider: string;\n        readonly model?: string;\n        readonly modelProvider?: string;\n        readonly permissionAuthority: \'dsh\' | \'external-or-mixed\';\n        readonly maxTasks: number;\n        readonly maxResultBytes: number;\n        readonly allowedPresets: readonly string[];\n        readonly allowedExecutors: readonly string[];\n    };\n}',
+    declaration: 'export interface TaskRunView {\n    readonly phase: \'queued\' | \'boundary\' | \'preparing\' | \'running\' | \'waiting\' | \'stopping\' | \'completed\' | \'failed\' | \'cancelled\';\n    readonly binding: {\n        readonly id: string;\n        readonly revision: string;\n        readonly epoch: number;\n    };\n    readonly nextStage: number;\n    readonly completedStages: number;\n    readonly startedTasks: number;\n    readonly results: TaskResult[];\n    readonly activeMembers?: readonly TaskMemberView[];\n    readonly pendingSwitch?: number;\n    readonly signals?: readonly PolicySignal[];\n    readonly error?: string;\n    readonly verification?: VerificationReport;\n    readonly review?: ReviewReport;\n    readonly usage?: ObservedUsage & {\n        readonly unknownChildren: number;\n    };\n    readonly execution?: {\n        readonly revision: string;\n        readonly provider: string;\n        readonly model?: string;\n        readonly modelProvider?: string;\n        readonly permissionAuthority: \'dsh\' | \'external-or-mixed\';\n        readonly maxTasks: number;\n        readonly maxResultBytes: number;\n        readonly allowedPresets: readonly string[];\n        readonly allowedExecutors: readonly string[];\n    };\n}',
   },
   {
     name: 'TaskSelection',
@@ -8160,7 +8200,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskStep',
-    declaration: 'export interface TaskStep {\n    readonly label: string;\n    readonly preset?: string | undefined;\n    readonly executor?: string | undefined;\n    readonly instruction: string;\n    readonly tools?: {\n        readonly allow?: string[] | undefined;\n        readonly deny?: string[] | undefined;\n    } | undefined;\n    readonly model?: string | undefined;\n    readonly provider?: string | undefined;\n    readonly workflowOutput?: boolean;\n    readonly reviewOutput?: boolean;\n    readonly artifactChecks?: readonly ArtifactCheck[];\n    readonly maxTokens?: number;\n    readonly timeoutMs?: number;\n}',
+    declaration: 'export interface TaskStep {\n    readonly label: string;\n    readonly preset?: string | undefined;\n    readonly executor?: string | undefined;\n    readonly instruction: string;\n    readonly priorResults?: PriorResultSelector;\n    readonly tools?: {\n        readonly allow?: string[] | undefined;\n        readonly deny?: string[] | undefined;\n    } | undefined;\n    readonly model?: string | undefined;\n    readonly provider?: string | undefined;\n    readonly workflowOutput?: boolean;\n    readonly reviewOutput?: boolean;\n    readonly reviewPaths?: readonly string[];\n    readonly artifactChecks?: readonly ArtifactCheck[];\n    readonly maxTokens?: number;\n    readonly timeoutMs?: number;\n}',
   },
   {
     name: 'TaskSubmission',
@@ -8168,7 +8208,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'TaskSwitch',
-    declaration: 'export interface TaskSwitch {\n    readonly strategy: string;\n    readonly expectedBindingEpoch: number;\n    readonly preferences?: Readonly<Record<string, string>>;\n    readonly startStage?: number;\n}',
+    declaration: 'export interface TaskSwitch {\n    readonly strategy: string;\n    readonly commandId: string;\n    readonly expectedBindingEpoch: number;\n    readonly preferences?: Readonly<Record<string, string>>;\n    readonly startStage?: number;\n}',
   },
   {
     name: 'TeamId',

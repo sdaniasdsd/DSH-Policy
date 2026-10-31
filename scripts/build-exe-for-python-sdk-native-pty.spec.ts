@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons } from './executable-native-pty.ts'
+import { resolveLinuxNodePtyAddon, resolveWindowsNodePtyAddons, stageNodePtyPrebuild } from './executable-native-pty.ts'
 
 const roots: string[] = []
 
@@ -50,6 +50,35 @@ describe('resolveWindowsNodePtyAddons', () => {
     expect(() => resolveWindowsNodePtyAddons(root, 'x64')).toThrow(
       `Windows node-pty addons are missing: ${join(root, 'prebuilds', 'win32-x64', 'conpty.node')}, ${join(root, 'prebuilds', 'win32-x64', 'conpty_console_list.node')}`,
     )
+  })
+})
+
+describe('stageNodePtyPrebuild', () => {
+  it('keeps the deployed prebuild when package-manager files share hard links', async () => {
+    const root = temporaryPackage()
+    const source = join(root, 'source', 'win32-x64')
+    const destination = join(root, 'staged', 'win32-x64')
+    const sourceFile = join(source, 'conpty', 'conpty.dll')
+    const destinationFile = join(destination, 'conpty', 'conpty.dll')
+    mkdirSync(dirname(sourceFile), { recursive: true })
+    mkdirSync(dirname(destinationFile), { recursive: true })
+    writeFileSync(sourceFile, 'shared prebuild')
+    linkSync(sourceFile, destinationFile)
+
+    await expect(stageNodePtyPrebuild(source, destination)).resolves.toBeUndefined()
+    expect(readFileSync(destinationFile, 'utf8')).toBe('shared prebuild')
+  })
+
+  it('copies the target prebuild when deploy omitted it', async () => {
+    const root = temporaryPackage()
+    const source = join(root, 'source', 'linux-x64')
+    const destination = join(root, 'staged', 'linux-x64')
+    const sourceFile = join(source, 'pty.node')
+    mkdirSync(source, { recursive: true })
+    writeFileSync(sourceFile, 'native addon')
+
+    await stageNodePtyPrebuild(source, destination)
+    expect(readFileSync(join(destination, 'pty.node'), 'utf8')).toBe('native addon')
   })
 })
 

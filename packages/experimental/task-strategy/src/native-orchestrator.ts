@@ -51,9 +51,10 @@ export function mountNativeOrchestrator(ctx: Context, config: NativeOrchestrator
   // Resolve the configured backend before advertising a selectable policy.
   check()
   ctx.taskRuns.registerExecutor({ id: captured.executorId, description: captured.description, check,
-    execute: async (parent, step, prompt, signal) => {
+    execute: async (parent, step, prompt, signal, context) => {
       const run = await startCancellableActivation(subagents, { provider: captured.providerName, label: step.label, signal, delivery: 'caller', request: {
         parent, prompt: [{ type: 'text', text: prompt }],
+        ...context?.workspaceRoot === undefined ? {} : { cwd: context.workspaceRoot },
       } })
       try {
         const result = await run.result

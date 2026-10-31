@@ -2039,7 +2039,7 @@ Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subag
 
 ### `subagent`
 
-Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. Set `wait_for_result: true` when your next response depends on the child answer; the tool will wait and return its final result. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes. The returned id is a subagent id, not a job id; do not pass it to job tools. Treat only the runtime completion notice as the result; a successful `send_message` confirms delivery only. Do not start a duplicate for the same task while waiting for its completion notice.
+Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. This tool waits for the subagent and returns its final outcome to you. Do not ask it to start more agents; ask it to list any needed follow-up tasks in its final answer so you can dispatch them as siblings.
 
 ```json
 {
@@ -2056,10 +2056,6 @@ Delegate a self-contained task to a subagent (a separate agent that works in its
     "prompt": {
       "type": "string",
       "description": "The complete, self-contained task for the subagent. It does not share this conversation's context, so include everything it needs."
-    },
-    "wait_for_result": {
-      "type": "boolean",
-      "description": "Wait for completion and return the final answer when the main response depends on this child. Defaults to false for independent work."
     }
   },
   "required": [
@@ -2162,7 +2158,7 @@ Request cancellation of a running background job.
   "properties": {
     "job_id": {
       "type": "string",
-      "description": "Job id returned by the tool that started the background work. Subagent ids from `subagent` or `subagent_fork` are not valid here."
+      "description": "Job id returned by the tool that started the background work."
     },
     "reason": {
       "type": "string",
@@ -2179,7 +2175,7 @@ Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/
 
 ### `job_list`
 
-List your background jobs (running and finished) with their ids, kinds, and statuses. Subagents are tracked separately and are not listed here.
+List your background jobs (running and finished) with their ids, kinds, and statuses.
 
 ```json
 {
@@ -2200,7 +2196,7 @@ Read a background job: output since the previous read for stream jobs, or the re
   "properties": {
     "job_id": {
       "type": "string",
-      "description": "Job id returned by the tool that started the background work. Subagent ids from `subagent` or `subagent_fork` are not valid here; their results arrive through runtime completion notices."
+      "description": "Job id returned by the tool that started the background work."
     },
     "wait": {
       "type": "boolean",

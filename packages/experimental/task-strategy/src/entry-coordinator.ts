@@ -1,10 +1,11 @@
 /** One reservation per human message, held by the original Jobs/Agent lifetime. */
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
-import type { TaskSwitch } from './runtime-types.ts'
+import type { JobId } from '@deepseek-ai/dsh-jobs'
+import type { TaskCommandOutcome, TaskSwitch } from './runtime-types.ts'
 import type { EntryRoute, EntryView } from './entry-types.ts'
 import type { SelectorOptions } from './selection-types.ts'
 import type TaskStrategies from './cordis.ts'
@@ -255,7 +256,8 @@ export class EntryCoordinator {
       case 'status': this.refresh(parent, target); break
       case 'cancel': this.cancel(parent, target.view.requestId); break
       case 'supplement': this.supplement(parent, target.view.requestId, record.input); break
-      case 'switch': this.switch(parent, target.view.requestId, route); break
+      case 'switch': this.switch(parent, target.view.requestId, { commandId: randomUUID(),
+        strategy: route.strategy, expectedBindingEpoch: route.expectedBindingEpoch }); break
     }
     record.view = { ...record.view, state: 'completed', progress: `Associated with ${target.view.requestId}` }
   }
@@ -280,24 +282,30 @@ export class EntryCoordinator {
    * Reserve replacement under the original TaskRun binding version.
    * @param parent - exact live task owner.
    * @param requestId - owned accepted intake identity.
-   * @param request - replacement policy and observed binding epoch.
+   * @param request - replacement policy, command identity and observed binding epoch.
+   * @returns recorded outcome for that command identity.
    */
-  switch(parent: Agent, requestId: string, request: TaskSwitch): void {
-    const receipt = this.target(parent, requestId).view.receipt
-    if (receipt === undefined) throw new Error('Task has not been accepted')
-    this.service.requestSwitch(parent, receipt.jobId, request)
+  switch(parent: Agent, requestId: string, request: TaskSwitch): TaskCommandOutcome {
+    return this.service.requestSwitch(parent, this.acceptedJob(parent, requestId), request)
   }
 
   /**
    * Resume the retained binding after a failed replacement.
    * @param parent - exact live task owner.
    * @param requestId - owned accepted intake identity.
-   * @param epoch - binding epoch observed by the caller.
+   * @param request - command identity and binding epoch observed by the caller.
+   * @returns recorded outcome for that command identity.
    */
-  resume(parent: Agent, requestId: string, epoch: number): void {
+  resume(parent: Agent, requestId: string,
+    request: Pick<TaskSwitch, 'commandId' | 'expectedBindingEpoch'>): TaskCommandOutcome {
+    return this.service.resume(parent, this.acceptedJob(parent, requestId), request)
+  }
+
+  /** Resolve one owned intake to its accepted original Job. */
+  private acceptedJob(parent: Agent, requestId: string): JobId {
     const receipt = this.target(parent, requestId).view.receipt
     if (receipt === undefined) throw new Error('Task has not been accepted')
-    this.service.resume(parent, receipt.jobId, epoch)
+    return receipt.jobId
   }
 
   /**

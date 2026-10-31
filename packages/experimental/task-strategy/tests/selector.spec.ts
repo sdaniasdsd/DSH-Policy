@@ -27,6 +27,27 @@ function bench(result: SubagentResult = { stopReason: 'completed', output: [], s
   return { run, provider, subagents, start, getProvider, dispose }
 }
 describe('bounded selector operation', () => {
+  it('retries a truncated decision once with the same task and restrictions before accepting it', async () => {
+    const b = bench()
+    b.start.mockResolvedValueOnce({ childId: SessionId('cutoff'), messageId: MessageId('cutoff'),
+      result: Promise.resolve({ stopReason: 'max-tokens', output: [] }), dispose: b.dispose })
+    await expect(selectStrategy(parent, candidates, { task: 'Keep the original goal' }, options,
+      b.subagents, 'spawn', new AbortController().signal)).resolves.toBe('auto')
+    expect(b.start).toHaveBeenCalledTimes(2)
+    expect(b.dispose).toHaveBeenCalledTimes(2)
+    const retry = b.start.mock.calls[1]![0].request
+    expect(retry.toolFilter).toEqual({ allow: [] })
+    expect(retry.outputSchema).toEqual(b.start.mock.calls[0]![0].request.outputSchema)
+    expect(JSON.stringify(retry.prompt)).toContain('Keep the original goal')
+    expect(JSON.stringify(retry.prompt)).toContain('previous decision reached the output limit')
+  })
+  it('bounds repeated decision truncation and keeps the actual reason', async () => {
+    const b = bench({ stopReason: 'max-tokens', output: [] })
+    await expect(selectStrategy(parent, candidates, { task: 'task' }, options,
+      b.subagents, 'spawn', new AbortController().signal)).rejects.toThrow('max-tokens')
+    expect(b.start).toHaveBeenCalledTimes(2)
+    expect(b.dispose).toHaveBeenCalledTimes(2)
+  })
   it('replays a fixed workflow choice without applying its redundant tier to execution', async () => {
     const structured = z.object({ strategy: z.string(), tier: z.string(), reason: z.string() })
       .parse(JSON.parse(readFileSync(new URL('./fixtures/auto-selection.json', import.meta.url), 'utf8')))

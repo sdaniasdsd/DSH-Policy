@@ -2,7 +2,15 @@
 
 English | [中文](README.zh.md)
 
-This repository is an independently maintained experimental fork of DeepSeek Harness, not an official DeepSeek release. It adds an author-controlled task strategy layer above the original DSH execution layer. Source mirrors: [GitHub](https://github.com/sdaniasdsd/dsh-change) and [Gitee](https://gitee.com/chunyouzhidi/dsh-policy-version).
+[![CI](https://github.com/sdaniasdsd/DSH-Policy/actions/workflows/ci-master.yml/badge.svg?branch=main)](https://github.com/sdaniasdsd/DSH-Policy/actions/workflows/ci-master.yml)
+
+[![GitHub release](https://img.shields.io/github/v/release/sdaniasdsd/DSH-Policy?include_prereleases)](https://github.com/sdaniasdsd/DSH-Policy/releases)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[![GitHub issues](https://img.shields.io/github/issues/sdaniasdsd/DSH-Policy)](https://github.com/sdaniasdsd/DSH-Policy/issues)
+
+This repository is an independently maintained fork of DeepSeek Harness, not an official DeepSeek release. Policy Edition 1.0.0 is built from the DSH 0.2.1-alpha.3 source line and adds an author-controlled task strategy layer above the original DSH execution layer. The canonical source repository is [sdaniasdsd/DSH-Policy](https://github.com/sdaniasdsd/DSH-Policy).
 
 DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
 
@@ -14,9 +22,9 @@ Upstream documentation: [https://deepseek-harness.github.io/deepseek-harness/](h
 
 Current source builds enable automatic root task entry in the policy workflow bundle. Ordinary work routes through bounded intent classification and strategy selection before original DSH child execution. The chat card displays strategy, child-token scenario estimates and stage progress; the Plugins page can disable automatic entry for future inputs. See the [entry guide](docs/upgrade-guide/v0.2.0-rc.2/task-strategy-default-entry/guide.md).
 
-### Policy Edition 0.1.0 installer
+### Windows preview installer
 
-Download the Windows x64 preview installer from [GitHub Releases](https://github.com/sdaniasdsd/dsh-change/releases). This independent build is unsigned and uses the upstream runtime version `0.2.1-alpha.2`. It includes the strategy plugin UI, optional LLM selection, stage-boundary controls, explainable token estimates, and twelve configurable workflows: coding, paper research, problem research and solution planning, each with low, medium and high tiers. Estimates describe child-task scenarios, not billing or a hard token limit. Configure your own provider and model after installation. The default data directory is `~/.dsh-policy`; an explicit `DSH_HOME` still takes precedence. It has no official automatic-update feed or mandatory-update service, and the shell disables the mandatory-update overlay. Install later fork releases manually.
+Download the unsigned Windows x64 Policy Edition 1.0.0 installer from [GitHub Releases](https://github.com/sdaniasdsd/DSH-Policy/releases). It includes the complete DSH Web interface, the strategy plugin UI, automatic or manual strategy selection, stage-boundary controls, explainable token estimates, and twelve configurable workflows: coding, paper research, problem research and solution planning, each with low, medium and high tiers. Estimates describe child-task scenarios, not billing or a hard token limit. Configure your own provider and model after installation. The default data directory is `~/.dsh-policy`; an explicit `DSH_HOME` still takes precedence. It has no official automatic-update feed or mandatory-update service, and the shell disables the mandatory-update overlay. Install later fork releases manually.
 
 To reproduce the unsigned build, create the Git-ignored `apps/desktop/.env.windows` with:
 
@@ -68,8 +76,8 @@ The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it
 To run from a repository checkout:
 
 ```sh
-git clone https://github.com/sdaniasdsd/dsh-change.git dsh-policy-version
-cd dsh-policy-version
+git clone https://github.com/sdaniasdsd/DSH-Policy.git
+cd DSH-Policy
 pnpm install
 pnpm run build
 pnpm dsh web
@@ -77,11 +85,11 @@ pnpm dsh web
 
 `pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
 
-The command above launches without the strategy layer. To enable it, follow the [DSH source trial](packages/experimental/task-strategy/README.md#use-this-package) with the supplied source patch; that section owns the launch command and configuration details. The [Gitee mirror](https://gitee.com/chunyouzhidi/dsh-policy-version) contains the same enhanced source.
+The command above launches without the strategy layer. To enable it, follow the [DSH source trial](packages/experimental/task-strategy/README.md#use-this-package) with the supplied source patch; that section owns the launch command and configuration details. The GitHub repository above is the canonical source for this fork.
 
 ## Community and support
 
-- Report strategy-edition issues in [this fork's issue tracker](https://github.com/sdaniasdsd/dsh-change/issues); upstream feedback belongs in [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
+- Report strategy-edition issues in [this fork's issue tracker](https://github.com/sdaniasdsd/DSH-Policy/issues); upstream feedback belongs in [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
 - Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
 - Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
 

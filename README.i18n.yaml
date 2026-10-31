@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
 /deepseek-harness-policy-edition:
-  en: b10df251978ed1a6
-  zh: c2d0bed3b41e45e6
+  en: 42aea733fdb75fc4
+  zh: 2b84b6abccbaacca
 /deepseek-harness-policy-edition/policy-edition-our-changes:
   en: 62cce2b65b0c9904
   zh: bedac70827aa564c
-/deepseek-harness-policy-edition/policy-edition-our-changes/policy-edition-0-1-0-installer:
-  en: 23d6f6a567db3333
-  zh: 4478c5e183dfa08d
+/deepseek-harness-policy-edition/policy-edition-our-changes/windows-preview-installer:
+  en: 563f98e444459692
+  zh: c7b05e33dcb791aa
 /deepseek-harness-policy-edition/developer-preview:
   en: 4ef4d8a71ac143f0
   zh: 1bfc3149ba8e5543
@@ -21,11 +21,11 @@
   en: 96647f2ecf828828
   zh: 813f82c5e9eb061f
 /deepseek-harness-policy-edition/run/run-from-source:
-  en: 546d2e78b61e72a4
-  zh: 7b5782e29462ef42
+  en: 7af4d1217c6010de
+  zh: 9394a6e977cea2ce
 /deepseek-harness-policy-edition/community-and-support:
-  en: fd3f695506d58bb6
-  zh: 870f03666d3f06ef
+  en: e7a7ec392f9cf5dc
+  zh: 984724790d68003c
 /deepseek-harness-policy-edition/contributing:
   en: cabc2d3e9f8898bd
   zh: 83b6d238bae29ce3

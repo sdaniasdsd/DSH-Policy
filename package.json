@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-root",
-  "version": "0.2.1-alpha.3",
+  "version": "1.0.4",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -11,6 +11,7 @@
   "workspaces": [
     "vendor/*",
     "packages/*/*",
+    "packages/policy-extension",
     "native/system",
     "native/system/packages/*",
     "apps/*",
@@ -19,6 +20,7 @@
   "scripts": {
     "prepare:primary-runtime": "tsx scripts/primary-runtime/prepare.ts",
     "build": "tsx scripts/build.ts",
+    "build:policy-extension": "npm --prefix packages/policy-extension run build",
     "build:bench": "npm run build:native-system && npm run build:lib && tsdown --config-loader native --config benchmarks/tsdown.config.ts",
     "build:official": "tsx scripts/build.ts --profile official",
     "build:lib": "pnpm run build:lib:host && pnpm run build:lib:client",
@@ -210,7 +212,8 @@
     "postinstall": "node scripts/install-lefthook.mjs",
     "gen-official-bundle-catalog": "tsx scripts/gen-official-bundle-catalog.ts",
     "verify-official-bundle-catalog": "tsx scripts/gen-official-bundle-catalog.ts --check",
-    "verify-product-use": "tsx scripts/verify-product-use.ts"
+    "verify-product-use": "tsx scripts/verify-product-use.ts",
+    "verify-policy-compatibility": "tsx scripts/verify-policy-compatibility.ts"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",

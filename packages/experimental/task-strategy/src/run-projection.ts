@@ -28,7 +28,7 @@ export function projectRunResults(results: readonly TaskResult[], bindingStartRe
 
 /**
  * Construct one detached policy snapshot while preserving shared result and report identities within it.
- * @param progress - task-owned cursor, cumulative counters, remaining allowance and committed binding epoch.
+ * @param progress - task-owned cursor, cumulative counters, remaining allowance, committed binding epoch and observed signals.
  * @param results - complete retained history, including results from prior bindings.
  * @param currentResults - results for the evaluated binding; replacement previews supply an empty array.
  * @returns a synchronous snapshot whose nested values cannot mutate the supplied task state.

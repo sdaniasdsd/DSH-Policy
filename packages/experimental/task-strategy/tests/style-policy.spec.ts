@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createStyleStrategy, styleSchema } from '../src/style-policy.ts'
-import { StrategyRegistry, TaskRun } from '../src/index.ts'
+import { captureStrategy, StrategyRegistry, TaskRun } from '../src/index.ts'
 import { parseWorkflowProposal } from '../src/workflow-report.ts'
 import type { TaskExecutor } from '../src/types.ts'
 
@@ -9,13 +9,54 @@ const proposal = { summary: 'fixture', domain: 'coding' as const, artifacts: [{ 
 const options = { maxConcurrent: 1, maxTasks: 16, maxResultBytes: 65536, prepare: async () => {} }
 
 describe('DSH style policy plugins', () => {
-  it('keeps the understand stage read-only without treating that as a workflow-wide capability limit', () => {
-    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'low' }))
-    const instruction = policy.decide({ task: 'Create note.txt and verify it.' }).stages[0]!.tasks[0]!.instruction
+  it('hands a new Claude planner all history and keeps review and repair evidence in its binding', async () => {
+    const policy = createStyleStrategy('claude', styleSchema('claude')({}))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const old = captureStrategy('old', { name: 'old', stages: [{ name: 'plan', tasks: [
+      { label: 'plan', preset: 'standard', instruction: 'old' },
+    ] }] })
+    const seen = new Map<string, string[]>()
+    let checks = 0
+    const run = new TaskRun('task', old, async (step, prompt) => {
+      seen.set(step.instruction === 'old' ? 'old' : step.label,
+        JSON.parse(prompt.split('instructions):\n')[1]!).map((r: { output: string }) => r.output))
+      return { stopReason: 'completed', output: step.instruction === 'old' ? 'old-plan' : step.label,
+        ...step.workflowOutput ? { workflow: proposal } : {},
+        ...step.artifactChecks ? { verification: { status: ++checks === 1 ? 'failed' : 'passed', checks: [] } as const } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, { ...options, onEvent: (event) => {
+      if (event.type === 'task-end' && run.inspect().binding.epoch === 0) run.requestSwitch(
+        () => registry.capture(policy.id, { task: 'task' }), { commandId: 'switch', expectedBindingEpoch: 0 })
+    } })
+    const result = await run.start()
+    expect(result.status).toBe('completed')
+    expect(seen.get('plan')).toEqual(['old-plan', 'explore'])
+    expect(seen.get('work:b')).toEqual(['plan', 'work:a'])
+    expect(seen.get('review')).toEqual(['explore', 'plan', 'work:a', 'work:b'])
+    expect(seen.get('repair:1')).toEqual(['explore', 'plan', 'work:a', 'work:b', 'review', 'verify'])
+    expect(result.results[0]!.output).toBe('old-plan')
+  })
 
-    expect(instruction).toContain('本阶段仅只读')
-    expect(instruction).toContain('后续执行阶段')
-    expect(instruction).toContain('不要因为本阶段未开放写入工具而判为 blocked')
+  it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('limits %s work to plan and transitive ancestors', async (pattern) => {
+    const policy = createStyleStrategy(pattern, styleSchema(pattern)({ tier: 'high', maxNodes: 6, maxConcurrent: 2 }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const nodes = [{ id: 'a', instruction: 'root', dependencies: [] }, { id: 'sibling', instruction: 'unrelated', dependencies: [] },
+      { id: 'b', instruction: 'middle', dependencies: ['a'] }, { id: 'c', instruction: 'leaf', dependencies: ['b'] }]
+    const seen = new Map<string, string[]>()
+    const run = new TaskRun('DAG', registry.capture(policy.id, { task: 'DAG' }), async (step, prompt) => {
+      seen.set(step.label, JSON.parse(prompt.split('instructions):\n')[1]!).map((r: { label: string }) => r.label))
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    const result = await run.start()
+    expect(result.status).toBe('completed')
+    expect(seen.get('work:a')).toEqual(['plan'])
+    expect(seen.get('work:sibling')).toEqual(['plan'])
+    expect(seen.get('work:c')).toEqual(['plan', 'work:a', 'work:b'])
+    if (pattern === 'codex') expect(seen.get('check:c')).toEqual(['plan', 'work:a', 'work:b', 'work:c'])
+    if (pattern === 'claude') expect(seen.get('review')).toEqual(['explore', 'plan', 'work:a', 'work:sibling', 'work:b', 'work:c'])
+    expect(result.results.map(row => row.label)).toContain('work:sibling')
   })
 
   it.each(['codex', 'claude', 'zcode', 'superpowers'] as const)('lets the %s plugin choose parallel work above the carrier default', async (pattern) => {
@@ -30,10 +71,8 @@ describe('DSH style policy plugins', () => {
         try { await gate.promise } finally { active-- }
       }
       return { stopReason: 'completed', output: step.label,
-        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement modules', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
-        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Modules implemented.', evidence: ['All work nodes completed.'], blocker: '', nextStep: '' } } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
     }, options)
     const running = run.start()
     try { await vi.waitFor(() => { expect(started).toBe(2) }) }
@@ -42,6 +81,37 @@ describe('DSH style policy plugins', () => {
     expect(maximum).toBe(2)
     expect(active).toBe(0)
   })
+  it.each(['claude', 'superpowers'] as const)('skips empty artifact verification for %s plans', async (pattern) => {
+    const policy = createStyleStrategy(pattern, styleSchema(pattern)({ tier: 'high', maxNodes: 2 }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const steps: Array<{ label: string; reviewPaths?: readonly string[]; artifactChecks?: readonly unknown[] }> = []
+    const run = new TaskRun('review completed work', registry.capture(policy.id, { task: 'review completed work' }), async (step) => {
+      steps.push(step)
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [] } } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+
+    expect((await run.start()).status).toBe('completed')
+    expect(steps.map(step => step.label)).not.toContain('verify')
+    expect(steps.some(step => step.artifactChecks?.length === 0)).toBe(false)
+    const finalReview = steps.find(step => step.label === (pattern === 'claude' ? 'review' : 'final-review'))
+    expect(finalReview?.reviewPaths).toEqual([])
+  })
+  it('limits the final review to the planner registered artifact paths', async () => {
+    const policy = createStyleStrategy('claude', styleSchema('claude')({ tier: 'high', maxNodes: 2 }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const steps: Array<{ label: string; reviewPaths?: readonly string[] }> = []
+    const run = new TaskRun('review declared work', registry.capture(policy.id, { task: 'review declared work' }), async (step) => {
+      steps.push(step)
+      return { stopReason: 'completed', output: step.label,
+        ...step.workflowOutput ? { workflow: proposal } : {},
+        ...step.artifactChecks ? { verification: { status: 'passed', checks: [] } as const } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    expect((await run.start()).status).toBe('completed')
+    expect(steps.find(step => step.label === 'review')?.reviewPaths).toEqual(['test.md'])
+  })
   it('hands extreme-high work explicit review angles and collaboration responsibilities without provisioning workspaces', async () => {
     const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high' }))
     const registry = new StrategyRegistry(); registry.register(policy)
@@ -49,10 +119,8 @@ describe('DSH style policy plugins', () => {
     const run = new TaskRun('implement one module', registry.capture(policy.id, { task: 'implement one module' }), async (step) => {
       instructions.push(step.instruction)
       return { stopReason: 'completed', output: 'evidence',
-        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement one module', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes: [proposal.nodes[0]!] } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
-        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'One module implemented.', evidence: [], blocker: '', nextStep: '' } } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
     }, options)
     expect((await run.start()).status).toBe('completed')
     expect(instructions.every(instruction => instruction.includes('单个事务'))).toBe(true)
@@ -97,42 +165,15 @@ describe('DSH style policy plugins', () => {
     const run = new TaskRun('create test.md', registry.capture(policy.id, { task: 'create test.md', preferences: { tier: 'extreme-high' } }), async (step) => {
       calls.push(step.label)
       return { stopReason: 'completed', output: 'evidence',
-        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Create test.md', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: proposal } : {},
         ...step.artifactChecks ? { verification: { status: 'passed', checks: [{ id: 'file', status: 'passed', reason: 'read evidence' }] } as const } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
-        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Created test.md.', evidence: ['Registered check passed.'], blocker: '', nextStep: '' } } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
     }, options)
     expect((await run.start()).status).toBe('completed')
-    expect(calls).toEqual(['understand', 'plan', 'work:a', 'work:b', 'verify', 'final-review', 'final-summary'])
-    expect(run.inspect().finalSummary).toEqual({ status: 'resolved', conclusion: 'Created test.md.', evidence: ['Registered check passed.'], blocker: '', nextStep: '' })
+    expect(calls).toEqual(['understand', 'plan', 'work:a', 'work:b', 'verify', 'final-review'])
     const extreme = registry.list({ task: 'large task', preferences: { tier: 'extreme-high' } })[0]!.cost
     expect(extreme.kind).toBe('estimated')
     if (extreme.kind === 'estimated') expect(extreme.maximumScenarioTasks).toBeGreaterThan(extreme.tasks)
-  })
-
-  it('stops before planning when understanding finds a blocking conflict and exposes one concise conclusion', async () => {
-    const policy = createStyleStrategy('superpowers', styleSchema('superpowers')({ tier: 'extreme-high' }))
-    const registry = new StrategyRegistry(); registry.register(policy)
-    const calls: string[] = []
-    const run = new TaskRun('read-only audit with incompatible evidence and output constraints',
-      registry.capture(policy.id, { task: 'read-only audit with incompatible evidence and output constraints', preferences: { tier: 'extreme-high' } }),
-      async (step) => {
-        calls.push(step.label)
-        if (step.label === 'understand') return { stopReason: 'completed', output: '', intake: {
-          decision: 'blocked', goal: 'Verify the project state', blocker: 'Ten evidence items cannot fit the requested 500-character limit.',
-        } }
-        if (step.label === 'final-summary') return { stopReason: 'completed', output: '', finalSummary: {
-          status: 'blocked', conclusion: 'Cannot determine the requested state under the conflicting output constraint.',
-          evidence: [], blocker: 'Choose whether to keep all ten evidence items or enforce the 500-character limit.', nextStep: 'Resolve the output constraint.',
-        } }
-        return { stopReason: 'completed', output: 'must not execute' }
-      }, options)
-    const result = await run.start()
-    expect(result.status).toBe('completed')
-    expect(calls).toEqual(['understand', 'final-summary'])
-    expect(run.inspect().finalSummary)
-      .toMatchObject({ status: 'blocked', evidence: [], blocker: 'Choose whether to keep all ten evidence items or enforce the 500-character limit.' })
   })
 
   it('executes the exact 12-node, four-repair extreme-high path with serial writes', async () => {
@@ -148,17 +189,14 @@ describe('DSH style policy plugins', () => {
         await new Promise(resolve => setTimeout(resolve, 1))
         activeWrites--
       }
-      return { stopReason: 'completed', output: 'evidence',
-        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Execute the task', blocker: '' } } : {},
-        ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
+      return { stopReason: 'completed', output: 'evidence', ...step.workflowOutput ? { workflow: { ...proposal, nodes } } : {},
         ...step.artifactChecks ? { verification: { status: ++verifications <= 4 ? 'failed' : 'passed', checks: [] } as const } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
-        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Task complete.', evidence: [], blocker: '', nextStep: '' } } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
     }, { ...options, maxTasks: 64 })
     expect((await run.start()).status).toBe('completed')
     expect(calls.filter(label => label.startsWith('work:'))).toHaveLength(12)
     expect(calls.filter(label => label.startsWith('repair:'))).toHaveLength(4)
-    expect(calls).toHaveLength(29)
+    expect(calls).toHaveLength(28)
     expect(maximumWrites).toBe(1)
     expect(verifications).toBe(5)
   })
@@ -175,10 +213,8 @@ describe('DSH style policy plugins', () => {
         try { await gate.promise } finally { active-- }
       }
       return { stopReason: 'completed', output: step.label,
-        ...step.intakeOutput ? { intake: { decision: 'proceed' as const, goal: 'Implement modules', blocker: '' } } : {},
         ...step.workflowOutput ? { workflow: { ...proposal, artifacts: [], nodes } } : {},
-        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {},
-        ...step.finalSummaryOutput ? { finalSummary: { status: 'resolved' as const, conclusion: 'Modules implemented.', evidence: [], blocker: '', nextStep: '' } } : {} }
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
     }, options)
     const running = run.start()
     try { await vi.waitFor(() => { expect(started).toBe(5) }) }
@@ -320,7 +356,23 @@ describe('DSH style policy plugins', () => {
     expect(high.maximumScenarioTokens).toBeGreaterThan(high.estimatedTotalTokens!)
     expect(extreme.assumptions).toEqual({ callsPerTask: 8, contextTokensPerCall: 8192, outputTokensPerCall: 4096 })
     expect(extreme.tasks).toBeGreaterThan(high.tasks)
-    expect(extreme.maximumScenarioTasks).toBe(38)
+    expect(extreme.maximumScenarioTasks).toBe(33)
+  })
+  it('accepts a completed-evidence plan with no remaining nodes and skips empty artifact verification', async () => {
+    const completedEvidence = { ...proposal, summary: 'The read-only request was completed during exploration.', nodes: [], artifacts: [] }
+    expect(parseWorkflowProposal(completedEvidence)).toEqual(completedEvidence)
+
+    const policy = createStyleStrategy('claude', styleSchema('claude')({ tier: 'high' }))
+    const registry = new StrategyRegistry(); registry.register(policy)
+    const labels: string[] = []
+    const run = new TaskRun('read-only request', registry.capture(policy.id, { task: 'read-only request' }), async (step) => {
+      labels.push(step.label)
+      return { stopReason: 'completed', output: step.label === 'explore' ? 'Observed requested value.' : 'Review passed.',
+        ...step.workflowOutput ? { workflow: completedEvidence } : {},
+        ...step.reviewOutput ? { review: { status: 'passed', issues: [] } as const } : {} }
+    }, options)
+    expect((await run.start()).status).toBe('completed')
+    expect(labels).toEqual(['explore', 'plan', 'review'])
   })
   it('uses concrete review issues for a bounded repair and fresh review', async () => {
     const policy = createStyleStrategy('claude', styleSchema('claude')({}))

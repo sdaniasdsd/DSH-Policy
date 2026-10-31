@@ -8,7 +8,7 @@ import type { SelectorOptions } from './selection-types.ts'
  * @param parent - original live owner and request-time model route.
  * @param options - explicit selector route and output cap.
  * @param signal - existing decision timeout and owner cancellation.
- * @returns overrides using off reasoning only when the exact model advertises it.
+ * @returns overrides using the exact model's advertised off/none or least reasoning effort.
  */
 export async function selectorAgentOptions(parent: Agent, options: Pick<SelectorOptions, 'maxTokens' | 'model' | 'provider'>, signal: AbortSignal): Promise<AgentOptions> {
   signal.throwIfAborted()
@@ -22,6 +22,7 @@ export async function selectorAgentOptions(parent: Agent, options: Pick<Selector
   if (llm === undefined || provider === undefined || model === undefined) return overrides
   const info = await llm.resolveModelInfo(provider, model, signal)
   signal.throwIfAborted()
-  const off = info.reasoning?.efforts.find(effort => effort.id === 'off')
+  const efforts = info.reasoning?.efforts
+  const off = efforts?.find(effort => effort.id === 'off' || effort.id === 'none') ?? efforts?.[0]
   return { ...overrides, ...off === undefined ? {} : { reasoningEffort: off.id } }
 }

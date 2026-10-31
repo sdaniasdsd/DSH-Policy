@@ -132,11 +132,11 @@ export function createTaskCoordination(options: {
           const row: StoredRecord = { version: 1, jobId, key, revision: revision + 1, writer: session.id, value: snapshot }
           const seq = appendPluginRecord(session, RECORD_TYPE, row)
           await ctx.sessions.flush(session)
-          operationSignal.throwIfAborted()
-          current()
           if (ctx.get('sessionPersistence')?.identity !== persistenceIdentity) throw new Error('Session persistence changed during shared-record write')
-          await using handle = await persistence.open(session.id, 'read', { signal: operationSignal })
-          const storedEvents = await handle.read(seq, 1, { signal: operationSignal })
+          // Appending commits the Session event in memory; flush is the durability barrier.
+          // Cancellation after append must not hide the receipt for a committed revision.
+          await using handle = await persistence.open(session.id, 'read')
+          const storedEvents = await handle.read(seq, 1)
           const stored = storedEvents.events[0] === undefined ? undefined : pluginRecordOf(storedEvents.events[0])
           if (stored?.type !== RECORD_TYPE || JSON.stringify(stored.data) !== JSON.stringify(row)) {
             throw new Error('Task shared record could not be observed after persistence flush')
@@ -192,7 +192,8 @@ export function createTaskCoordination(options: {
         const messageId = await ctx.subagents.sendMessage(parent, sessionId, [{ type: 'text', text }], {
           signal: deliverySignal, activeOnly: true,
         })
-        current()
+        // sendMessage resolves only after inbox acceptance; cancellation may stop work before
+        // acceptance, but must not hide an accepted message's identity from its caller.
         return { messageId }
       },
     },

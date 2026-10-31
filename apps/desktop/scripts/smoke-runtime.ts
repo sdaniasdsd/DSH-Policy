@@ -42,7 +42,23 @@ export async function smokeDesktopRuntime(
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     writeFileSync(join(home, 'npmrc'), '')
-    createPluginProfile(profile, root)
+    const profileRuntime = policyEdition && !existsSync(join(root, 'policy-workflows.patch.yml'))
+      ? join(home, 'policy-runtime') : root
+    if (profileRuntime !== root) {
+      mkdirSync(profileRuntime, { recursive: true })
+      writeFileSync(join(profileRuntime, 'policy-workflows.patch.yml'), 'policy workflows\n')
+    }
+    if (policyEdition) createPluginProfile(profile)
+    createPluginProfile(profile, profileRuntime)
+    if (policyEdition) {
+      const manifest = JSON.parse(readFileSync(join(profile, 'package.json'), 'utf8')) as {
+        dsh: { profile: { bundles: string[] } }
+      }
+      if (!manifest.dsh.profile.bundles.includes('@deepseek-ai/dsh-experimental-task-strategy')) {
+        throw new Error('desktop runtime: policy upgrade did not enable the strategy bundle in an existing profile')
+      }
+      console.log('desktop runtime: existing profile policy strategy migration passed')
+    }
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(home, pluginName)
     mkdirSync(plugin, { recursive: true })

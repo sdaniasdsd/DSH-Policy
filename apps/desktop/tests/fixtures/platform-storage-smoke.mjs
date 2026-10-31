@@ -43,7 +43,7 @@ async function dismissNotice(contents) {
 }
 
 async function run() {
-  const [viewModule, userData, origin, phase] = process.argv.slice(2)
+  const [viewModule, userData, phase, origin] = process.argv.slice(2)
   if (viewModule === undefined || userData === undefined || origin === undefined || phase === undefined) {
     throw new Error('expected <built-platform-view.js> <userDataDir> <origin> <first|restart>')
   }

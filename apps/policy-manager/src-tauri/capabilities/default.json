@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allow the manager window to call its typed Rust commands.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "version": "0.2.1-alpha.3",
+  "version": "1.0.4",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -47,6 +47,7 @@
     "semver": "^7.8.5",
     "ws": "^8.21.3",
     "@deepseek-ai/dsh-api-gateway": "workspace:*",
+    "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~"
   },
   "devDependencies": {

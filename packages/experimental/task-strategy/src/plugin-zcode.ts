@@ -50,8 +50,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     mode: captured.mode, enableWorkflow: captured.enableWorkflow, timeoutMs: captured.timeoutMs,
     graceMs: captured.graceMs, maxPromptBytes: captured.maxPromptBytes, maxOutputBytes: captured.maxOutputBytes }
   ctx.taskRuns.registerExecutor({ id: captured.executorId, description: captured.description, check: () => {},
-    execute: (parent, _step, prompt, signal) => {
-      const cwd = parent.session.header.cwd
+    execute: (parent, _step, prompt, signal, context) => {
+      const cwd = context?.workspaceRoot ?? parent.session.header.cwd
       if (cwd === undefined) throw new Error('ZCode requires the original task owner workspace')
       return runZcode(subprocess, spec, cwd, prompt, signal)
     },

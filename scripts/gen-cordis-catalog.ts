@@ -311,6 +311,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TaskSubmission: 'task-strategy.md',
   TaskIntakeRequest: 'task-strategy.md',
   TaskSwitch: 'task-strategy.md',
+  TaskCommandOutcome: 'task-strategy.md',
+  TaskCommandWaitResult: 'task-strategy.md',
   EventLogOptions: 'otel.md',
   EventLogReporter: 'otel.md',
   SessionLogOptions: 'otel.md',

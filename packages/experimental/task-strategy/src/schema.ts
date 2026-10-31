@@ -22,6 +22,10 @@ export const planSchema = z.object({
       preset: z.string(),
       executor: z.string(),
       instruction: z.string().required(),
+      priorResults: z.union([z.const(undefined), z.object({
+        scope: z.union([z.const('all'), z.const('current-binding')]).required(),
+        labels: z.union([z.const(undefined), z.array(z.string())]),
+      })]),
       tools: z.union([z.const(undefined), z.object({
         allow: z.union([z.const(undefined), z.array(z.string())]),
         deny: z.union([z.const(undefined), z.array(z.string())]),
@@ -30,13 +34,16 @@ export const planSchema = z.object({
       provider: z.string(),
       workflowOutput: z.boolean(),
       reviewOutput: z.boolean(),
-      intakeOutput: z.boolean(),
-      finalSummaryOutput: z.boolean(),
+      reviewPaths: z.union([z.const(undefined), z.array(z.string())]),
       artifactChecks: z.union([z.const(undefined), z.array(z.object({
         id: z.string().required(), path: z.string().required(), contains: z.string(),
       }))]),
       maxTokens: z.natural().min(1).max(Number.MAX_SAFE_INTEGER),
       timeoutMs: z.natural().min(1).max(2147483647),
+      continuation: z.union([z.const(undefined), z.object({
+        maxAttempts: z.natural().max(16).required(),
+        timeoutMs: z.natural().min(1).max(2147483647),
+      })]),
     })).required(),
   })).required(),
 }) as z<ExecutionPlan>
@@ -75,6 +82,11 @@ export const adapterSchema = z.object({
   maxPlanBytes: z.natural().min(1).default(65536),
   maxResultBytes: z.natural().min(1).default(65536),
   maxOutputBytes: z.natural().min(512).default(32768),
+  capacity: z.object({
+    // Zero keeps today's fail-fast admission; a positive bound lets one admission wait for a slot.
+    waitMs: z.natural().max(2147483647).default(0),
+    retryMs: z.natural().min(1).max(2147483647).default(250),
+  }).default({}),
 }) as z<AdapterConfig, ResolvedAdapterConfig>
 
 /** Validate string-valued author preferences at the tool JSON input. */
@@ -86,11 +98,7 @@ export const preferencesSchema = z.dict(z.string()).required()
  * @returns validated plan; rejects malformed fields.
  */
 export function parsePlan(value: unknown): ExecutionPlan {
-  if (typeof value !== 'string') return planSchema(value as ExecutionPlan)
-  let decoded: unknown
-  try { decoded = JSON.parse(value) }
-  catch { throw new Error('Execution plan text must be valid JSON') }
-  return planSchema(decoded as ExecutionPlan)
+  return planSchema(value as ExecutionPlan)
 }
 
 /**
@@ -99,11 +107,7 @@ export function parsePlan(value: unknown): ExecutionPlan {
  * @returns string-valued preference dictionary.
  */
 export function parsePreferences(value: unknown): Record<string, string> {
-  if (typeof value !== 'string') return preferencesSchema(structuredClone(value) as Record<string, string>)
-  let decoded: unknown
-  try { decoded = JSON.parse(value) }
-  catch { throw new Error('Task preferences text must be valid JSON') }
-  return preferencesSchema(decoded as Record<string, string>)
+  return preferencesSchema(structuredClone(value) as Record<string, string>)
 }
 
 /**

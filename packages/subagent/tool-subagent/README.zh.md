@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包可为 agent 提供具名工具，把工作委派给配置的后端。每次调用都会启动受管理的 activation；独立工作会返回子任务 id 并通过运行时通知交付结果，设置 `wait_for_result: true` 时则等待最终回答并放入工具结果。本地子任务支持消息和恢复，外部后端执行一次任务。受支持的后端可以公开获准的子级 LLM 路由。每个实例均可设置子 agent 的 persona、工具权限与深度限制。
+使用本包可为 agent 提供具名工具，把工作委派给配置的后端。每次调用都会启动受管理的 activation 并返回子任务 id；运行时负责完成通知与清理。本地子任务支持消息和恢复，外部后端执行一次任务，并通过完成通知返回最终回答。受支持的后端可以公开获准的子级 LLM 路由。每个实例均可设置子 agent 的 persona、工具权限与深度限制。
 
 ## 目录
 
@@ -56,9 +56,9 @@ kind: "package-reference"
 
 ### 受管理的委派
 
-默认情况下，运行时接受子任务后会返回 `started subagent <childId>`，并提醒该 id 是子会话 id、不是后台 job id。activation 独立于已完成的工具调用拥有这项工作；运行时发送完成通知并释放执行资源。若主 agent 需要子任务结果才能继续，设置 `wait_for_result: true`，工具会等待子任务清理完成，并返回最终文本与停止原因。
+每次调用都会等待子任务，并把最终文本、停止原因和子任务编号交回调用它的 Agent。失败结果会明确标为失败，并带回可用诊断。结果只交给当前调用者，不会再重复进入父 Agent 收件箱。这是通用的 `tool-subagent` 行为，不依赖任务策略插件。
 
-返回的 id 是子 agent id，不是后台 job id。`send_message` 成功只表示消息已送达；默认模式下，汇报子任务结果前要先收到运行时的完成通知。保留每个子任务与其 id 的对应关系，等待完成通知时不要重复启动相同工作。
+对于本地 DSH 成员，该工具会从子成员可用工具中移除所有可见的子 agent 委派工具。提供方必须支持 `toolFilter`，否则包会在加载时失败。独立进程后端不会继承 DSH 工具上下文。可以要求成员在最终回答中列出建议的后续任务，再由主管决定是否派成同级任务。
 
 所有后端的完成通知都会附带最终回答。本地 Spawn 和 Fork 子任务还可以发送消息，在活跃期间通过 `send_message` 接受更多工作，或在结束后恢复。Codex、Claude Code、ACP 与 DSH SDK 后端不接受后续消息。
 
@@ -86,11 +86,11 @@ kind: "package-reference"
 
 ### Activation 所有权
 
-独立工作调用 `ctx.subagents.startActivation()` 时选择向父任务交付；设置 `wait_for_result: true` 时改为向调用方交付并等待结果。运行时拥有启动取消、执行、结果汇报与清理。启动失败产生出错的工具结果；发布后的失败通过完成通知或等待结果到达，运行时保留诊断和部分输出。
+工具调用 `ctx.subagents.startActivation()`，并选择向父任务交付。运行时拥有启动取消、执行、结果汇报与清理。启动失败产生出错的工具结果；发布后的失败通过完成通知到达，运行时保留诊断和部分输出。
 
 ### 结果确认
 
-默认工具结果为 `{ kind: 'activation', subagentId }`；设置 `wait_for_result: true` 时返回 `{ kind: 'result', subagentId, stopReason, text, diagnostic? }`。执行 Promise 与资源清理仍由运行时管理。
+规范工具结果为 `{ kind: 'activation', subagentId }`。其中没有执行 Promise 或最终输出；需要等待结果的程序调用方直接使用 subagent 服务。
 
 ### 随上下文变化的措辞
 
@@ -130,11 +130,11 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-提供方存在时，以配置的工具名称公开生成的默认 [`subagent` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-subagent)。`wait_for_result` 控制调用是返回 activation id，还是等待最终回答；启用的 Session 策略会添加 `provider`、`model`、`reasoning_effort` 和路由指引，且后端必须支持 `agentOptions`。上下文继承和继续执行能力决定任务与后续消息的描述。工具限制会同时移除 schema 及其 `tool:<toolName>` 指引 section。
+提供方存在时，以配置的工具名称公开生成的默认 [`subagent` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-subagent)。启用的 Session 策略会添加 `provider`、`model`、`reasoning_effort` 和路由指引；后端必须支持 `agentOptions`。上下文继承和继续执行能力决定任务与后续消息的描述。工具限制会同时移除 schema 及其 `tool:<toolName>` 指引 section。
 
 #### Token 影响
 
-每个父级请求支付固定的 schema 成本；模型选择增加三个参数，等待结果增加一个可选布尔参数。每个工具实例增加一个 schema 和一个简短的系统提示词 section。
+每个父级请求支付固定的 schema 成本；模型选择增加三个参数。每个工具实例增加一个 schema 和一个简短的系统提示词 section。
 
 #### KV Cache 影响
 
@@ -163,7 +163,7 @@ Session 携带策略的 settings 控制实例会公开子级 LLM 选择字段与
 ##### 工具指导 section
 
 ```markdown
-Start independent delegations with `subagent` or `subagent_fork` together in one assistant message and continue useful work while they run. Set `wait_for_result: true` when your next response depends on a child answer; otherwise use runtime completion notices. Child ids are not background job ids, and do not start duplicate work while waiting for a completion notice.
+Start independent delegations with `subagent` or `subagent_fork` together in one assistant message. Each call returns its final result before your next model step; ask workers to report any follow-up tasks so you can dispatch them as siblings.
 ```
 
 #### Token 影响
@@ -178,7 +178,7 @@ Start independent delegations with `subagent` or `subagent_fork` together in one
 
 #### 模型看到什么
 
-调用保留任务描述与提示词。默认成功时返回 `started subagent <childId>` 和子会话 id／完成通知提醒；设置 `wait_for_result: true` 时，成功结果包含子任务的最终文本与停止原因。启动被拒绝则返回错误。
+调用保留任务描述与提示词。成功返回 `started subagent <childId>`；启动被拒绝则返回错误。子任务执行详情独立于这条确认交付。
 
 #### Token 影响
 
@@ -192,11 +192,11 @@ Start independent delegations with `subagent` or `subagent_fork` together in one
 
 #### 模型看到什么
 
-默认模式下，回答投递遵循上文的受管理委派规则；等待结果模式会把回答放进与本次工具调用关联的工具结果。返回的子任务 id 用于后续控制与目录操作；只有支持继续执行的后端才接受后续消息。
+回答投递遵循上文的受管理委派规则。返回的子任务 id 用于后续控制与目录操作；只有支持继续执行的后端才接受后续消息。
 
 #### Token 影响
 
-默认模式下，消息与完成通知独立于启动确认追加到父级历史。等待结果模式会在工具结果中包含最终文本与停止原因。
+消息与完成通知独立于启动确认追加到父级历史。工具结果本身不包含最终输出。
 
 #### KV Cache 影响
 
@@ -209,7 +209,7 @@ Start independent delegations with `subagent` or `subagent_fork` together in one
 
 这些限制说明本工具不返回或不强制执行什么；它们是当前包约束。
 
-- **等待会占用父级工具调用**——独立工作使用默认通知模式；仅当父级回复必须依赖子任务结果时，才设置 `wait_for_result: true`。
+- **本工具不等待结果**——使用完成通知或子任务消息。程序化结果等待由 subagent 服务提供。
 - **随附 fork 工具不能选择子级 LLM 路由**——它们继承父级提供方与模型，使复制的对话前缀仍有资格复用 KV Cache。仅当路由变更能保留复用或公开有界重算成本时，才重新启用选择。
 - **非路由子 agent 策略按实例固定**——另一个 persona、工具过滤器或深度上限需要另一个名称不同的工具。LLM 选择要求启用逐 Session 偏好，且提供方必须声明 `agentOptions`；两个进程内提供方和 DSH SDK 会声明该能力，而 ACP、Codex 与 Claude Code 会拒绝它，而不是忽略它。
 

@@ -46,6 +46,14 @@ it.each(['completed', 'error', 'aborted'] as const)('retains identity and actual
   expect(members.inspect()[0]?.phase).toBe('closed')
 })
 
+it('starts a member activation in the task workspace captured by its owner', async () => {
+  const f = await fixture()
+  const members = createMemberSessions({ ...f.options, workspaceRoot: 'D:/captured-task-root' })
+  await members.open(step, 'initial', signal)
+  expect(f.startActivation.mock.calls[0]?.[0].request.cwd).toBe('D:/captured-task-root')
+  await members.close()
+})
+
 it('reports capture failure as unobserved without automatic replay', async () => {
   const broken = Promise.withResolvers<SubagentResult>()
   const f = await fixture([broken.promise])

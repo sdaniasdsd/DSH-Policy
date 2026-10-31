@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/task-strategy.md
 /task-strategies:
-  en: f402678ecb1e2194
-  zh: 9f8f27c963abf0f3
+  en: 04e1868589a48690
+  zh: 37cb4dacf1745e29

@@ -15,7 +15,7 @@ const proposalSchema = z.object({
   summary: z.string().trim().min(1).max(4096),
   domain: z.enum(['coding', 'paper-research', 'problem-research', 'solution-planning']),
   nodes: z.array(z.object({ id: z.string().trim().min(1).max(128), instruction: z.string().trim().min(1).max(8192),
-    dependencies: z.array(z.string().trim().min(1).max(128)).max(16) })).min(1).max(16),
+    dependencies: z.array(z.string().trim().min(1).max(128)).max(16) })).max(16),
   artifacts: z.array(z.object({ id: z.string().trim().min(1).max(128), path: z.string().trim().min(1).max(4096),
     contains: z.string().min(1).max(4096).optional() })).max(16),
 })
@@ -103,13 +103,18 @@ export function parseTaskConclusion(value: unknown): TaskConclusion {
  * @param cwd - trusted workspace for lexical path correlation.
  * @returns supported assessment or explicit uncertainty; malformed data throws.
  */
-export function parseReviewReport(value: unknown, evidence: readonly ReadEvidence[], cwd?: string): ReviewReport {
+export function parseReviewReport(value: unknown, evidence: readonly ReadEvidence[], cwd?: string,
+  requiredPaths: readonly string[] = []): ReviewReport {
   const report = z.object({ status: z.enum(['passed', 'issues', 'unverified']), issues: z.array(z.object({
     description: z.string().trim().min(1).max(4096), path: z.string().min(1).max(4096), excerpt: z.string().min(1).max(4096),
   })).max(16) }).parse(value)
   if ((report.status === 'issues') !== (report.issues.length > 0)) return { status: 'unverified', issues: [] }
-  const supported = evidence.some(row => !row.isError && observedFileText(row.text).length > 0)
-    && report.issues.every((issue) => {
+  const supported = report.status === 'passed'
+    ? requiredPaths.length > 0 && requiredPaths.every((path) => {
+      const read = evidence.findLast(row => normalizeReadPath(row.path, cwd) === normalizeReadPath(path, cwd))
+      return read !== undefined && !read.isError && observedFileText(read.text).length > 0
+    })
+    : report.issues.every((issue) => {
       const read = evidence.findLast(row => normalizeReadPath(row.path, cwd) === normalizeReadPath(issue.path, cwd))
       return read !== undefined && !read.isError && observedFileText(read.text).includes(issue.excerpt)
     })

@@ -13,8 +13,14 @@ describe('selector reasoning ownership', () => {
     const signal = new AbortController().signal
     const result = await selectorAgentOptions(parent, options, signal)
     expect(resolveModelInfo).toHaveBeenCalledWith('latest','latest',signal)
-    expect(result).toEqual({ maxTokens:512,...supported?{ reasoningEffort:'off' }:{} })
+    expect(result).toEqual({ maxTokens:512, reasoningEffort: supported ? 'off' : 'high' })
     expect(parent.options).toEqual({ provider:'old',model:'old' })
+  })
+  it.each([['none', 'low', 'high'], ['low', 'high']])('uses the lowest advertised reasoning effort: %j', async (...efforts) => {
+    const { ctx, parent } = await liveParent({ provider: 'mock', model: 'mock' })
+    vi.spyOn(ctx.llm, 'resolveModelInfo').mockResolvedValue({ provider: 'mock', id: 'mock', name: 'test',
+      reasoning: { efforts: efforts.map(id => ({ id: ReasoningEffortId(id), name: id })) } })
+    expect(await selectorAgentOptions(parent, options, new AbortController().signal)).toMatchObject({ reasoningEffort: efforts[0] })
   })
   it('rejects metadata cancellation without starting a child', async () => {
     const controller = new AbortController()

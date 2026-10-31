@@ -9,6 +9,8 @@ export type * from './coordination-types.ts'
 /** Optional execution capabilities owned by this adapter call and the original task. */
 export interface TaskExecutorContext {
   readonly members: TaskMemberSessions
+  /** Workspace captured when the original task was accepted. */
+  readonly workspaceRoot?: string
   /** Task-scoped records, change waits, and sender-preserving member messages. */
   readonly coordination: TaskCoordination
 }

@@ -153,7 +153,13 @@ it('discovers dsh.client packages with sibling roles', async () => {
       },
     }))
 
-    expect(discoverPluginDirs(root)).toEqual(['packages/client/current'])
+    const standalone = join(root, 'packages', 'policy-extension')
+    await mkdir(standalone, { recursive: true })
+    await writeFile(join(standalone, 'package.json'), JSON.stringify({
+      dsh: { client: { platform: 'web' } },
+    }))
+
+    expect(discoverPluginDirs(root)).toEqual(['packages/client/current', 'packages/policy-extension'])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

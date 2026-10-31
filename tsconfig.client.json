@@ -109,6 +109,7 @@
     { "path": "./packages/client/ui-reference" },
     { "path": "./packages/client/ui-subagent" },
     { "path": "./packages/experimental/client-ui-agent-team" },
+    { "path": "./packages/policy-extension" },
     { "path": "./packages/client/ui-dockkit" },
     { "path": "./packages/client/ui-sidebar-right" },
     { "path": "./packages/client/ui-sidebar-documentpreview/tsconfig.client.json" },

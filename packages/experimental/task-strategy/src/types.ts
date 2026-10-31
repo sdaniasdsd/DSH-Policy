@@ -3,18 +3,24 @@ import type { SelectionConfig } from './selection-types.ts'
 import type { PolicySnapshot, StageDecision } from './policy-types.ts'
 import type { ArtifactCheck, VerificationReport } from './verification-types.ts'
 import type { WorkflowProposal, ReviewReport } from './workflow-types.ts'
-import type { TaskIntakeAssessment, TaskConclusion } from './workflow-types.ts'
 
 /** Supported style orchestration intensity. */
 export type StyleTier = 'low' | 'medium' | 'high' | 'extreme-high'
 export type { EntryView } from './entry-types.ts'
-export type { TaskSwitch } from './runtime-types.ts'
+export type { TaskCommandOutcome, TaskCommandWaitResult, TaskSwitch } from './runtime-types.ts'
 
 /** Input shared with an author-written decision function. */
 export interface StrategyInput {
   /** Nonblank task body; accepted text preserves the caller's whitespace. */
   readonly task: string
   readonly preferences?: Readonly<Record<string, string>>
+}
+
+/** Prompt-only selection of retained results by binding and stable task label. */
+export interface PriorResultSelector {
+  readonly scope: 'all' | 'current-binding'
+  /** Omission selects every scoped row; an empty list selects none. */
+  readonly labels?: readonly string[]
 }
 
 /** One child task's instructions and selected capabilities. */
@@ -24,6 +30,8 @@ export interface TaskStep {
   /** Explicit external adapter; mutually exclusive with native DSH preset selection. */
   readonly executor?: string | undefined
   readonly instruction: string
+  /** Omission preserves the complete cumulative history in the child prompt. */
+  readonly priorResults?: PriorResultSelector
   readonly tools?: { readonly allow?: string[] | undefined; readonly deny?: string[] | undefined } | undefined
   readonly model?: string | undefined
   readonly provider?: string | undefined
@@ -31,15 +39,20 @@ export interface TaskStep {
   readonly workflowOutput?: boolean
   /** Structured read-only assessment, separate from objective artifact verification. */
   readonly reviewOutput?: boolean
-  /** Structured intake conflict check; blocked tasks must not proceed to planning. */
-  readonly intakeOutput?: boolean
-  /** Structured bounded final synthesis; this step must not start new work. */
-  readonly finalSummaryOutput?: boolean
+  /** Paths whose successful reads are required before a review can claim passed. */
+  readonly reviewPaths?: readonly string[]
   /** Checks are run in a read-only DSH child; they do not elevate permissions. */
   readonly artifactChecks?: readonly ArtifactCheck[]
   /** Optional bounded model output and child deadline, supplied by validated plugin configuration. */
   readonly maxTokens?: number
   readonly timeoutMs?: number
+  /** Native same-session output-limit recovery. Omission allows four continuations under the original deadline. */
+  readonly continuation?: {
+    /** Additional activations, 0 to 16; does not admit a new logical task. */
+    readonly maxAttempts: number
+    /** Optional fresh deadline per continuation; parent cancellation always remains effective. */
+    readonly timeoutMs?: number
+  }
 }
 
 /** Sequential stages, with concurrent children inside each stage. */
@@ -128,8 +141,6 @@ export interface ChildResult {
   readonly diagnostic?: string
   readonly workflow?: WorkflowProposal
   readonly review?: ReviewReport
-  readonly intake?: TaskIntakeAssessment
-  readonly finalSummary?: TaskConclusion
   /** Reported usage of logged child assistant messages; excludes router/root and provider-internal retries. */
   readonly usage?: ObservedUsage
   readonly verification?: VerificationReport
@@ -202,5 +213,7 @@ export interface AdapterConfig {
   readonly maxPlanBytes: number
   readonly maxResultBytes: number
   readonly maxOutputBytes: number
+  /** Bounds for waiting on an exhausted admission resource; zero wait keeps fail-fast admission. */
+  readonly capacity: { readonly waitMs: number; readonly retryMs: number }
 }
 export type { OrchestrationMode, OrchestrationState } from './entry-types.ts'
