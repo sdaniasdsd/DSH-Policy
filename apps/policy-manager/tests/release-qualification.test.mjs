@@ -11,9 +11,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const signer = path.join(appRoot, 'scripts', 'sign-catalog.mjs')
 const workflowPath = path.join(root, '.github', 'workflows', 'policy-manager-windows.yml')
+const extensionWorkflowPath = path.join(root, '.github', 'workflows', 'policy-extension-release.yml')
 const smokePath = path.join(appRoot, 'tests', 'windows-manager-smoke.ps1')
 const capabilityPath = path.join(appRoot, 'src-tauri', 'capabilities', 'default.json')
 const fixturePath = path.join(appRoot, 'tests', 'fixtures', 'catalog')
+const catalogPath = path.join(appRoot, 'catalog', 'releases.json')
 
 function keyPairFromSeed(seed) {
   const privateKey = createPrivateKey({
@@ -204,6 +206,28 @@ test('Windows release workflow requires protected keys and runs manager qualific
   assert.ok(workflow.includes('dsh-policy-manager-$version-windows-x64-setup.exe'))
   assert.ok(workflow.indexOf('Verify every indexed extension asset') < workflow.indexOf('Sign catalog with protected release key'))
   assert.equal(workflow.includes('BEGIN PRIVATE KEY'), false)
+})
+
+test('the release catalog maps official DSH RC5 to its exact verified extension build', () => {
+  const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
+  const rc5 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.1-rc.5')
+  const rc3 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.1-rc.3')
+
+  assert.equal(catalog.catalogRevision, 6)
+  assert.equal(rc5?.version, '1.0.5')
+  assert.equal(rc5?.runtimeCommit, 'd4db512a969fccf0c5cc7ec8fe38e9c1d27af916')
+  assert.equal(rc5?.tarballUrl, 'https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.5/dsh-policy-extension-1.0.5.tgz')
+  assert.match(rc5?.sha256 ?? '', /^[0-9a-f]{64}$/)
+  assert.equal(rc5?.size, 30129)
+  assert.equal(rc3?.version, '1.0.4')
+})
+
+test('extension release packs only the explicit staged package files', () => {
+  const workflow = readFileSync(extensionWorkflowPath, 'utf8')
+  assert.match(workflow, /policy-extension-staging/)
+  assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$packageRoot 'lib'\)/)
+  assert.match(workflow, /Push-Location \$stagingDirectory/)
+  assert.equal(workflow.includes("Push-Location 'packages/policy-extension'"), false)
 })
 
 test('Tauri window receives only the core IPC capability', () => {

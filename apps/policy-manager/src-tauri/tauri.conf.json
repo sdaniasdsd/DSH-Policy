@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DSH 策略管理器",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "identifier": "ai.deepseek.dsh-policy-manager",
   "build": {
     "beforeDevCommand": "npm run dev -- --host 127.0.0.1 --port 1420",

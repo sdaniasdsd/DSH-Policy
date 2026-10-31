@@ -32,8 +32,8 @@ describe('Policy extension package', () => {
   it('packageMetadataDeclaresAnOfficialBundle', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
-    expect(pkg.version).toBe('1.0.4')
-    expect(pkg.engines?.dsh).toBe('0.2.1-rc.3')
+    expect(pkg.version).toBe('1.0.5')
+    expect(pkg.engines?.dsh).toBe('0.2.1-rc.5')
     expect(pkg.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
     expect(pkg.dsh?.client?.platform).toBe('web')
     expect(pkg.dsh.client.inject).toEqual([
@@ -87,14 +87,14 @@ describe('Policy extension package', () => {
         encoding: 'utf8',
       })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
-      expect(packed.version).toBe('1.0.4')
-      expect(packed.engines.dsh).toBe('0.2.1-rc.3')
+      expect(packed.version).toBe('1.0.5')
+      expect(packed.engines.dsh).toBe('0.2.1-rc.5')
       expect(packedCompatibility).toMatchObject({
-        policyVersion: '1.0.4',
-        dshVersion: '0.2.1-rc.3',
-        dshTag: 'dsh-v0.2.1-rc.3',
-        dshCommit: '1f81c047fc48fa190a683e469daa699857e9afe8',
-        runtimeBuildCommit: 'be72761ee1a6736ebcdf4f3739363b083ae53c98',
+        policyVersion: '1.0.5',
+        dshVersion: '0.2.1-rc.5',
+        dshTag: 'dsh-v0.2.1-rc.5',
+        dshCommit: 'b830ec950faba0a46dda564be3e2d854afed94f1',
+        runtimeBuildCommit: 'd4db512a969fccf0c5cc7ec8fe38e9c1d27af916',
       })
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
       const client = execFileSync('tar', ['-xOf', tarball, 'package/lib/client.js'], {
@@ -107,7 +107,7 @@ describe('Policy extension package', () => {
       const packedDshPeers = Object.entries(packed.peerDependencies)
         .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
       expect(packedDshPeers.map(([name]) => name).sort()).toEqual([...packedCompatibility.requiredDshPeers].sort())
-      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.3')).toBe(true)
+      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.5')).toBe(true)
       for (const section of [packed.peerDependencies, packed.dependencies ?? {}, packed.devDependencies]) {
         expect(Object.values(section).some(version => version.startsWith('workspace:'))).toBe(false)
       }

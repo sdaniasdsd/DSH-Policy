@@ -54,9 +54,15 @@ jobs:
         run: |
           $package = Get-Content -Raw -LiteralPath 'packages/policy-extension/package.json' | ConvertFrom-Json
           $packDirectory = Join-Path $env:RUNNER_TEMP 'policy-extension-pack'
+          $stagingDirectory = Join-Path $env:RUNNER_TEMP 'policy-extension-staging'
           $assetDirectory = Join-Path $env:RUNNER_TEMP 'policy-extension-release'
-          New-Item -ItemType Directory -Force -Path $packDirectory, $assetDirectory | Out-Null
-          Push-Location 'packages/policy-extension'
+          New-Item -ItemType Directory -Force -Path $packDirectory, $stagingDirectory, $assetDirectory | Out-Null
+          $packageRoot = (Resolve-Path 'packages/policy-extension').Path
+          foreach ($name in @('package.json', 'README.md', 'compatibility.json', 'dsh.bundle.patch.yml')) {
+            Copy-Item -LiteralPath (Join-Path $packageRoot $name) -Destination $stagingDirectory
+          }
+          Copy-Item -LiteralPath (Join-Path $packageRoot 'lib') -Destination $stagingDirectory -Recurse
+          Push-Location $stagingDirectory
           try {
             npm pack --ignore-scripts --pack-destination $packDirectory
             if ($LASTEXITCODE -ne 0) { throw 'npm pack failed.' }
