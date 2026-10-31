@@ -7,7 +7,7 @@ kind: "package-bundle"
 
 ## Summary
 
-This package installs Policy through the official DSH profile Bundle path. Its `dsh.bundle.patch` adds one plugin row; the same row supplies the Host entry and the Web Client entry declared by `dsh.client`. The package pins DSH `0.2.1-rc.3` in `engines.dsh` and in every DSH peer dependency. [`compatibility.json`](compatibility.json) records the DSH source tag, source commit, and exact Desktop runtime build commit.
+This package installs Policy through the official DSH profile Bundle path. Its `dsh.bundle.patch` adds one plugin row; the same row supplies the Host entry and the Web Client entry declared by `dsh.client`. Version 1.0.5 pins DSH `0.2.1-rc.5` in `engines.dsh` and in every DSH peer dependency; version 1.0.4 remains the exact match for DSH `0.2.1-rc.3`. [`compatibility.json`](compatibility.json) records the DSH source tag, source commit, and exact Desktop runtime build commit.
 
 ## Use this package
 

@@ -1,9 +1,9 @@
 {
-  "policyVersion": "1.0.4",
-  "dshVersion": "0.2.1-rc.3",
-  "dshTag": "dsh-v0.2.1-rc.3",
-  "dshCommit": "1f81c047fc48fa190a683e469daa699857e9afe8",
-  "runtimeBuildCommit": "be72761ee1a6736ebcdf4f3739363b083ae53c98",
+  "policyVersion": "1.0.5",
+  "dshVersion": "0.2.1-rc.5",
+  "dshTag": "dsh-v0.2.1-rc.5",
+  "dshCommit": "b830ec950faba0a46dda564be3e2d854afed94f1",
+  "runtimeBuildCommit": "d4db512a969fccf0c5cc7ec8fe38e9c1d27af916",
   "requiredDshPeers": [
     "@deepseek-ai/dsh-jobs",
     "@deepseek-ai/dsh-llm",

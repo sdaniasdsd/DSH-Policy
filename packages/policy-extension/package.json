@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-policy-extension",
   "description": "Policy strategy and feedback extension for official DSH",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "license": "MIT",
   "publishConfig": {
@@ -35,7 +35,7 @@
     "lib/types/**/*.d.ts"
   ],
   "engines": {
-    "dsh": "0.2.1-rc.3"
+    "dsh": "0.2.1-rc.5"
   },
   "dsh": {
     "bundle": {
@@ -56,22 +56,22 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.5-alpha.1",
-    "@deepseek-ai/dsh-jobs": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-session": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-workflow": "0.2.1-rc.3"
+    "@deepseek-ai/dsh-jobs": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-workflow": "0.2.1-rc.5"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "~3.18.5-alpha.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.5-alpha.1",
-    "@deepseek-ai/dsh-jobs": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-session": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
-    "@deepseek-ai/dsh-workflow": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-jobs": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-session": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.5",
+    "@deepseek-ai/dsh-workflow": "0.2.1-rc.5",
     "@deepseek-ai/dsh-client-locale": "file:../../packages/client/locale",
     "@deepseek-ai/dsh-client-ui-conversation": "file:../../packages/client/ui-conversation",
     "@deepseek-ai/dsh-client-ui-settings": "file:../../packages/client/ui-settings",
