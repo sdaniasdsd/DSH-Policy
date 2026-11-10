@@ -9,7 +9,7 @@ export interface HostPolicyExtensionConfig {
 }
 
 /** Validate the persisted Policy style setting. */
-export const Config = z.object({
+export const Config: z<any, any, 'plain'> = z.object({
   style: z.union([
     z.const('codex-style'), z.const('claude-style'), z.const('zcode-style'), z.const('superpowers-style'),
   ]).default('codex-style').volatile(),

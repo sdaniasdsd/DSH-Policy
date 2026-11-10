@@ -36,6 +36,7 @@ describe('extracted package dependencies', () => {
     }
     const lockfile = load(readFileSync(join(directory, '../../pnpm-lock.yaml'), 'utf8')) as {
       importers: Record<string, { devDependencies: Record<string, { specifier: string; version: string }> }>
+      snapshots: Record<string, { dependencies: Record<string, string> }>
     }
     expect(hostImports).toEqual([...metadata.requiredDshPeers].sort())
     expect(Object.keys(manifest.peerDependencies).filter(name => name.startsWith('@deepseek-ai/dsh-')).sort()).toEqual(hostImports)
@@ -47,6 +48,10 @@ describe('extracted package dependencies', () => {
       expect(locked.specifier).toBe(metadata.dshVersion)
       expect(locked.version.split('(')[0]).toBe(metadata.dshVersion)
     }
+    const tools = lockfile.importers['packages/policy-extension']!.devDependencies['@deepseek-ai/dsh-tools']!
+    const agent = lockfile.snapshots[`@deepseek-ai/dsh-tools@${tools.version}`]!.dependencies['@deepseek-ai/dsh-agent']
+    expect(agent?.split('(')[0]).toBe(metadata.dshVersion)
+
     expect(clientPackages).toEqual([
       '@deepseek-ai/dsh-client-locale',
       '@deepseek-ai/dsh-client-ui-conversation',
