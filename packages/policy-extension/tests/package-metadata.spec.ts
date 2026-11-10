@@ -9,6 +9,7 @@ import * as yaml from 'js-yaml'
 
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url))
 const compatibility = JSON.parse(readFileSync(new URL('../compatibility.json', import.meta.url), 'utf8')) as {
+  dshCommit: string
   dshVersion: string
   requiredDshPeers: string[]
 }
@@ -32,8 +33,10 @@ describe('Policy extension package', () => {
   it('packageMetadataDeclaresAnOfficialBundle', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
-    expect(pkg.version).toBe('1.0.5')
-    expect(pkg.engines?.dsh).toBe('0.2.1-rc.5')
+    expect(pkg.version).toBe('1.0.6')
+    expect(pkg.engines?.dsh).toBe('0.2.2-rc.1')
+    expect(pkg.peerDependencies['@deepseek-ai/cordis']).toBe('4.1.0')
+    expect(pkg.dependencies?.['@deepseek-ai/schemastery']).toBe('3.19.0')
     expect(pkg.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
     expect(pkg.dsh?.client?.platform).toBe('web')
     expect(pkg.dsh.client.inject).toEqual([
@@ -87,15 +90,16 @@ describe('Policy extension package', () => {
         encoding: 'utf8',
       })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
-      expect(packed.version).toBe('1.0.5')
-      expect(packed.engines.dsh).toBe('0.2.1-rc.5')
+      expect(packed.version).toBe('1.0.6')
+      expect(packed.engines.dsh).toBe('0.2.2-rc.1')
       expect(packedCompatibility).toMatchObject({
-        policyVersion: '1.0.5',
-        dshVersion: '0.2.1-rc.5',
-        dshTag: 'dsh-v0.2.1-rc.5',
-        dshCommit: 'b830ec950faba0a46dda564be3e2d854afed94f1',
-        runtimeBuildCommit: 'd4db512a969fccf0c5cc7ec8fe38e9c1d27af916',
+        policyVersion: '1.0.6',
+        dshVersion: '0.2.2-rc.1',
+        dshTag: 'dsh-v0.2.2-rc.1',
+        dshCommit: compatibility.dshCommit,
+        runtimeBuildCommit: 'c59d10aff167ad7eefead4b3a9082fb57c8fbfe8',
       })
+      expect(packedCompatibility.dshCommit).toMatch(/^[0-9a-f]{40}$/)
       expect(packed.dsh?.bundle?.patch).toBe('./dsh.bundle.patch.yml')
       const client = execFileSync('tar', ['-xOf', tarball, 'package/lib/client.js'], {
         encoding: 'utf8',
@@ -107,7 +111,7 @@ describe('Policy extension package', () => {
       const packedDshPeers = Object.entries(packed.peerDependencies)
         .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
       expect(packedDshPeers.map(([name]) => name).sort()).toEqual([...packedCompatibility.requiredDshPeers].sort())
-      expect(packedDshPeers.every(([, version]) => version === '0.2.1-rc.5')).toBe(true)
+      expect(packedDshPeers.every(([, version]) => version === '0.2.2-rc.1')).toBe(true)
       for (const section of [packed.peerDependencies, packed.dependencies ?? {}, packed.devDependencies]) {
         expect(Object.values(section).some(version => version.startsWith('workspace:'))).toBe(false)
       }

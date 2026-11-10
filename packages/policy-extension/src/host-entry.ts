@@ -1,6 +1,7 @@
-/** Minimal model-facing Host integration using only the 0.2.1-rc.5 public services. */
+/** Model-facing Host integration with the official DSH Jobs and Workflow services. */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { JobHandle, JobHooks } from '@deepseek-ai/dsh-jobs'
 import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowRun, WorkflowRunInfo, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
 import { TaskRun } from './task-runtime/task-run.ts'
@@ -47,7 +48,7 @@ export function registerPolicyHost(ctx: Context, config: HostPolicyExtensionConf
     activeRuns.get(info.id)?.append(`agent #${agent.seq} ${agent.outcome}\n`, { channel: 'log' })
   })
 
-  ctx.inject(['tools', 'jobs', 'workflowEngine'], (scope) => {
+  ctx.inject(['tools', 'jobs', 'agentPresets'], (scope) => {
     scope.tools.register(defineTool({
       name: 'policy_run',
       description: 'Start the DSH Policy strategy for a task. Returns a job id; live phases and agent lifecycle appear in the task job output.',
@@ -64,6 +65,8 @@ export function registerPolicyHost(ctx: Context, config: HostPolicyExtensionConf
       async execute(args, exec) {
         const parent = exec.agent
         if (parent === undefined) throw new Error('policy_run requires a calling agent')
+        const engine = scope.agentPresets.serviceFor(parent, 'workflowEngine')
+        if (engine === undefined) throw new Error('policy_run requires a Workflow service in the calling agent preset')
         const style = config.style.get()
         const registry = makeRegistry(style, args.task)
         const captured = registry.capture(style, { task: args.task })
@@ -72,7 +75,7 @@ export function registerPolicyHost(ctx: Context, config: HostPolicyExtensionConf
           run(job) {
             job.updateProgress('Starting policy workflow')
             job.append('Policy strategy accepted; starting official DSH workflow.\n', { channel: 'log' })
-            const execute = createWorkflowExecutor(scope.workflowEngine, parent as unknown as WorkflowStartRequest['parent'], (_step, prompt) => ({
+            const execute = createWorkflowExecutor(engine, parent as unknown as WorkflowStartRequest['parent'], (_step, prompt) => ({
               script: SCRIPT,
               meta: { name: style, description: 'Policy style stage executed by the official DSH workflow.' },
               args: { prompt }, maxTotalAgents: 1,
@@ -104,6 +107,6 @@ export function registerPolicyHost(ctx: Context, config: HostPolicyExtensionConf
         })
         return { jobId, strategy: style }
       },
-    }))
+    }), { when: ({ agent }) => scope.agentPresets.serviceFor(agent, 'workflowEngine') !== undefined })
   })
 }

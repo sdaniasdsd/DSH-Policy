@@ -1,9 +1,18 @@
 {
   "schemaVersion": 2,
-  "catalogRevision": 6,
+  "catalogRevision": 7,
   "expiresAt": 1798761600,
   "desktopReleases": [],
   "policyExtensions": [
+    {
+      "package": "@deepseek-ai/dsh-policy-extension",
+      "version": "1.0.6",
+      "runtimeVersion": "0.2.2-rc.1",
+      "runtimeCommit": "c59d10aff167ad7eefead4b3a9082fb57c8fbfe8",
+      "tarballUrl": "https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.6/dsh-policy-extension-1.0.6.tgz",
+      "sha256": "e4c11101dfe8e646ebfddee940ff3a47733f575c10fea8d5e125b574b48b101f",
+      "size": 30204
+    },
     {
       "package": "@deepseek-ai/dsh-policy-extension",
       "version": "1.0.5",

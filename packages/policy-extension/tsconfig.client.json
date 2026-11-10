@@ -3,17 +3,10 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types",
-    "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo"
+    "tsBuildInfoFile": "lib/tsconfig.client.tsbuildinfo",
+    "paths": {},
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["react"]
   },
-  "include": ["src/client", "src/policy-config-types.ts"],
-  "references": [
-    { "path": "../client/ui-conversation/tsconfig.client.json" },
-    { "path": "../client/locale/tsconfig.client.json" },
-    { "path": "../client/ui-settings/tsconfig.client.json" },
-    { "path": "../client/ui-renderer" },
-    { "path": "../client/ui-slots" },
-    { "path": "../client/store" },
-    { "path": "../../vendor/cordis" },
-    { "path": "../../vendor/schemastery" }
-  ]
+  "include": ["src/client", "src/policy-config-types.ts"]
 }

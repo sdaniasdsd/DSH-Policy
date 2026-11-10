@@ -208,18 +208,28 @@ test('Windows release workflow requires protected keys and runs manager qualific
   assert.equal(workflow.includes('BEGIN PRIVATE KEY'), false)
 })
 
-test('the release catalog maps official DSH RC5 to its exact verified extension build', () => {
+test('the release catalog adds DSH 0.2.2 RC1 and keeps earlier verified pairs', () => {
   const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'))
+  const rc1 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.2-rc.1')
   const rc5 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.1-rc.5')
   const rc3 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.1-rc.3')
+  const rc2 = catalog.policyExtensions.find(entry => entry.runtimeVersion === '0.2.1-rc.2')
 
-  assert.equal(catalog.catalogRevision, 6)
+  assert.equal(catalog.catalogRevision, 7)
+  assert.equal(rc1?.version, '1.0.6')
+  assert.equal(rc1?.runtimeCommit, 'c59d10aff167ad7eefead4b3a9082fb57c8fbfe8')
+  assert.equal(rc1?.tarballUrl, 'https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.6/dsh-policy-extension-1.0.6.tgz')
+  assert.match(rc1?.sha256 ?? '', /^[0-9a-f]{64}$/)
+  assert.ok(rc1?.size > 0)
   assert.equal(rc5?.version, '1.0.5')
   assert.equal(rc5?.runtimeCommit, 'd4db512a969fccf0c5cc7ec8fe38e9c1d27af916')
   assert.equal(rc5?.tarballUrl, 'https://github.com/sdaniasdsd/DSH-Policy/releases/download/policy-extension-v1.0.5/dsh-policy-extension-1.0.5.tgz')
   assert.match(rc5?.sha256 ?? '', /^[0-9a-f]{64}$/)
   assert.equal(rc5?.size, 30129)
   assert.equal(rc3?.version, '1.0.4')
+  assert.equal(rc3?.runtimeCommit, 'be72761ee1a6736ebcdf4f3739363b083ae53c98')
+  assert.equal(rc2?.version, '1.0.3')
+  assert.equal(rc2?.runtimeCommit, '332895e0f7c9d4dbfb29729f5eb367fa263ff986')
 })
 
 test('extension release packs only the explicit staged package files', () => {
@@ -227,6 +237,9 @@ test('extension release packs only the explicit staged package files', () => {
   assert.match(workflow, /policy-extension-staging/)
   assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$packageRoot 'lib'\)/)
   assert.match(workflow, /Push-Location \$stagingDirectory/)
+  assert.match(workflow, /catalog\/releases\.json/)
+  assert.match(workflow, /\$hash -ne \$qualified\[0\]\.sha256/)
+  assert.match(workflow, /\.Length -ne \$qualified\[0\]\.size/)
   assert.equal(workflow.includes("Push-Location 'packages/policy-extension'"), false)
 })
 

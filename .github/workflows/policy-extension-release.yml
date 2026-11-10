@@ -77,6 +77,15 @@ jobs:
           $assetName = "dsh-policy-extension-$($package.version).tgz"
           $assetPath = Join-Path $assetDirectory $assetName
           $hash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $compatibility = Get-Content -Raw -LiteralPath 'packages/policy-extension/compatibility.json' | ConvertFrom-Json
+          $catalog = Get-Content -Raw -LiteralPath 'apps/policy-manager/catalog/releases.json' | ConvertFrom-Json
+          $qualified = @($catalog.policyExtensions | Where-Object {
+            $_.package -eq $package.name -and $_.version -eq $package.version -and
+            $_.runtimeVersion -eq $compatibility.dshVersion -and $_.runtimeCommit -eq $compatibility.runtimeBuildCommit
+          })
+          if ($qualified.Count -ne 1 -or $hash -ne $qualified[0].sha256 -or (Get-Item -LiteralPath $assetPath).Length -ne $qualified[0].size) {
+            throw 'The built extension does not match the Windows-qualified asset recorded in the Manager catalog.'
+          }
           "$hash  $assetName" | Set-Content -LiteralPath (Join-Path $assetDirectory 'SHA256SUMS.txt') -Encoding ascii
           "version=$($package.version)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           "sha256=$hash" | Add-Content -LiteralPath $env:GITHUB_OUTPUT

@@ -69,6 +69,17 @@ describe('maintained repository reference policy', () => {
     expect(scanRepositoryReferences(fixture.root)).toHaveLength(4)
   })
 
+  it('permits exact commit pins only in the extension compatibility contract', (test) => {
+    const { commit } = repository(test)
+    const file = 'packages/policy-extension/compatibility.json'
+    const pins = `  "dshCommit": "${commit}",\n  "runtimeBuildCommit": "${commit}"`
+    const commits = new Set([commit])
+
+    expect(findRepositoryReferences(file, pins, commits)).toEqual([])
+    expect(findRepositoryReferences('README.md', pins, commits)).toHaveLength(2)
+    expect(findRepositoryReferences(file, `  "other": "${commit}"`, commits)).toHaveLength(1)
+  })
+
   it('checks available unreachable commits without requiring a branch or network', (test) => {
     const fixture = repository(test)
     const unreachable = fixture.git(['commit-tree', fixture.tree, '-m', 'unreachable fixture'])
