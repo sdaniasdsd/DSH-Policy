@@ -20,6 +20,7 @@ jobs:
     outputs:
       version: ${{ steps.package.outputs.version }}
       sha256: ${{ steps.package.outputs.sha256 }}
+      experimental: ${{ steps.package.outputs.experimental }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -83,12 +84,18 @@ jobs:
             $_.package -eq $package.name -and $_.version -eq $package.version -and
             $_.runtimeVersion -eq $compatibility.dshVersion -and $_.runtimeCommit -eq $compatibility.runtimeBuildCommit
           })
-          if ($qualified.Count -ne 1 -or $hash -ne $qualified[0].sha256 -or (Get-Item -LiteralPath $assetPath).Length -ne $qualified[0].size) {
+          $experimental = $package.version -match '^\d+\.\d+\.\d+-experimental\.[1-9]\d*$'
+          if ($experimental) {
+            if (@($catalog.policyExtensions | Where-Object { $_.package -eq $package.name -and $_.version -eq $package.version }).Count -ne 0) {
+              throw 'Experimental releases must stay out of the Manager install catalog.'
+            }
+          } elseif ($qualified.Count -ne 1 -or $hash -ne $qualified[0].sha256 -or (Get-Item -LiteralPath $assetPath).Length -ne $qualified[0].size) {
             throw 'The built extension does not match the Windows-qualified asset recorded in the Manager catalog.'
           }
           "$hash  $assetName" | Set-Content -LiteralPath (Join-Path $assetDirectory 'SHA256SUMS.txt') -Encoding ascii
           "version=$($package.version)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           "sha256=$hash" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          "experimental=$($experimental.ToString().ToLowerInvariant())" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
           "::notice title=Policy extension SHA256::$hash  $assetName"
       - uses: actions/upload-artifact@v7.0.1
         with:
@@ -119,6 +126,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_VERSION: ${{ needs.verify-and-pack.outputs.version }}
           EXPECTED_SHA256: ${{ needs.verify-and-pack.outputs.sha256 }}
+          EXPERIMENTAL: ${{ needs.verify-and-pack.outputs.experimental }}
         run: |
           if ($env:GITHUB_REPOSITORY -ne $env:GH_REPO) { throw 'Refusing to publish outside sdaniasdsd/DSH-Policy.' }
           if ($env:RELEASE_TAG -ne "policy-extension-v$($env:RELEASE_VERSION)") { throw 'Release tag and verified package version differ.' }
@@ -131,10 +139,13 @@ jobs:
           if ($actualHash -ne $env:EXPECTED_SHA256) { throw 'The downloaded package SHA256 differs from the verified build output.' }
           gh release view $env:RELEASE_TAG --repo $env:GH_REPO *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --verify-tag --title "DSH Policy Extension v$($env:RELEASE_VERSION)" --notes "Standalone DSH Policy extension package for the pinned official DSH runtime.\n\nAsset: $assetName\nSHA256: $actualHash"
+            $releaseOptions = @()
+            if ($env:EXPERIMENTAL -eq 'true') { $releaseOptions = @('--prerelease', '--latest=false') }
+            gh release create $env:RELEASE_TAG $assetPath $checksumPath --verify-tag --title "DSH Policy Extension v$($env:RELEASE_VERSION)" --notes "DSH Policy extension for the pinned official DSH runtime. See the package README for compatibility and installation." @releaseOptions
             if ($LASTEXITCODE -ne 0) { throw 'Could not create the extension GitHub release.' }
           }
-          $release = gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json assets | ConvertFrom-Json
+          $release = gh release view $env:RELEASE_TAG --repo $env:GH_REPO --json assets,isPrerelease | ConvertFrom-Json
+          if ($env:EXPERIMENTAL -eq 'true' -and -not $release.isPrerelease) { throw 'Experimental extension assets require a GitHub prerelease.' }
           foreach ($name in @($assetName, 'SHA256SUMS.txt')) {
             if ($release.assets.name -contains $name) {
               $existingDirectory = Join-Path $env:RUNNER_TEMP 'existing-release-assets'

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-policy-extension",
   "description": "Policy strategy and feedback extension for official DSH",
-  "version": "1.0.6",
+  "version": "1.0.7-experimental.1",
   "type": "module",
   "license": "MIT",
   "publishConfig": {

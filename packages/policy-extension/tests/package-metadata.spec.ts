@@ -33,7 +33,7 @@ describe('Policy extension package', () => {
   it('packageMetadataDeclaresAnOfficialBundle', () => {
     const pkg = manifest()
     expect(pkg.name).toBe('@deepseek-ai/dsh-policy-extension')
-    expect(pkg.version).toBe('1.0.6')
+    expect(pkg.version).toBe('1.0.7-experimental.1')
     expect(pkg.engines?.dsh).toBe('0.2.2-rc.1')
     expect(pkg.peerDependencies['@deepseek-ai/cordis']).toBe('4.1.0')
     expect(pkg.dependencies?.['@deepseek-ai/schemastery']).toBe('3.19.0')
@@ -90,10 +90,10 @@ describe('Policy extension package', () => {
         encoding: 'utf8',
       })) as typeof compatibility & { policyVersion: string; dshTag: string; dshCommit: string; runtimeBuildCommit: string }
       expect(packed.name).toBe('@deepseek-ai/dsh-policy-extension')
-      expect(packed.version).toBe('1.0.6')
+      expect(packed.version).toBe('1.0.7-experimental.1')
       expect(packed.engines.dsh).toBe('0.2.2-rc.1')
       expect(packedCompatibility).toMatchObject({
-        policyVersion: '1.0.6',
+        policyVersion: '1.0.7-experimental.1',
         dshVersion: '0.2.2-rc.1',
         dshTag: 'dsh-v0.2.2-rc.1',
         dshCommit: compatibility.dshCommit,
@@ -106,6 +106,8 @@ describe('Policy extension package', () => {
       })
       expect(client).toContain('policy.style')
       expect(client).toContain('策略风格')
+      expect(client).toContain('Codex（本项目实验策略）')
+      expect(client).toContain('Claude（本项目实验策略）')
       expect(client).toContain('superpowers-style')
       expect(client).toContain('exports.inject')
       const packedDshPeers = Object.entries(packed.peerDependencies)

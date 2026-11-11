@@ -18,6 +18,12 @@ DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的�
 
 上游文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## 管理器与策略增强包
+
+使用 [DSH Policy 管理器 1.0.11](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/dsh-policy-manager-v1.0.11) 管理已安装的官方 Windows x64 DSH。管理器核对运行时版本和构建提交，从签名目录选择兼容的增强包，并负责备份以及官方模式和策略模式之间的切换。官方 DSH `0.2.2-rc.1` 的管理器安装渠道使用[增强包 1.0.6](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-extension-v1.0.6)。
+
+[增强包 1.0.7-experimental.1](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-extension-v1.0.7-experimental.1) 在同一 DSH 版本上提供 Claude 和 Codex 两个本项目实验策略。两个名称指任务编排流程，模型仍由 DSH 的模型配置选择。预览包通过独立 Web 配置手动试用，安装步骤见发行说明。
+
 ## 策略增强版：我们的改动
 
 当前源码构建在策略版工作流 bundle 中开启自动根任务入口。普通工作在原版 DSH 子任务执行之前，通过有界意图分类及策略选择。聊天卡片展示策略、子任务 Token 场景估算和阶段进度；插件页可以关闭未来输入的自动入口。见[入口指南](docs/upgrade-guide/v0.2.0-rc.2/task-strategy-default-entry/guide.zh.md)。

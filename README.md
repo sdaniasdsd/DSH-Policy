@@ -18,6 +18,12 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 Upstream documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## Manager and Policy Extension
+
+Use [DSH Policy Manager 1.0.11](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/dsh-policy-manager-v1.0.11) with an installed official Windows x64 DSH Desktop. The Manager checks the runtime version and build commit, selects a compatible extension from its signed catalog, backs up the Harness home, and switches between Official and Policy modes. The Manager channel for official DSH `0.2.2-rc.1` uses [Policy Extension 1.0.6](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-extension-v1.0.6).
+
+[Policy Extension 1.0.7-experimental.1](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-extension-v1.0.7-experimental.1) includes Claude and Codex as DSH Policy experiments for the same DSH version. The names identify task workflows. DSH's model configuration still selects the model. Follow the release notes to try the preview manually in a separate Web profile.
+
 ## Policy edition: our changes
 
 Current source builds enable automatic root task entry in the policy workflow bundle. Ordinary work routes through bounded intent classification and strategy selection before original DSH child execution. The chat card displays strategy, child-token scenario estimates and stage progress; the Plugins page can disable automatic entry for future inputs. See the [entry guide](docs/upgrade-guide/v0.2.0-rc.2/task-strategy-default-entry/guide.md).

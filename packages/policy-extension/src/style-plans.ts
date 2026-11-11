@@ -4,8 +4,8 @@ export type { PolicyStyleId } from './policy-config-types.ts'
 
 /** Display names for the styles restored to the Policy composer. */
 export const POLICY_STYLES: readonly { readonly id: PolicyStyleId; readonly label: string }[] = [
-  { id: 'codex-style', label: 'Codex style' },
-  { id: 'claude-style', label: 'Claude style' },
+  { id: 'codex-style', label: 'Codex (DSH Policy experiment)' },
+  { id: 'claude-style', label: 'Claude (DSH Policy experiment)' },
   { id: 'zcode-style', label: 'ZCode style' },
   { id: 'superpowers-style', label: 'Superpowers style' },
 ]
