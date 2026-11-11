@@ -18,6 +18,58 @@ It is built on an **everything-is-a-plugin** architecture and powered by [Cordis
 
 Upstream documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
 
+## Strategy benchmark results
+
+The November 11, 2026 tests compared RC5 (official DSH `0.2.1-rc.5`, extension `1.0.5`) with the newer RC1 (official DSH `0.2.2-rc.1`, extension `1.0.6`). Each strategy ran against its same-version official baseline with GPT-5.6-Luna, identical tasks, and the same acceptance checks. The release comparison reflects the combined change in runtime and extension.
+
+### Real project tasks
+
+This snapshot contains 56 measurable results out of 90 planned, with 50 in complete ten-group comparisons. Each group below has five samples: two instruction budget tasks, two storage batch deletion tasks, and one Duration API task. Artifact scores allocate 40 points to functionality, 30 to edge cases and failure handling, 20 to compatibility and regressions, and 10 to scope. The table lists the four dimensions in that order. A pass also requires the correct model route, full acceptance, and a completed workflow for strategy groups. Time and tokens include valid rework, and token counts include cache reads. Four Duration artifacts were rescored after a TypeScript module loading fix, and rework triggered by the faulty grader was excluded from outcomes and costs.
+
+| Version / strategy | Mean first→final score /100 | Final scores by dimension | First→final passes | Reworks / converted to pass | Mean time | Mean tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| RC5 Official | 74.0→76.0 | 24.0 / 22.0 / 20.0 / 10.0 | 3/5→3/5 | 2 / 0 | 183.1 s | 453,328 |
+| RC5 Codex | 86.0→96.0 | 40.0 / 30.0 / 16.0 / 10.0 | 3/5→3/5 | 2 / 0 | 452.2 s | 1,041,151 |
+| RC5 Claude | 88.0→88.0 | 32.0 / 26.0 / 20.0 / 10.0 | 4/5→4/5 | 1 / 0 | 347.3 s | 801,842 |
+| RC5 ZCode | 83.3→83.3 | 29.3 / 24.0 / 20.0 / 10.0 | 3/5→3/5 | 2 / 0 | 536.0 s | 1,319,666 |
+| RC5 Superpowers | 86.0→86.0 | 32.0 / 26.0 / 18.0 / 10.0 | 3/5→3/5 | 1 / 0 | 535.1 s | 1,297,893 |
+| RC1 Official | 86.0→88.0 | 32.0 / 26.0 / 20.0 / 10.0 | 3/5→4/5 | 2 / 1 | 216.9 s | 516,664 |
+| RC1 Codex | 98.0→96.0 | 40.0 / 28.0 / 18.0 / 10.0 | 4/5→4/5 | 1 / 0 | 386.9 s | 904,926 |
+| RC1 Claude | 88.0→88.0 | 32.0 / 26.0 / 20.0 / 10.0 | 4/5→4/5 | 1 / 0 | 355.1 s | 849,463 |
+| RC1 ZCode | 86.0→95.3 | 37.3 / 30.0 / 18.0 / 10.0 | 3/5→3/5 | 2 / 0 | 416.3 s | 1,001,634 |
+| RC1 Superpowers | 98.0→98.0 | 40.0 / 30.0 / 18.0 / 10.0 | 4/5→4/5 | 1 / 0 | 522.5 s | 1,178,541 |
+
+- **Instruction budgets.** RC5 Codex raised the mean final score from the official baseline of 40 to 90, chiefly in functionality and edge cases. Both runs still missed a compatibility check. RC5 Claude passed once in two runs, and RC5 Official passed neither. RC1 Codex and Superpowers scored 90 and 95 against the official 70, with one pass each across those three groups. All four RC1 strategies scored at or below the official baseline on compatibility and regressions.
+- **Storage batch deletion and Duration API.** All 30 samples in complete comparisons passed on the first attempt with 100 points and zero valid reworks. Strategies took about 1.6–4.3× the time and 1.5–6.3× the tokens of their same-version official baselines.
+- **Release comparison.** RC1 Codex kept a mean final score of 96, reduced reworks from two to one, and used about 14% less time and 13% fewer tokens than RC5 Codex. Claude's final score and passes held steady while costs rose slightly. ZCode and Superpowers each gained 12 points. ZCode stayed at 3/5 passes and Superpowers went from 3/5 to 4/5. RC1 Official also gained 12 points and converted one failure to a pass through rework. Repeats are limited, and concurrent runs and service load may affect elapsed times.
+
+### Fixed tasks and model providers
+
+The Luna fixed tasks covered a short answer, a single-file decoder, and a multi-module alarm. Each group ran three tasks once. All 30 passed on the first attempt with zero reworks. The table totals the three tasks. Reviewers knew the versions and scored functionality, contract, edge cases, maintainability, and error diagnostics out of 48 points.
+
+| Strategy | RC5 score / seconds / tokens | RC1 score / seconds / tokens |
+|---|---:|---:|
+| Official | 46 / 129.9 / 183,859 | 47 / 96.7 / 154,386 |
+| Codex | 47 / 238.7 / 381,544 | 47 / 177.2 / 311,160 |
+| Claude | 47 / 242.6 / 439,266 | 48 / 237.4 / 398,865 |
+| ZCode | 46 / 235.6 / 441,267 | 48 / 368.6 / 615,886 |
+| Superpowers | 47 / 322.7 / 518,645 | 48 / 331.4 / 596,791 |
+
+| Provider | Observations |
+|---|---|
+| Kilo Nemotron | Quota blocked 25 of 30 attempts. RC1 Codex and Official both passed the short answer. Codex took 28.3 s and 67,034 tokens, and Official took 5.0 s and 10,889 tokens. Neither coding task had scorable samples. |
+| TRAE DeepSeek V4 Flash | Both official baselines passed the single-file task on the first attempt. None of the eight strategy groups completed its first workflow, and four received rework feedback. |
+| CodeArts / WorkBuddy | All 12 CodeArts requests returned HTTP 403 before generation. All three WorkBuddy requests were rejected before generation. |
+| Anonymous DeepSeek / CodeBuddy | Connection probes returned HTTP 429 and a channel rejection, respectively. |
+
+In a separate wallpaper editor smoke test, all four outputs (Official, Policy Edition, Claude, and Superpowers) exported a 640×360 PNG with no recorded browser runtime errors. This test checked artifact functionality.
+
+### Release verification
+
+The extension preview passed 62 tests with one marked TODO. The Manager passed all 11 release qualification checks. Official DSH `0.2.2-rc.1` installed the preview, started the isolated Web profile, and removed the package. The GitHub asset checksum matched the tested archive. [Release build](https://github.com/sdaniasdsd/DSH-Policy/actions/runs/43042160800)
+
+These results support offering Claude and Codex as experiments for complex tasks. For tasks the official baselines already completed with full scores, strategies added time and tokens. The Manager uses a signed catalog to install a compatible extension for official DSH. Try the experimental package manually in a separate Web profile. [Manager 1.0.11](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/dsh-policy-manager-v1.0.11) · [Claude and Codex preview](https://github.com/sdaniasdsd/DSH-Policy/releases/tag/policy-extension-v1.0.7-experimental.1)
+
 ## Policy edition: our changes
 
 Current source builds enable automatic root task entry in the policy workflow bundle. Ordinary work routes through bounded intent classification and strategy selection before original DSH child execution. The chat card displays strategy, child-token scenario estimates and stage progress; the Plugins page can disable automatic entry for future inputs. See the [entry guide](docs/upgrade-guide/v0.2.0-rc.2/task-strategy-default-entry/guide.md).

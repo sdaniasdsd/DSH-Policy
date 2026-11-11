@@ -5,6 +5,18 @@
 /deepseek-harness-policy-edition:
   en: 42aea733fdb75fc4
   zh: 2b84b6abccbaacca
+/deepseek-harness-policy-edition/strategy-benchmark-results:
+  en: ceb4766c588527dd
+  zh: a5fa9df29804d14a
+/deepseek-harness-policy-edition/strategy-benchmark-results/real-project-tasks:
+  en: ea146dcacc405ba3
+  zh: f7263672f38b74f2
+/deepseek-harness-policy-edition/strategy-benchmark-results/fixed-tasks-and-model-providers:
+  en: e40917823cef4908
+  zh: b5f03d5cf2017b04
+/deepseek-harness-policy-edition/strategy-benchmark-results/release-verification:
+  en: e9a56193dc85fa3c
+  zh: 17b8dfeb5b1349e8
 /deepseek-harness-policy-edition/policy-edition-our-changes:
   en: 62cce2b65b0c9904
   zh: bedac70827aa564c
