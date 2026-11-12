@@ -21,6 +21,10 @@ overrides:
   'extract-zip>yauzl': '3.4.0'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
+  '@deepseek-ai/dsh-policy-extension>@deepseek-ai/schemastery': '3.19.0'
+
+# Registry-pinned DSH packages must resolve their own peers, including Agent.
+resolvePeersFromWorkspaceRoot: false
 
 peerDependencyRules:
   allowedVersions:

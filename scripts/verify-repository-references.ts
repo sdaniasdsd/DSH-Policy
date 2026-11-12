@@ -12,6 +12,8 @@ const organizationUrl = new RegExp(`\\bgithub\\.com/${organization}(?![a-z0-9-])
 // The independent kit repository owns the engine source and documentation.
 const kitRepositoryUrl = new RegExp(`\\bgithub\\.com/${organization}/libreoffice-kit(?:\\.git)?(?=/|[^a-zA-Z0-9_.-]|$)`, 'g')
 const commitCandidate = /(?<![a-z0-9])[\da-f]{7,40}(?![a-z0-9])/gi
+const extensionCompatibilityFile = 'packages/policy-extension/compatibility.json'
+const releaseCommitField = /^\s*"(?:dshCommit|runtimeBuildCommit)":\s*"[\da-f]{40}",?\s*$/i
 const excludedPrefixes = ['vendor/']
 const gitOutputLimit = 64 * 1024 * 1024
 
@@ -47,6 +49,8 @@ export function findRepositoryReferences(
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
+    // The install contract pins source and runtime identities alongside the human-facing release tag.
+    if (file === extensionCompatibilityFile && releaseCommitField.test(line)) continue
     if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }

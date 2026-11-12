@@ -7,11 +7,11 @@ kind: "package-bundle"
 
 ## Summary
 
-This package installs Policy through the official DSH profile Bundle path. Its `dsh.bundle.patch` adds one plugin row; the same row supplies the Host entry and the Web Client entry declared by `dsh.client`. Version 1.0.5 pins DSH `0.2.1-rc.5` in `engines.dsh` and in every DSH peer dependency; version 1.0.4 remains the exact match for DSH `0.2.1-rc.3`. [`compatibility.json`](compatibility.json) records the DSH source tag, source commit, and exact Desktop runtime build commit.
+This package installs Policy through the official DSH profile Bundle path. Its `dsh.bundle.patch` adds one plugin row; the same row supplies the Host entry and the Web Client entry declared by `dsh.client`. Version 1.0.6 pins DSH `0.2.2-rc.1` in `engines.dsh` and in every DSH peer dependency. [`compatibility.json`](compatibility.json) records the DSH source tag, source commit, and exact Desktop runtime build commit. The [Manager catalog](../../apps/policy-manager/catalog/releases.json) lists the extension releases for older Desktop builds.
 
 ## Use this package
 
-The ordinary repository build emits both plugin entries. For a focused build, run `npm run build:policy-extension` from the repository root, then install the packed package into an official DSH profile. The published archive contains the Bundle patch, Host entry, Client entry, types, and compatibility metadata. The official profile loader checks the exact DSH version before importing the plugin.
+The ordinary repository build emits both plugin entries. For a focused release build, run `npm run build:policy-extension` from the repository root. The release compiler resolves the published target dependencies instead of the fork's TypeScript source aliases. Install the packed package into an official DSH profile. The published archive contains the Bundle patch, Host entry, Client entry, types, and compatibility metadata. The official profile loader checks the exact DSH version before importing the plugin.
 
 GitHub releases publish a fixed `dsh-policy-extension-<version>.tgz` asset for the exact `policy-extension-v<version>` tag. The release workflow builds and tests the package, checks the packed metadata and exact DSH peer pins, rejects install lifecycle scripts, and publishes a matching `SHA256SUMS.txt` file.
 
@@ -19,7 +19,7 @@ The Host export provides `StrategyRegistry`, `captureStrategy`, and `TaskRun`. A
 
 ## Model Experience
 
-The Client entry places a Policy style selector beside the composer model control. It saves one profile-wide default for new Policy jobs: Codex, Claude, ZCode, or Superpowers style. The Host entry reads that setting when `policy_run` accepts a task and runs the selected staged plan through the official `ctx.workflowEngine`. The tool returns a Job id immediately. The Job progress line follows workflow phases; its observer log streams the phase, `workflow/log`, and child start/end events, so the official DSH job surface can show ongoing work. Final output is retained in the Job result. This requires the official Settings, Jobs, and `dsh-tool-jobs` providers to be present in the composition.
+The Client entry places a Policy style selector beside the composer model control. It saves one profile-wide default for new Policy jobs: Codex, Claude, ZCode, or Superpowers style. The Host entry reads that setting when `policy_run` accepts a task and runs the selected staged plan through the Workflow service in the calling Agent's preset. The tool is available only for presets with that service. The tool returns a Job id immediately. The Job progress line follows workflow phases; its observer log streams the phase, `workflow/log`, and child start/end events, so the official DSH job surface can show ongoing work. Final output is retained in the Job result. This requires the official Settings, Jobs, and `dsh-tool-jobs` providers to be present in the composition.
 
 The exported controller remains available to packages that want to register their own strategies. The extension does not load arbitrary strategy files or a manager configuration.
 

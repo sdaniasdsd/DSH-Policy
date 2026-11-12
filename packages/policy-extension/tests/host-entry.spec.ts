@@ -4,7 +4,7 @@ import type { WorkflowResult, WorkflowRun, WorkflowStartRequest } from '@deepsee
 import { registerPolicyHost } from '../src/host-entry.ts'
 
 describe('Policy Host entry', () => {
-  it('registers a model-facing policy tool and streams workflow lifecycle into its owned Job', async () => {
+  it('uses the calling Agent preset Workflow and streams its lifecycle into the owned Job', async () => {
     const registered: { name: string; execute: (args: { task: string }, exec: any) => Promise<unknown> }[] = []
     const listeners = new Map<string, ((...args: any[]) => void)[]>()
     let spec: JobSpec | undefined
@@ -19,13 +19,24 @@ describe('Policy Host entry', () => {
     const result = Promise.withResolvers<WorkflowResult>()
     let workflowRequest: WorkflowStartRequest | undefined
     const owner = { id: 'session-owner' } as WorkflowStartRequest['parent']
+    let admitted: ((input: { agent: unknown }) => boolean) | undefined
+    const engine = { start(input: WorkflowStartRequest) {
+      workflowRequest = input
+      return { id: 'workflow-1' as WorkflowRun['id'], meta: input.meta, result: result.promise, cancel() {}, dispose: async () => {} }
+    } }
     const ctx = {
-      inject(_deps: string[], callback: (context: unknown) => void) { callback(this) },
-      tools: { register(tool: (typeof registered)[number]) { registered.push(tool) } },
+      inject(deps: string[], callback: (context: unknown) => void) {
+        if (deps.every(dep => dep in this)) callback(this)
+      },
+      tools: {
+        register(tool: (typeof registered)[number], options: { when: typeof admitted }) {
+          registered.push(tool)
+          admitted = options.when
+        },
+      },
       jobs: { start(input: JobSpec) { spec = input; hooks = input.run(job); return job.id } },
-      workflowEngine: { start(input: WorkflowStartRequest) {
-        workflowRequest = input
-        return { id: 'workflow-1' as WorkflowRun['id'], meta: input.meta, result: result.promise, cancel() {}, dispose: async () => {} }
+      agentPresets: { serviceFor(agent: unknown, name: string) {
+        return agent === owner && name === 'workflowEngine' ? engine : undefined
       } },
       on(name: string, listener: (...args: any[]) => void) {
         listeners.set(name, [...listeners.get(name) ?? [], listener])
@@ -35,6 +46,8 @@ describe('Policy Host entry', () => {
 
     registerPolicyHost(ctx as never, { style: { get: () => 'codex-style' } as never })
     expect(registered.map(({ name }) => name)).toEqual(['policy_run'])
+    expect(admitted?.({ agent: owner })).toBe(true)
+    expect(admitted?.({ agent: { id: 'without-workflow' } })).toBe(false)
     const receipt = await registered[0]!.execute({ task: 'Implement the requested feature' }, {
       agent: owner,
       callId: 'call-1', rootCallId: 'call-1', signal: new AbortController().signal,
@@ -72,11 +85,11 @@ describe('Policy Host entry', () => {
       inject(_deps: string[], callback: (context: unknown) => void) { callback(this) },
       tools: { register(tool: (typeof registered)[number]) { registered.push(tool) } },
       jobs: { start(input: JobSpec) { label = input.label; input.run(job); return job.id } },
-      workflowEngine: { start(input: WorkflowStartRequest) {
+      agentPresets: { serviceFor: () => ({ start(input: WorkflowStartRequest) {
         workflowRequest = input
         started.resolve()
         return { id: 'workflow-1' as WorkflowRun['id'], meta: input.meta, result: result.promise, cancel() {}, dispose: async () => {} }
-      } },
+      } }) },
       on() { return () => {} },
     }
     registerPolicyHost(ctx as never, { style: { get: () => 'superpowers-style' } as never })
